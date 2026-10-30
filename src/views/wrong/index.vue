@@ -1,0 +1,217 @@
+<template>
+  <div class="page">
+    <PageHeader title="错题本" subtitle="只收录作答判错的题，连续答对 2 次自动移出">
+      <template #actions>
+        <a-button :disabled="wrongStore.stats.pending === 0" @click="startReview">开始错题练习</a-button>
+      </template>
+    </PageHeader>
+
+    <div class="metrics">
+      <MetricTile label="待复习" :value="wrongStore.stats.pending" hint="尚未连续答对 2 次" />
+      <MetricTile label="已掌握" :value="wrongStore.stats.mastered" hint="连续答对 2 次后移出" />
+      <MetricTile label="累计收录" :value="wrongStore.stats.total" hint="按题目去重统计" />
+    </div>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h3>错题列表</h3>
+        <a-radio-group v-model:value="status" size="small" button-style="solid" @change="reload">
+          <a-radio-button value="pending">待复习</a-radio-button>
+          <a-radio-button value="mastered">已掌握</a-radio-button>
+          <a-radio-button value="all">全部</a-radio-button>
+        </a-radio-group>
+      </div>
+      <div class="panel-body" :class="{ 'empty-state': !loading && items.length === 0 }">
+        <a-spin :spinning="loading">
+          <a-empty v-if="!loading && items.length === 0" description="这里还没有题目">
+            <a-button type="primary" ghost @click="router.push('/practice')">去练习</a-button>
+          </a-empty>
+          <template v-else>
+            <a-table
+              :data-source="items"
+              :columns="columns"
+              :pagination="false"
+              row-key="questionId"
+              size="middle"
+            >
+              <template #bodyCell="{ column, record }">
+                <template v-if="column.key === 'stem'">
+                  <div class="stem">{{ record.stem }}</div>
+                  <div class="muted">{{ record.bankName }}</div>
+                </template>
+                <template v-else-if="column.key === 'type'">
+                  <a-tag :color="record.type === 'multiple' ? 'purple' : 'blue'">
+                    {{ record.type === 'multiple' ? '多选' : '单选' }}
+                  </a-tag>
+                </template>
+                <template v-else-if="column.key === 'wrongCount'">
+                  <a-tag color="red">{{ record.wrongCount }} 次</a-tag>
+                </template>
+                <template v-else-if="column.key === 'streak'">
+                  <span>{{ record.correctStreak }} / 2</span>
+                </template>
+                <template v-else-if="column.key === 'status'">
+                  <a-tag :color="record.mastered ? 'green' : 'orange'">
+                    {{ record.mastered ? '已掌握' : '待复习' }}
+                  </a-tag>
+                </template>
+                <template v-else-if="column.key === 'lastWrongAt'">
+                  <span class="muted">{{ formatTime(record.lastWrongAt) }}</span>
+                </template>
+                <template v-else-if="column.key === 'actions'">
+                  <a-space>
+                    <a-button type="link" size="small" @click="startSingle(record)">练这题</a-button>
+                    <a-popconfirm
+                      title="移出后该题不再出现在错题本，确定吗？"
+                      ok-text="移出"
+                      cancel-text="取消"
+                      @confirm="remove(record)"
+                    >
+                      <a-button type="link" size="small" danger>移出</a-button>
+                    </a-popconfirm>
+                  </a-space>
+                </template>
+              </template>
+              <template #expandedRowRender="{ record }">
+                <div class="detail">
+                  <div v-for="opt in record.options" :key="opt.key" class="detail-opt">
+                    <span class="opt-key" :class="{ right: record.answer.includes(opt.key) }">{{ opt.key }}</span>
+                    <span>{{ opt.content }}</span>
+                  </div>
+                  <div class="muted" style="margin-top: 8px">正确答案：{{ record.answer.join('') || '—' }}</div>
+                  <div v-if="record.analysis" class="analysis">{{ record.analysis }}</div>
+                </div>
+              </template>
+            </a-table>
+            <div class="pager">
+              <a-pagination
+                v-model:current="page"
+                :total="total"
+                :page-size="size"
+                :show-size-changer="false"
+                size="small"
+                @change="load"
+              />
+            </div>
+          </template>
+        </a-spin>
+      </div>
+    </section>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import dayjs from 'dayjs'
+import PageHeader from '@/components/PageHeader.vue'
+import MetricTile from '@/components/MetricTile.vue'
+import { wrongApi, type WrongItem } from '@/api/wrong'
+import { useWrongStore } from '@/stores/wrong'
+
+const router = useRouter()
+const wrongStore = useWrongStore()
+
+const items = ref<WrongItem[]>([])
+const total = ref(0)
+const page = ref(1)
+const size = 10
+const loading = ref(false)
+const status = ref<'pending' | 'mastered' | 'all'>('pending')
+
+const columns = [
+  { title: '题目', key: 'stem', dataIndex: 'stem' },
+  { title: '题型', key: 'type', width: 76 },
+  { title: '答错次数', key: 'wrongCount', width: 96 },
+  { title: '连续答对', key: 'streak', width: 96 },
+  { title: '状态', key: 'status', width: 96 },
+  { title: '最近答错', key: 'lastWrongAt', width: 150 },
+  { title: '操作', key: 'actions', width: 140 },
+]
+
+function formatTime(raw: string) {
+  return raw ? dayjs(raw).format('YYYY-MM-DD HH:mm') : '—'
+}
+
+async function load() {
+  loading.value = true
+  try {
+    const res = await wrongApi.list({ page: page.value, size, status: status.value })
+    items.value = res.items
+    total.value = res.total
+    wrongStore.syncStats(res.stats)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function reload() {
+  page.value = 1
+  await load()
+}
+
+async function remove(item: WrongItem) {
+  await wrongApi.remove(item.questionId)
+  if (items.value.length === 1 && page.value > 1) page.value -= 1
+  await load()
+}
+
+function startReview() {
+  router.push('/practice?source=wrong')
+}
+
+function startSingle(item: WrongItem) {
+  router.push({ path: '/practice', query: { source: 'wrong', bankId: String(item.bankId) } })
+}
+
+// 练习页面作答后会递增 revision，这里即时重新拉取，保证跨页面同步。
+watch(
+  () => wrongStore.revision,
+  () => {
+    if (!loading.value) load()
+  },
+)
+
+function onVisible() {
+  if (document.visibilityState === 'visible') load()
+}
+
+onMounted(() => {
+  load()
+  document.addEventListener('visibilitychange', onVisible)
+})
+onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible))
+</script>
+
+<style scoped>
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.stem {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 620px;
+}
+.detail { padding: 4px 8px 8px; }
+.detail-opt { display: flex; align-items: flex-start; gap: 8px; padding: 3px 0; }
+.opt-key {
+  flex: none; width: 22px; height: 22px; border-radius: 50%;
+  background: #f0f2f1; color: #6b7570; font-size: 12px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+}
+.opt-key.right { background: #24945f; color: #fff; }
+.analysis {
+  margin-top: 8px; padding: 8px 10px; background: #f7f9f8;
+  border-radius: 6px; font-size: 13px; color: #3b4440; white-space: pre-wrap;
+}
+.pager { display: flex; justify-content: flex-end; margin-top: 12px; }
+.panel-body :deep(.ant-spin-nested-loading) { min-height: 40px; }
+@media (max-width: 900px) {
+  .metrics { grid-template-columns: 1fr; }
+}
+</style>

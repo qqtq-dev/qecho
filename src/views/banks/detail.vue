@@ -1,0 +1,499 @@
+<template>
+  <div class="page">
+    <div class="back">
+      <a-button type="link" size="small" @click="router.push('/banks')">← 返回题库列表</a-button>
+    </div>
+    <PageHeader :title="bank?.name || '题库详情'" :subtitle="bank?.description || '维护题目、答案与解析'">
+      <template #actions>
+        <a-button :loading="exporting" :disabled="total === 0" @click="exportBank">导出题目</a-button>
+        <template v-if="canEdit">
+          <a-button @click="openEditBank">编辑题库</a-button>
+          <a-button @click="importOpen = true">导入题目</a-button>
+          <a-button type="primary" @click="openCreateQuestion">添加题目</a-button>
+        </template>
+        <a-tag v-else color="default">只读题库</a-tag>
+      </template>
+    </PageHeader>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h3>题目</h3>
+        <span class="muted">共 {{ total }} 道</span>
+      </div>
+      <div class="panel-body" :class="{ 'empty-state': !loading && items.length === 0 }">
+        <a-spin :spinning="loading">
+          <a-empty v-if="!loading && items.length === 0" description="这个题库还没有题目">
+            <a-button v-if="canEdit" type="primary" ghost @click="openCreateQuestion">添加第一道题</a-button>
+          </a-empty>
+          <template v-else>
+            <a-table
+              :data-source="items"
+              :columns="columns"
+              :pagination="false"
+              row-key="id"
+              size="middle"
+            >
+              <template #bodyCell="{ column, record, index }">
+                <template v-if="column.key === 'index'">
+                  <span class="muted">{{ (page - 1) * size + index + 1 }}</span>
+                </template>
+                <template v-else-if="column.key === 'type'">
+                  <a-tag :color="record.type === 'multiple' ? 'purple' : 'blue'">
+                    {{ record.type === 'multiple' ? '多选' : '单选' }}
+                  </a-tag>
+                </template>
+                <template v-else-if="column.key === 'stem'">
+                  <div class="stem">{{ record.stem }}</div>
+                  <div v-if="record.stemImage" class="muted">含图片</div>
+                </template>
+                <template v-else-if="column.key === 'answer'">
+                  <span class="mono answer">{{ record.answer.join('') || '—' }}</span>
+                </template>
+                <template v-else-if="column.key === 'difficulty'">
+                  <span class="muted">{{ difficultyLabel(record.difficulty) }}</span>
+                </template>
+                <template v-else-if="column.key === 'actions' && canEdit">
+                  <a-space>
+                    <a-button type="link" size="small" @click="openEditQuestion(record)">编辑</a-button>
+                    <a-popconfirm
+                      title="确定删除这道题吗？"
+                      ok-text="删除"
+                      cancel-text="取消"
+                      @confirm="removeQuestion(record)"
+                    >
+                      <a-button type="link" size="small" danger>删除</a-button>
+                    </a-popconfirm>
+                  </a-space>
+                </template>
+              </template>
+            </a-table>
+            <div class="pager">
+              <a-pagination
+                v-model:current="page"
+                :total="total"
+                :page-size="size"
+                :show-size-changer="false"
+                size="small"
+                @change="loadQuestions"
+              />
+            </div>
+          </template>
+        </a-spin>
+      </div>
+    </section>
+
+    <a-modal
+      v-model:open="bankModalOpen"
+      title="编辑题库"
+      :confirm-loading="bankSaving"
+      ok-text="保存"
+      cancel-text="取消"
+      :width="460"
+      @ok="saveBank"
+    >
+      <a-form layout="vertical">
+        <a-form-item label="题库名称" required>
+          <a-input v-model:value="bankForm.name" :maxlength="60" />
+        </a-form-item>
+        <a-form-item label="说明">
+          <a-textarea v-model:value="bankForm.description" :rows="3" :maxlength="200" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
+    <a-modal
+      v-model:open="qModalOpen"
+      :title="editingQuestion ? '编辑题目' : '添加题目'"
+      :confirm-loading="qSaving"
+      ok-text="保存"
+      cancel-text="取消"
+      :width="720"
+      :mask-closable="false"
+      @ok="saveQuestion"
+    >
+      <a-form layout="vertical">
+        <div class="form-row">
+          <a-form-item label="题型" required>
+            <a-radio-group v-model:value="qForm.type" @change="onTypeChange">
+              <a-radio-button value="single">单选题</a-radio-button>
+              <a-radio-button value="multiple">多选题</a-radio-button>
+            </a-radio-group>
+          </a-form-item>
+          <a-form-item label="难度">
+            <a-select v-model:value="qForm.difficulty" style="width: 120px">
+              <a-select-option :value="1">简单</a-select-option>
+              <a-select-option :value="2">中等</a-select-option>
+              <a-select-option :value="3">困难</a-select-option>
+            </a-select>
+          </a-form-item>
+        </div>
+
+        <a-form-item label="题干" required>
+          <a-textarea
+            v-model:value="qForm.stem"
+            :rows="3"
+            :maxlength="2000"
+            placeholder="请输入题干内容"
+          />
+        </a-form-item>
+
+        <a-form-item label="题目图片地址">
+          <a-input v-model:value="qForm.stemImage" placeholder="可选，填写图片链接（http/https）" />
+        </a-form-item>
+
+        <a-form-item label="选项" required>
+          <div v-for="(opt, idx) in qForm.options" :key="opt.key" class="opt-row">
+            <span class="opt-key">{{ opt.key }}</span>
+            <a-input
+              v-model:value="opt.content"
+              :placeholder="`选项 ${opt.key} 内容`"
+              :maxlength="500"
+            />
+            <a-button
+              type="text"
+              danger
+              size="small"
+              :disabled="qForm.options.length <= 2"
+              @click="removeOption(idx)"
+            >
+              移除
+            </a-button>
+          </div>
+          <a-button
+            type="dashed"
+            size="small"
+            :disabled="qForm.options.length >= 8"
+            @click="addOption"
+          >
+            + 添加选项
+          </a-button>
+        </a-form-item>
+
+        <a-form-item :label="qForm.type === 'single' ? '正确答案（单选）' : '正确答案（至少两个）'" required>
+          <a-radio-group v-if="qForm.type === 'single'" v-model:value="singleAnswer">
+            <a-radio v-for="opt in qForm.options" :key="opt.key" :value="opt.key">
+              {{ opt.key }}
+            </a-radio>
+          </a-radio-group>
+          <a-checkbox-group v-else v-model:value="qForm.answer">
+            <a-checkbox v-for="opt in qForm.options" :key="opt.key" :value="opt.key">
+              {{ opt.key }}
+            </a-checkbox>
+          </a-checkbox-group>
+        </a-form-item>
+
+        <a-form-item label="解析">
+          <a-textarea
+            v-model:value="qForm.analysis"
+            :rows="2"
+            :maxlength="1000"
+            placeholder="可选，交卷后向参与者展示"
+          />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
+    <ImportQuestionsModal
+      v-model:open="importOpen"
+      :bank-id="bankId"
+      :bank-name="bank?.name"
+      @imported="onImported"
+    />
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import dayjs from 'dayjs'
+import { message } from 'ant-design-vue'
+import PageHeader from '@/components/PageHeader.vue'
+import ImportQuestionsModal from '@/components/ImportQuestionsModal.vue'
+import { banksApi, type Bank, type Question, type QuestionOption } from '@/api/banks'
+import { isTauri } from '@/api/request'
+import { useAuthStore } from '@/stores/auth'
+
+const route = useRoute()
+const router = useRouter()
+const auth = useAuthStore()
+const bankId = Number(route.params.id)
+
+const bank = ref<Bank | null>(null)
+const items = ref<Question[]>([])
+const total = ref(0)
+const page = ref(1)
+const size = 20
+const loading = ref(false)
+const importOpen = ref(false)
+
+const canEdit = computed(() => {
+  if (!bank.value) return false
+  return auth.isAdmin || (bank.value.ownerId !== null && bank.value.ownerId !== undefined)
+})
+
+const columns = computed(() => {
+  const base = [
+    { title: '#', key: 'index', width: 56 },
+    { title: '题型', key: 'type', width: 76 },
+    { title: '题干', key: 'stem', dataIndex: 'stem' },
+    { title: '答案', key: 'answer', width: 90 },
+    { title: '难度', key: 'difficulty', width: 76 },
+  ]
+  if (canEdit.value) base.push({ title: '操作', key: 'actions', width: 130 })
+  return base
+})
+
+const difficultyLabel = (v: number) => (v >= 3 ? '困难' : v === 1 ? '简单' : '中等')
+
+async function loadBank() {
+  bank.value = await banksApi.get(bankId)
+}
+
+const exporting = ref(false)
+
+function exportFileName() {
+  const name = (bank.value?.name ?? '题库').replace(/[\\/:*?"<>|]/g, '_').trim() || '题库'
+  return `${name}-${dayjs().format('YYYYMMDD')}.xlsx`
+}
+
+async function exportBank() {
+  if (!bank.value) return
+  exporting.value = true
+  try {
+    const fileName = exportFileName()
+    if (isTauri()) {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const path = await invoke<string | null>('pick_export_path', { fileName })
+      if (!path) return
+      const res = await banksApi.exportTo(bankId, path)
+      message.success(`已导出 ${res.count} 道题到 ${res.path}`)
+      return
+    }
+    const blob = await banksApi.exportFile(bankId)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = fileName
+    link.click()
+    URL.revokeObjectURL(url)
+    message.success('已开始下载')
+  } finally {
+    exporting.value = false
+  }
+}
+
+async function loadQuestions() {
+  loading.value = true
+  try {
+    const res = await banksApi.questions(bankId, page.value, size)
+    items.value = res.items
+    total.value = res.total
+  } finally {
+    loading.value = false
+  }
+}
+
+const bankModalOpen = ref(false)
+const bankSaving = ref(false)
+const bankForm = reactive({ name: '', description: '' })
+
+function openEditBank() {
+  if (!bank.value) return
+  bankForm.name = bank.value.name
+  bankForm.description = bank.value.description
+  bankModalOpen.value = true
+}
+
+async function saveBank() {
+  const name = bankForm.name.trim()
+  if (!name) {
+    message.warning('请填写题库名称')
+    return
+  }
+  bankSaving.value = true
+  try {
+    bank.value = await banksApi.update(bankId, { name, description: bankForm.description.trim() })
+    bankModalOpen.value = false
+    message.success('题库已更新')
+  } finally {
+    bankSaving.value = false
+  }
+}
+
+const qModalOpen = ref(false)
+const qSaving = ref(false)
+const editingQuestion = ref<Question | null>(null)
+const qForm = reactive({
+  type: 'single' as 'single' | 'multiple',
+  stem: '',
+  stemImage: '',
+  answer: [] as string[],
+  analysis: '',
+  difficulty: 2,
+  options: [] as QuestionOption[],
+})
+
+const singleAnswer = computed({
+  get: () => qForm.answer[0] ?? '',
+  set: (v: string) => {
+    qForm.answer = v ? [v] : []
+  },
+})
+
+const LETTERS = 'ABCDEFGH'
+
+function resetForm() {
+  qForm.type = 'single'
+  qForm.stem = ''
+  qForm.stemImage = ''
+  qForm.answer = []
+  qForm.analysis = ''
+  qForm.difficulty = 2
+  qForm.options = [
+    { key: 'A', content: '' },
+    { key: 'B', content: '' },
+  ]
+}
+
+function openCreateQuestion() {
+  editingQuestion.value = null
+  resetForm()
+  qModalOpen.value = true
+}
+
+function openEditQuestion(q: Question) {
+  editingQuestion.value = q
+  qForm.type = q.type
+  qForm.stem = q.stem
+  qForm.stemImage = q.stemImage
+  qForm.analysis = q.analysis
+  qForm.difficulty = q.difficulty >= 3 ? 3 : q.difficulty === 1 ? 1 : 2
+  qForm.options = q.options.map((o) => ({ key: o.key, content: o.content }))
+  qForm.answer = [...q.answer]
+  qModalOpen.value = true
+}
+
+function onTypeChange() {
+  if (qForm.type === 'single' && qForm.answer.length > 1) {
+    qForm.answer = [qForm.answer[0]]
+  }
+}
+
+function addOption() {
+  if (qForm.options.length >= 8) return
+  qForm.options.push({ key: LETTERS[qForm.options.length], content: '' })
+}
+
+function removeOption(index: number) {
+  if (qForm.options.length <= 2) return
+  const oldKeys = qForm.options.map((o) => o.key)
+  const removedKey = oldKeys[index]
+  qForm.options.splice(index, 1)
+  const remainingOld = oldKeys.filter((_, i) => i !== index)
+  const map: Record<string, string> = {}
+  qForm.options.forEach((opt, i) => {
+    const nextKey = LETTERS[i]
+    map[remainingOld[i]] = nextKey
+    opt.key = nextKey
+  })
+  qForm.answer = qForm.answer
+    .filter((k) => k !== removedKey)
+    .map((k) => map[k])
+    .filter((k): k is string => Boolean(k))
+}
+
+async function saveQuestion() {
+  const stem = qForm.stem.trim()
+  if (!stem) {
+    message.warning('请填写题干')
+    return
+  }
+  const options = qForm.options.map((o) => ({ key: o.key, content: o.content.trim() }))
+  if (options.some((o) => !o.content)) {
+    message.warning('请填写完整的选项内容')
+    return
+  }
+  if (!qForm.answer.length) {
+    message.warning('请设置正确答案')
+    return
+  }
+  if (qForm.type === 'single' && qForm.answer.length !== 1) {
+    message.warning('单选题只能有一个正确答案')
+    return
+  }
+  if (qForm.type === 'multiple' && qForm.answer.length < 2) {
+    message.warning('多选题至少需要两个正确答案')
+    return
+  }
+  qSaving.value = true
+  try {
+    const payload = {
+      type: qForm.type,
+      stem,
+      stemImage: qForm.stemImage.trim(),
+      answer: qForm.answer,
+      analysis: qForm.analysis.trim(),
+      difficulty: qForm.difficulty,
+      options,
+    }
+    if (editingQuestion.value) {
+      await banksApi.updateQuestion(editingQuestion.value.id, payload)
+      message.success('题目已更新')
+    } else {
+      await banksApi.createQuestion(bankId, payload)
+      message.success('题目已添加')
+    }
+    qModalOpen.value = false
+    await Promise.all([loadQuestions(), loadBank()])
+  } finally {
+    qSaving.value = false
+  }
+}
+
+async function removeQuestion(q: Question) {
+  await banksApi.removeQuestion(q.id)
+  message.success('题目已删除')
+  if (items.value.length === 1 && page.value > 1) page.value -= 1
+  await Promise.all([loadQuestions(), loadBank()])
+}
+
+async function onImported() {
+  page.value = 1
+  await Promise.all([loadBank(), loadQuestions()])
+}
+
+onMounted(async () => {
+  await loadBank()
+  await loadQuestions()
+})
+</script>
+
+<style scoped>
+.back { margin: -4px 0 4px; }
+.back :deep(.ant-btn) { padding-inline: 0; }
+.stem {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 640px;
+}
+.answer { font-weight: 600; color: var(--accent, #24945f); }
+.pager { display: flex; justify-content: flex-end; margin-top: 12px; }
+.form-row { display: flex; gap: 24px; align-items: flex-start; }
+.opt-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.opt-key {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #eef7f2;
+  color: #1c7a4e;
+  font-weight: 600;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.panel-body :deep(.ant-spin-nested-loading) { min-height: 40px; }
+</style>

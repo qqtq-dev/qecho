@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#24945f">
+<title>在线考试</title>
+<style>
+  :root {
+    --green: #24945f;
+    --green-dark: #1c7a4e;
+    --green-soft: #e8f5ee;
+    --bg: #f4f6f5;
+    --surface: #ffffff;
+    --border: #e2e6e4;
+    --text: #1f2421;
+    --text2: #6b7570;
+    --danger: #d4380d;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 15px;
+    line-height: 1.55;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 16px 14px 96px; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 18px;
+  }
+  h1 { font-size: 19px; margin: 0 0 6px; line-height: 1.35; }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  .muted { color: var(--text2); font-size: 13px; }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    padding: 26px 4px 18px;
+  }
+  .brand-badge {
+    width: 38px; height: 38px; border-radius: 10px;
+    background: linear-gradient(160deg, #2fb273, #187a4b);
+    color: #fff; font-weight: 700; font-size: 20px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .brand-name { font-size: 16px; font-weight: 600; }
+  .brand-sub { font-size: 12px; color: var(--text2); }
+
+  .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--green-soft); color: var(--green-dark);
+    border-radius: 999px; padding: 3px 10px; font-size: 12.5px;
+  }
+  .chip.gray { background: #f0f2f1; color: var(--text2); }
+  .chip.red { background: #fdece8; color: var(--danger); }
+
+  .field { margin-top: 14px; }
+  .field label { display: block; font-size: 13px; color: var(--text2); margin-bottom: 6px; }
+  .field input {
+    width: 100%; padding: 11px 12px; font-size: 15px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: #fff; color: var(--text); outline: none;
+  }
+  .field input:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(36,148,95,.12); }
+
+  button { font-family: inherit; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 100%; padding: 12px 16px; font-size: 15px; font-weight: 600;
+    border: none; border-radius: 8px; cursor: pointer;
+    background: var(--green); color: #fff;
+    transition: background .15s;
+  }
+  .btn:active { background: var(--green-dark); }
+  .btn:disabled { background: #a8c9b9; cursor: not-allowed; }
+  .btn.ghost {
+    background: transparent; color: var(--green-dark);
+    border: 1px solid var(--green);
+  }
+  .btn.danger { background: #fff; color: var(--danger); border: 1px solid #f0c4b8; }
+  .btn + .btn { margin-top: 10px; }
+
+  .notice {
+    margin-top: 14px; padding: 10px 12px; border-radius: 8px;
+    background: #fff8e6; color: #8a6100; font-size: 13px;
+  }
+  .notice.error { background: #fdece8; color: var(--danger); }
+
+  /* exam */
+  .exam-shell { max-width: 760px; margin: 0 auto; padding: 16px 14px 96px; }
+  .exam-main { min-width: 0; }
+  .exam-head {
+    position: sticky; top: 0; z-index: 5;
+    background: rgba(244,246,245,.94);
+    backdrop-filter: blur(8px);
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .exam-head-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .exam-title { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+  .head-right { flex: none; display: flex; align-items: center; gap: 8px; }
+  .time-chip {
+    font-size: 12px; color: var(--green-dark);
+    background: var(--green-soft); border-radius: 999px; padding: 2px 9px;
+    white-space: nowrap;
+  }
+  .nav-toggle {
+    border: 1px solid var(--green); background: #fff; color: var(--green-dark);
+    border-radius: 6px; padding: 4px 9px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  }
+  .nav-toggle.open { background: var(--green); color: #fff; }
+  .q-nav {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    margin-top: 10px; padding: 12px; background: #fff;
+    border: 1px solid var(--border); border-radius: 8px;
+  }
+  .q-nav-num {
+    width: 34px; height: 34px; border-radius: 8px;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    border: 1px solid #cfd8d3; background: #fff; color: var(--text2);
+  }
+  .q-nav-num.done { background: var(--green); border-color: var(--green); color: #fff; }
+  .q-nav-num:active { opacity: .8; }
+  .timer {
+    font-variant-numeric: tabular-nums; font-weight: 700; font-size: 15px;
+    color: var(--green-dark); white-space: nowrap;
+  }
+  .timer.warn { color: var(--danger); }
+
+  /* answer card aside：右侧通栏，从窗口顶到底 */
+  .answer-aside {
+    position: fixed; top: 0; right: 0; bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+    width: 200px; z-index: 7; display: flex;
+    background: var(--surface); border-left: 1px solid var(--border);
+  }
+  .answer-card {
+    flex: 1; min-height: 0; display: flex; flex-direction: column;
+    background: transparent; border: none; border-radius: 0; padding: 18px 16px 20px;
+  }
+  .answer-head { display: flex; align-items: baseline; justify-content: space-between; flex: none; padding-bottom: 10px; border-bottom: 1px solid var(--border); margin-bottom: 10px; }
+  .answer-head b { font-size: 14px; }
+  .answer-head span { font-size: 12px; color: var(--text2); font-variant-numeric: tabular-nums; }
+  .answer-legend { display: flex; gap: 10px; margin: 8px 0; font-size: 11.5px; color: var(--text2); flex: none; }
+  .answer-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; border: 1px solid #cfd8d3; background: #fff; }
+  .answer-legend i.done { background: var(--green); border-color: var(--green); }
+  .answer-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(30px, 1fr));
+    gap: 6px; align-content: start; flex: 1; min-height: 0; overflow: auto;
+  }
+  .answer-grid .q-nav-num { width: auto; height: 28px; border-radius: 6px; font-size: 12px; }
+
+  @media (max-width: 1199px) {
+    .answer-aside { display: none; }
+  }
+  @media (min-width: 1200px) {
+    .nav-toggle, .q-nav { display: none !important; }
+  }
+
+  .q-card { margin-top: 14px; scroll-margin-top: 96px; }
+  .q-head { display: flex; gap: 8px; align-items: baseline; margin-bottom: 10px; }
+  .q-status {
+    flex: none; margin-left: auto; font-size: 12px; padding: 1px 9px;
+    border-radius: 999px; background: #f0f2f1; color: var(--text2);
+  }
+  .q-status.done { background: var(--green-soft); color: var(--green-dark); }
+  .q-seq {
+    flex: none; min-width: 26px; height: 26px; padding: 0 6px;
+    border-radius: 6px; background: var(--green-soft); color: var(--green-dark);
+    font-size: 13px; font-weight: 600;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .q-type { flex: none; font-size: 12px; color: var(--text2); }
+  .q-stem { flex: 1; font-size: 15.5px; white-space: pre-wrap; word-break: break-word; }
+  .q-img { display: block; max-width: 100%; border-radius: 8px; margin: 8px 0 4px; }
+  .opt {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 11px 12px; margin-top: 8px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: #fff; cursor: pointer; user-select: none;
+    transition: border-color .12s, background .12s;
+  }
+  .opt:active { background: #f7faf8; }
+  .opt.sel { border-color: var(--green); background: var(--green-soft); }
+  .opt-key {
+    flex: none; width: 24px; height: 24px; border-radius: 50%;
+    border: 1.5px solid #c6cfca; color: var(--text2);
+    font-size: 12.5px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+    margin-top: 1px;
+  }
+  .opt.sel .opt-key { background: var(--green); border-color: var(--green); color: #fff; }
+  .opt.sel.multi .opt-key { border-radius: 6px; }
+  .opt-text { flex: 1; white-space: pre-wrap; word-break: break-word; }
+
+  .save-state { text-align: center; font-size: 12.5px; color: var(--text2); min-height: 18px; margin-top: 4px; }
+  .save-state.err { color: var(--danger); }
+
+  .submit-bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
+    background: rgba(255,255,255,.96); border-top: 1px solid var(--border);
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+  }
+  .submit-bar-inner { max-width: 732px; margin: 0 auto; display: flex; gap: 12px; align-items: center; }
+  .submit-bar .answered { flex: 1; min-width: 0; font-size: 13px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .submit-bar .btn { width: 132px; flex: none; padding: 10px 16px; }
+  @media (max-width: 640px) {
+    .submit-bar .answered { font-size: 12px; }
+    .submit-bar .btn { width: 128px; }
+  }
+
+  /* result */
+  .score-box { text-align: center; padding: 10px 0 6px; }
+  .score-num { font-size: 46px; font-weight: 700; color: var(--green); line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .score-num small { font-size: 16px; color: var(--text2); font-weight: 500; }
+  .score-sub { color: var(--text2); font-size: 13px; margin-top: 4px; }
+  .stat-row { display: flex; gap: 10px; margin-top: 16px; }
+  .stat {
+    flex: 1; text-align: center; background: #f8faf9; border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 6px;
+  }
+  .stat b { display: block; font-size: 18px; }
+  .stat span { font-size: 12px; color: var(--text2); }
+
+  .detail { margin-top: 12px; border-left: 3px solid #e3e8e5; padding: 2px 0 2px 12px; }
+  .detail.right { border-left-color: var(--green); }
+  .detail.wrong { border-left-color: var(--danger); }
+  .detail .ans-line { font-size: 13px; margin-top: 6px; }
+  .ans-ok { color: var(--green-dark); font-weight: 600; }
+  .ans-bad { color: var(--danger); font-weight: 600; }
+  .analysis {
+    margin-top: 8px; padding: 10px 12px; border-radius: 8px;
+    background: #f7f9f8; font-size: 13.5px; color: #3b4440; white-space: pre-wrap;
+  }
+
+  .modal-mask {
+    position: fixed; inset: 0; background: rgba(20,26,23,.45); z-index: 20;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal { width: 100%; max-width: 360px; background: #fff; border-radius: 12px; padding: 20px 18px; }
+  .modal h3 { margin: 0 0 8px; font-size: 16px; }
+  .modal p { margin: 0; color: var(--text2); font-size: 14px; }
+  .modal-btns { display: flex; gap: 10px; margin-top: 18px; }
+  .modal-btns .btn { margin: 0; }
+  .modal-btns .btn.ghost { background: #f4f6f5; border: none; color: var(--text); }
+
+  .center-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .center-page .card { width: 100%; max-width: 420px; text-align: center; }
+  .big-icon { font-size: 34px; margin-bottom: 8px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var token = location.pathname.split('/').filter(Boolean).pop() || '';
+  var apiBase = '/api/public/exams/' + encodeURIComponent(token);
+  var storeKey = 'quizbox-attempt:' + token;
+  var state = {
+    exam: null,
+    attemptToken: '',
+    questions: [],
+    answers: {},
+    deadline: 0,
+    timer: null,
+    submitting: false,
+    saveTimer: null,
+    saveSeq: 0,
+    savePending: {},
+    saving: 0,
+  };
+
+  var app = document.getElementById('app');
+
+  function el(tag, attrs, children) {
+    var node = document.createElement(tag);
+    if (attrs) {
+      Object.keys(attrs).forEach(function (k) {
+        if (k === 'text') node.textContent = attrs[k];
+        else if (k === 'class') node.className = attrs[k];
+        else if (k === 'style') node.style.cssText = attrs[k];
+        else if (k.indexOf('on') === 0) node.addEventListener(k.slice(2), attrs[k]);
+        else node.setAttribute(k, attrs[k]);
+      });
+    }
+    (children || []).forEach(function (c) {
+      if (c == null) return;
+      node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+    });
+    return node;
+  }
+
+  function api(path, options) {
+    return fetch(apiBase + path, options).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (body) {
+        if (!res.ok || (body && body.code !== 0)) {
+          var err = new Error((body && body.message) || ('请求失败（' + res.status + '）'));
+          err.status = res.status;
+          throw err;
+        }
+        return body.data;
+      });
+    });
+  }
+
+  function post(path, data) {
+    return api(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data || {}),
+    });
+  }
+
+  function fmtClock(sec) {
+    if (sec < 0) sec = 0;
+    var h = Math.floor(sec / 3600);
+    var m = Math.floor((sec % 3600) / 60);
+    var s = sec % 60;
+    var mm = String(m).padStart(2, '0');
+    var ss = String(s).padStart(2, '0');
+    return h > 0 ? h + ':' + mm + ':' + ss : mm + ':' + ss;
+  }
+
+  function fmtTime(raw) {
+    if (!raw) return '';
+    var d = new Date(raw);
+    if (isNaN(d.getTime())) return raw;
+    return (d.getMonth() + 1) + '月' + d.getDate() + '日 ' +
+      String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+
+  function clearNode(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+  function brand() {
+    return el('div', { class: 'brand' }, [
+      el('div', { class: 'brand-badge', text: '题' }),
+      el('div', {}, [
+        el('div', { class: 'brand-name', text: '题库在线考试' }),
+        el('div', { class: 'brand-sub', text: '本页面无需安装客户端' }),
+      ]),
+    ]);
+  }
+
+  function modal(title, message, okText, onOk) {
+    var mask = el('div', { class: 'modal-mask' });
+    var close = function () { if (mask.parentNode) mask.parentNode.removeChild(mask); };
+    var box = el('div', { class: 'modal' }, [
+      el('h3', { text: title }),
+      el('p', { text: message }),
+      el('div', { class: 'modal-btns' }, [
+        el('button', { class: 'btn ghost', type: 'button', text: '取消', onclick: close }),
+        el('button', {
+          class: 'btn', type: 'button', text: okText,
+          onclick: function () { close(); onOk(); },
+        }),
+      ]),
+    ]);
+    mask.appendChild(box);
+    document.body.appendChild(mask);
+  }
+
+  function fatal(title, message) {
+    clearNode(app);
+    app.appendChild(el('div', { class: 'center-page' }, [
+      el('div', { class: 'card' }, [
+        el('div', { class: 'big-icon', text: '⚠️' }),
+        el('h1', { text: title }),
+        el('p', { class: 'muted', text: message || '' }),
+      ]),
+    ]));
+  }
+
+  function loading() {
+    clearNode(app);
+    app.appendChild(el('div', { class: 'center-page' }, [
+      el('div', { class: 'card' }, [el('p', { class: 'muted', text: '正在加载考试信息…' })]),
+    ]));
+  }
+
+  function renderLogin(info, errorText) {
+    clearNode(app);
+    var name = localStorage.getItem('quizbox-name') || '';
+    var no = localStorage.getItem('quizbox-student-no') || '';
+    var errorBox = el('div', { class: 'notice error hidden' });
+    if (errorText) { errorBox.textContent = errorText; errorBox.classList.remove('hidden'); }
+
+    var nameInput = el('input', { type: 'text', maxlength: '30', placeholder: '请输入真实姓名', value: name, autocomplete: 'name' });
+    var noInput = el('input', { type: 'text', maxlength: '40', placeholder: '请输入学号/工号', value: no, inputmode: 'numeric' });
+    var pwInput = el('input', { type: 'password', placeholder: '请输入考试密码', autocomplete: 'off' });
+    var btn = el('button', { class: 'btn', type: 'button', text: '开始答题' });
+
+    var fields = [
+      el('div', { class: 'field' }, [el('label', { text: '姓名' }), nameInput]),
+      el('div', { class: 'field' }, [el('label', { text: '学号 / 工号' }), noInput]),
+    ];
+    if (info.needsPassword) {
+      fields.push(el('div', { class: 'field' }, [el('label', { text: '考试密码' }), pwInput]));
+    }
+
+    btn.addEventListener('click', function () {
+      errorBox.classList.add('hidden');
+      var nameVal = nameInput.value.trim();
+      var noVal = noInput.value.trim();
+      if (!nameVal) { errorBox.textContent = '请填写姓名'; errorBox.classList.remove('hidden'); return; }
+      if (!noVal) { errorBox.textContent = '请填写学号/工号'; errorBox.classList.remove('hidden'); return; }
+      if (info.needsPassword && !pwInput.value) {
+        errorBox.textContent = '请填写考试密码'; errorBox.classList.remove('hidden'); return;
+      }
+      btn.disabled = true;
+      btn.textContent = '正在进入…';
+      localStorage.setItem('quizbox-name', nameVal);
+      localStorage.setItem('quizbox-student-no', noVal);
+      post('/start', { name: nameVal, studentNo: noVal, password: pwInput.value }).then(function (data) {
+        handleStart(data);
+      }).catch(function (err) {
+        btn.disabled = false;
+        btn.textContent = '开始答题';
+        errorBox.textContent = err.message;
+        errorBox.classList.remove('hidden');
+      });
+    });
+
+    var chips = [];
+    chips.push(el('span', { class: 'chip', text: info.totalCount + ' 道题' }));
+    chips.push(el('span', { class: 'chip', text: '限时 ' + Math.round(info.timeLimitSec / 60) + ' 分钟' }));
+    if (info.openAt && info.closeAt) {
+      chips.push(el('span', { class: 'chip gray', text: '开放 ' + fmtTime(info.openAt) + ' 至 ' + fmtTime(info.closeAt) }));
+    }
+    if (info.status === 'not_open') {
+      chips.push(el('span', { class: 'chip red', text: '尚未开始' }));
+    }
+
+    app.appendChild(el('div', { class: 'wrap' }, [
+      brand(),
+      el('div', { class: 'card' }, [
+        el('h1', { text: info.title }),
+        el('div', { class: 'meta' }, chips),
+        el('div', { class: 'notice', text: '请如实填写姓名与学号，同一学号只能提交一次。答题过程中答案会自动保存，可随时关闭页面后续答。' }),
+        errorBox,
+      ].concat(fields).concat([
+        el('div', { class: 'field' }, [btn]),
+      ])),
+      el('p', { class: 'muted', style: 'text-align:center;margin-top:16px', text: '考试链接由组织者提供，请勿转发给无关人员。' }),
+    ]));
+    if (info.status === 'not_open') {
+      btn.disabled = true;
+      btn.textContent = '未到开考时间';
+    }
+  }
+
+  function handleStart(data) {
+    if (data.state === 'submitted') {
+      if (state.attemptToken) localStorage.removeItem(storeKey);
+      renderResult(data);
+      return;
+    }
+    enterExam(data);
+  }
+
+  function startTimer(deadlineMs) {
+    if (state.timer) clearInterval(state.timer);
+    var tick = function () {
+      var left = Math.floor((deadlineMs - Date.now()) / 1000);
+      var node = document.getElementById('timer');
+      if (node) {
+        node.textContent = fmtClock(left);
+        node.classList.toggle('warn', left <= 300);
+      }
+      if (left <= 0) {
+        clearInterval(state.timer);
+        state.timer = null;
+        autoSubmit();
+      }
+    };
+    tick();
+    state.timer = setInterval(tick, 1000);
+  }
+
+  function autoSubmit() {
+    if (state.submitting || !state.attemptToken) return;
+    submitExam(true);
+  }
+
+  function updateProgress() {
+    var total = state.questions.length || 1;
+    var answered = Object.keys(state.answers).filter(function (k) {
+      return state.answers[k] && state.answers[k].length;
+    }).length;
+    var label = document.getElementById('answered-label');
+    if (label) {
+      var rest = state.questions.length - answered;
+      label.textContent = '已答 ' + answered + '/' + state.questions.length + (rest > 0 ? ' · 未答 ' + rest : ' · 已全部作答');
+    }
+    var toggle = document.getElementById('nav-toggle');
+    if (toggle) toggle.textContent = '答题卡 ' + answered + '/' + state.questions.length;
+    var count = document.getElementById('nav-count');
+    if (count) count.textContent = answered + '/' + state.questions.length;
+    var nums = document.querySelectorAll('[data-nav]');
+    for (var i = 0; i < nums.length; i++) {
+      var seq = Number(nums[i].getAttribute('data-nav'));
+      var done = !!(state.answers[seq] && state.answers[seq].length);
+      nums[i].classList.toggle('done', done);
+    }
+    var marks = document.querySelectorAll('[data-status]');
+    for (var j = 0; j < marks.length; j++) {
+      var s = Number(marks[j].getAttribute('data-status'));
+      var has = !!(state.answers[s] && state.answers[s].length);
+      marks[j].textContent = has ? '已答' : '未答';
+      marks[j].classList.toggle('done', has);
+    }
+  }
+
+  function fmtLimit(sec) {
+    if (!sec) return '不限时';
+    return '限时 ' + Math.round(sec / 60) + ' 分钟';
+  }
+
+  function navButton(q) {
+    var num = el('button', {
+      class: 'q-nav-num', type: 'button', 'data-nav': String(q.seq),
+      text: String(q.seq),
+    });
+    num.addEventListener('click', function () {
+      var target = document.querySelector('.q-card[data-card-seq="' + q.seq + '"]');
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    return num;
+  }
+
+  function enterExam(data) {
+    state.attemptToken = data.attemptToken;
+    state.questions = data.questions || [];
+    state.answers = {};
+    (data.saved || []).forEach(function (s) { state.answers[s.seq] = s.chosen || []; });
+    state.deadline = Date.now() + (data.remainingSec || 0) * 1000;
+    localStorage.setItem(storeKey, JSON.stringify({
+      attemptToken: data.attemptToken,
+      name: data.name,
+      studentNo: data.studentNo,
+    }));
+
+    clearNode(app);
+    var timer = el('div', { class: 'timer', id: 'timer', text: fmtClock(data.remainingSec || 0) });
+    var navToggle = el('button', {
+      class: 'nav-toggle', type: 'button', id: 'nav-toggle',
+      text: '答题卡 0/' + state.questions.length,
+    });
+    navToggle.addEventListener('click', function () {
+      var panel = document.getElementById('q-nav');
+      if (!panel) return;
+      panel.classList.toggle('hidden');
+      navToggle.classList.toggle('open', !panel.classList.contains('hidden'));
+    });
+    var timeChip = el('span', { class: 'time-chip', text: fmtLimit(data.timeLimitSec) });
+    var head = el('div', { class: 'exam-head' }, [
+      el('div', { class: 'exam-head-row' }, [
+        el('div', { class: 'exam-title', text: data.title }),
+        el('div', { class: 'head-right' }, [timeChip, navToggle, timer]),
+      ]),
+    ]);
+
+    var nav = el('div', { class: 'q-nav hidden', id: 'q-nav' });
+    state.questions.forEach(function (q) {
+      nav.appendChild(navButton(q));
+    });
+
+    var saveState = el('div', { class: 'save-state', id: 'save-state', text: '答案会自动保存' });
+    var main = el('div', { class: 'exam-main' }, [head, nav, saveState]);
+    state.questions.forEach(function (q) {
+      main.appendChild(renderQuestion(q));
+    });
+
+    var asideGrid = el('div', { class: 'answer-grid' });
+    state.questions.forEach(function (q) {
+      asideGrid.appendChild(navButton(q));
+    });
+    var aside = el('aside', { class: 'answer-aside' }, [
+      el('div', { class: 'answer-card' }, [
+        el('div', { class: 'answer-head' }, [
+          el('b', { text: '答题卡' }),
+          el('span', { id: 'nav-count', text: '0/' + state.questions.length }),
+        ]),
+        el('div', { class: 'answer-legend' }, [
+          el('span', {}, [el('i', { class: 'done' }), '已答']),
+          el('span', {}, [el('i', {}), '未答']),
+        ]),
+        asideGrid,
+      ]),
+    ]);
+
+    var answeredLabel = el('span', { class: 'answered', id: 'answered-label', text: '已答 0/' + state.questions.length });
+    var submitBtn = el('button', {
+      class: 'btn', type: 'button', text: '交卷',
+      onclick: function () {
+        var unanswered = state.questions.length - Object.keys(state.answers).filter(function (k) {
+          return state.answers[k] && state.answers[k].length;
+        }).length;
+        var msg = unanswered > 0
+          ? '还有 ' + unanswered + ' 道题未作答，确定现在交卷吗？交卷后不能再修改。'
+          : '确认交卷吗？交卷后不能再修改答案。';
+        modal('确认交卷', msg, '确认交卷', function () { submitExam(false); });
+      },
+    });
+    var bar = el('div', { class: 'submit-bar' }, [
+      el('div', { class: 'submit-bar-inner' }, [answeredLabel, submitBtn]),
+    ]);
+
+    app.appendChild(el('div', { class: 'exam-shell' }, [main, aside]));
+    app.appendChild(bar);
+    updateProgress();
+    startTimer(state.deadline);
+  }
+
+  function renderQuestion(q) {
+    var isMulti = q.type === 'multiple';
+    var card = el('div', { class: 'card q-card', 'data-card-seq': String(q.seq) });
+    var head = el('div', { class: 'q-head' }, [
+      el('span', { class: 'q-seq', text: String(q.seq) }),
+      el('span', { class: 'q-type', text: isMulti ? '多选题' : '单选题' }),
+      el('span', { class: 'q-status', 'data-status': String(q.seq), text: '未答' }),
+    ]);
+    card.appendChild(head);
+    card.appendChild(el('div', { class: 'q-stem', text: q.stem }));
+    if (q.stemImage) {
+      card.appendChild(el('img', { class: 'q-img', src: q.stemImage, alt: '题目图片', loading: 'lazy' }));
+    }
+
+    (q.options || []).forEach(function (opt) {
+      var node = el('div', {
+        class: 'opt' + (isMulti ? ' multi' : ''),
+        role: 'button',
+        'data-seq': String(q.seq),
+        'data-key': opt.key,
+      }, [
+        el('span', { class: 'opt-key', text: opt.key }),
+        el('span', { class: 'opt-text', text: opt.content }),
+      ]);
+      node.addEventListener('click', function () {
+        toggleAnswer(q, opt.key, isMulti);
+        syncQuestionSelection(q.seq);
+      });
+      card.appendChild(node);
+    });
+    syncQuestionSelectionTo(card, q.seq);
+    return card;
+  }
+
+  function toggleAnswer(q, key, isMulti) {
+    var current = (state.answers[q.seq] || []).slice();
+    var idx = current.indexOf(key);
+    if (isMulti) {
+      if (idx >= 0) current.splice(idx, 1); else current.push(key);
+    } else {
+      current = [key];
+    }
+    current.sort();
+    if (current.length) state.answers[q.seq] = current;
+    else delete state.answers[q.seq];
+    updateProgress();
+    scheduleSave(q.seq);
+  }
+
+  function syncQuestionSelection(seq) {
+    var nodes = document.querySelectorAll('.opt[data-seq="' + seq + '"]');
+    var chosen = state.answers[seq] || [];
+    for (var i = 0; i < nodes.length; i++) {
+      nodes[i].classList.toggle('sel', chosen.indexOf(nodes[i].getAttribute('data-key')) >= 0);
+    }
+  }
+
+  function syncQuestionSelectionTo(card, seq) {
+    var chosen = state.answers[seq] || [];
+    var nodes = card.querySelectorAll('.opt');
+    for (var i = 0; i < nodes.length; i++) {
+      nodes[i].classList.toggle('sel', chosen.indexOf(nodes[i].getAttribute('data-key')) >= 0);
+    }
+  }
+
+  function setSaveState(text, isErr) {
+    var node = document.getElementById('save-state');
+    if (!node) return;
+    node.textContent = text;
+    node.classList.toggle('err', !!isErr);
+  }
+
+  function scheduleSave(seq) {
+    state.savePending[seq] = true;
+    state.saveSeq += 1;
+    setSaveState('保存中…', false);
+    if (state.saveTimer) clearTimeout(state.saveTimer);
+    state.saveTimer = setTimeout(function () {
+      var seqs = Object.keys(state.savePending).map(Number);
+      state.savePending = {};
+      saveAnswers(seqs);
+    }, 350);
+  }
+
+  function saveAnswers(seqs) {
+    if (!state.attemptToken || !seqs.length) return;
+    state.saving += 1;
+    Promise.all(seqs.map(function (seq) {
+      return post('/answers', {
+        attemptToken: state.attemptToken,
+        seq: seq,
+        chosen: state.answers[seq] || [],
+      });
+    })).then(function () {
+      state.saving -= 1;
+      if (state.saving === 0 && !Object.keys(state.savePending).length) setSaveState('答案已保存', false);
+    }).catch(function (err) {
+      state.saving -= 1;
+      setSaveState('保存失败：' + err.message + '（修改答案可重试）', true);
+    });
+  }
+
+  function submitExam(auto) {
+    if (state.submitting) return;
+    state.submitting = true;
+    var btn = document.querySelector('.submit-bar .btn');
+    if (btn) { btn.disabled = true; btn.textContent = '正在交卷…'; }
+    setSaveState('正在交卷…', false);
+
+    var seqs = Object.keys(state.answers).map(Number);
+    var jobs = seqs.map(function (seq) {
+      return post('/answers', {
+        attemptToken: state.attemptToken,
+        seq: seq,
+        chosen: state.answers[seq] || [],
+      }).catch(function () { return null; });
+    });
+    Promise.all(jobs).then(function () {
+      return post('/submit', { attemptToken: state.attemptToken });
+    }).then(function (result) {
+      localStorage.removeItem(storeKey);
+      if (state.timer) clearInterval(state.timer);
+      renderResult(result, auto);
+    }).catch(function (err) {
+      state.submitting = false;
+      if (btn) { btn.disabled = false; btn.textContent = '交卷'; }
+      setSaveState('交卷失败：' + err.message, true);
+      alert('交卷失败：' + err.message);
+    });
+  }
+
+  function keyList(keys) { return (keys || []).join('、') || '未作答'; }
+
+  function renderResult(result, auto) {
+    clearNode(app);
+    if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    var detailNodes = (result.details || []).map(function (d) {
+      var cls = 'detail ' + (d.isCorrect ? 'right' : 'wrong');
+      var box = el('div', { class: cls }, [
+        el('div', { class: 'q-head' }, [
+          el('span', { class: 'q-seq', text: String(d.seq) }),
+          el('span', { class: 'q-type', text: d.type === 'multiple' ? '多选题' : '单选题' }),
+          el('span', { class: 'q-type', text: d.isCorrect ? '✓ 正确' : '✗ 错误' }),
+        ]),
+        el('div', { class: 'q-stem', text: d.stem }),
+      ]);
+      if (d.stemImage) box.appendChild(el('img', { class: 'q-img', src: d.stemImage, alt: '题目图片' }));
+      box.appendChild(el('div', { class: 'ans-line' }, [
+        el('span', { class: 'muted', text: '你的答案：' }),
+        el('span', { class: d.isCorrect ? 'ans-ok' : 'ans-bad', text: keyList(d.chosen) }),
+      ]));
+      if (!d.isCorrect) {
+        box.appendChild(el('div', { class: 'ans-line' }, [
+          el('span', { class: 'muted', text: '正确答案：' }),
+          el('span', { class: 'ans-ok', text: keyList(d.answer) }),
+        ]));
+      }
+      if (d.analysis) box.appendChild(el('div', { class: 'analysis', text: d.analysis }));
+      return box;
+    });
+
+    app.appendChild(el('div', { class: 'wrap' }, [
+      brand(),
+      el('div', { class: 'card' }, [
+        el('h1', { text: '答题结果' }),
+        auto ? el('p', { class: 'muted', text: '答题时间已结束，系统已自动交卷。' }) : null,
+        el('div', { class: 'score-box' }, [
+          el('div', { class: 'score-num' }, [
+            String(result.score),
+            el('small', { text: ' 分' }),
+          ]),
+          el('div', { class: 'score-sub', text: '提交于 ' + fmtTime(result.submittedAt) }),
+        ]),
+        el('div', { class: 'stat-row' }, [
+          el('div', { class: 'stat' }, [el('b', { text: String(result.correctCount) }), el('span', { text: '答对' })]),
+          el('div', { class: 'stat' }, [el('b', { text: String(result.answeredCount) }), el('span', { text: '已答' })]),
+          el('div', { class: 'stat' }, [el('b', { text: String(result.totalCount) }), el('span', { text: '总题数' })]),
+        ]),
+      ]),
+      el('div', { style: 'margin-top:18px' }, [
+        el('h2', { text: '答题明细' }),
+      ].concat(detailNodes)),
+      el('p', { class: 'muted', style: 'text-align:center;margin:24px 0 8px', text: '成绩由组织者统一汇总，本页可作为提交凭证截屏保存。' }),
+    ]));
+  }
+
+  function boot() {
+    if (!token) { fatal('链接无效', '缺少考试标识，请向组织者索取完整链接。'); return; }
+    loading();
+    var savedRaw = localStorage.getItem(storeKey);
+    var resume = null;
+    if (savedRaw) {
+      try { resume = JSON.parse(savedRaw); } catch (e) { resume = null; }
+    }
+    var infoPromise = api('');
+    if (resume && resume.attemptToken) {
+      infoPromise.then(function () {
+        return api('/attempt?attemptToken=' + encodeURIComponent(resume.attemptToken))
+          .then(function (data) {
+            if (data.state === 'submitted') {
+              localStorage.removeItem(storeKey);
+              renderResult(data.result);
+            } else {
+              enterExam(data);
+            }
+          }).catch(function () {
+            localStorage.removeItem(storeKey);
+            return infoPromise.then(function (info) { renderLogin(info); });
+          });
+      }).catch(function (err) {
+        if (err.status === 404) fatal('考试不存在', '链接可能已失效，请向组织者确认后再打开。');
+        else fatal('加载失败', err.message);
+      });
+      return;
+    }
+    infoPromise.then(function (info) {
+      if (info.status === 'closed') {
+        fatal('考试已结束', '本次考试通道已关闭，如有疑问请联系组织者。');
+        return;
+      }
+      renderLogin(info);
+    }).catch(function (err) {
+      if (err.status === 404) fatal('考试不存在', '链接可能已失效，请向组织者确认后再打开。');
+      else fatal('加载失败', err.message);
+    });
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>

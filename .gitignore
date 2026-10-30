@@ -1,0 +1,34 @@
+node_modules/
+dist/
+*.local
+.env
+
+# TypeScript 增量构建产物
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+
+# Go 引擎
+engine/bin/
+*.db
+*.db-journal
+
+# 本机数据与预编译引擎
+data/
+src-tauri/binaries/*.exe
+
+# Tauri / Rust
+src-tauri/target/
+src-tauri/gen/
+
+# 工具链与日志
+.tools/
+logs/
+*.log
+
+.DS_Store
+Thumbs.db
+
+# IDE 与工具产物
+.idea/
+engine.exe

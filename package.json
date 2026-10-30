@@ -1,0 +1,40 @@
+{
+  "name": "quizbox-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Qecho —— 单机题库练习与考试（Tauri 2 + Vue 3 + Go）",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@ant-design/icons-vue": "^7.0.1",
+    "@tauri-apps/api": "2.12.1",
+    "ant-design-vue": "^4.2.6",
+    "axios": "^1.7.7",
+    "dayjs": "^1.11.13",
+    "echarts": "^5.5.1",
+    "lucide-vue-next": "^1.0.0",
+    "pinia": "^2.2.4",
+    "vue": "^3.5.12",
+    "vue-router": "^4.4.5"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.1",
+    "@types/node": "^26.6.3",
+    "@vitejs/plugin-vue": "^5.1.4",
+    "typescript": "~5.6.3",
+    "vite": "^5.4.10",
+    "vue-tsc": "^2.1.10"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "core-js",
+      "vue-demi"
+    ]
+  }
+}
