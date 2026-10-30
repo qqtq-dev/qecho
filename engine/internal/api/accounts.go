@@ -1,13 +1,10 @@
 package api
 
 import (
-	"crypto/rand"
 	"encoding/json"
-	"math/big"
 	"net"
 	"net/http"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -21,7 +18,7 @@ const sessionTTL = 7 * 24 * time.Hour
 var usernamePattern = regexp.MustCompile(`^[\p{Han}A-Za-z0-9_.-]{2,20}$`)
 
 type captchaEntry struct {
-	answer  int
+	code    string
 	expires time.Time
 }
 
@@ -48,13 +45,19 @@ func (s *Server) issueSession(w http.ResponseWriter, user *store.User) {
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
+		Username      string `json:"username"`
+		Password      string `json:"password"`
+		CaptchaID     string `json:"captchaId"`
+		CaptchaAnswer string `json:"captchaAnswer"`
 	}
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&in)
 	}
 	in.Username = strings.TrimSpace(in.Username)
+	if !s.checkCaptcha(in.CaptchaID, in.CaptchaAnswer) {
+		response.BadRequest(w, "验证码不正确或已过期")
+		return
+	}
 
 	// 桌面壳的本机静默登录：只在 --desktop 且来源为回环地址时生效，
 	// 避免反向代理部署后被人用 local/空密码绕过。
@@ -125,46 +128,6 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	s.issueSession(w, user)
 }
 
-func (s *Server) captcha(w http.ResponseWriter, r *http.Request) {
-	a := randomInt(2, 9)
-	b := randomInt(2, 9)
-	id, err := authx.NewToken()
-	if err != nil {
-		response.Internal(w, err)
-		return
-	}
-	now := time.Now()
-	s.captchaMu.Lock()
-	for key, item := range s.captchas {
-		if now.After(item.expires) {
-			delete(s.captchas, key)
-		}
-	}
-	s.captchas[id[:16]] = captchaEntry{answer: a + b, expires: now.Add(5 * time.Minute)}
-	s.captchaMu.Unlock()
-	response.OK(w, map[string]string{
-		"id":       id[:16],
-		"question": strconv.Itoa(a) + " + " + strconv.Itoa(b) + " = ?",
-	})
-}
-
-func (s *Server) checkCaptcha(id, answer string) bool {
-	answer = strings.TrimSpace(answer)
-	if id == "" || answer == "" {
-		return false
-	}
-	s.captchaMu.Lock()
-	item, ok := s.captchas[id]
-	if ok {
-		delete(s.captchas, id)
-	}
-	s.captchaMu.Unlock()
-	if !ok || time.Now().After(item.expires) {
-		return false
-	}
-	return strings.TrimSpace(answer) == strconv.Itoa(item.answer)
-}
-
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	user := userFrom(r)
 	response.OK(w, map[string]any{
@@ -207,12 +170,3 @@ func clientIP(r *http.Request) string {
 	}
 	return host
 }
-
-func randomInt(min, max int) int {
-	n, err := rand.Int(rand.Reader, big.NewInt(int64(max-min+1)))
-	if err != nil {
-		return min
-	}
-	return min + int(n.Int64())
-}
-

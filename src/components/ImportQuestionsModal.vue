@@ -59,8 +59,8 @@
         </div>
 
         <div class="hint">
-          按表头识别列：类别/题型、题目/题干、选项（A— 分行，或选项A…选项H 分列）、答案、解析、难度。
-          判断题自动转为单选；与题库内已有题目重复时自动跳过。
+          按表头识别列：类别/题型、题目/题干、选项（A— 分行，或选项A…选项H 分列）、答案、解析、难度、标签。
+          判断题自动转为单选；导入前会列出列映射，可手动调整；默认跳过与题库内已有题目重复的行。
         </div>
 
         <div class="footer">
@@ -95,6 +95,51 @@
             {{ col.header }} → {{ colLabel(col.field) }}
           </span>
         </div>
+
+        <a-collapse ghost class="mapping-editor">
+          <a-collapse-panel key="mapping" header="列映射不合适？手动调整后重新解析">
+            <div class="map-form">
+              <div class="map-line">
+                <label>工作表</label>
+                <a-select
+                  v-if="preview.sheets?.length > 1"
+                  v-model:value="sheet"
+                  style="width: 200px"
+                >
+                  <a-select-option v-for="name in preview.sheets" :key="name" :value="name">
+                    {{ name }}
+                  </a-select-option>
+                </a-select>
+                <span v-else class="muted">{{ preview.sheet || '默认' }}</span>
+                <label class="map-gap">表头行</label>
+                <a-input-number v-model:value="headerRow" :min="1" :max="20" style="width: 80px" />
+              </div>
+              <div v-for="field in mappingFields" :key="field.key" class="map-line">
+                <label>{{ field.label }}</label>
+                <a-select
+                  v-model:value="mappingDraft[field.key]"
+                  style="width: 220px"
+                  allow-clear
+                  placeholder="不使用此列"
+                >
+                  <a-select-option
+                    v-for="(header, index) in preview.headers"
+                    :key="index"
+                    :value="columnName(index)"
+                  >
+                    {{ columnName(index) }} · {{ header || '（空表头）' }}
+                  </a-select-option>
+                </a-select>
+              </div>
+              <div class="map-actions">
+                <a-button size="small" :loading="busy === 'preview'" @click="applyMapping">
+                  应用映射并重新解析
+                </a-button>
+                <span class="muted small">题干与答案是必填列；选项可选合并列或至少两个分列</span>
+              </div>
+            </div>
+          </a-collapse-panel>
+        </a-collapse>
 
         <a-alert
           v-for="warn in preview.warnings"
@@ -147,13 +192,17 @@
 
         <div class="footer">
           <a-button @click="backToForm">返回重选</a-button>
+          <a-radio-group v-model:value="policy" size="small" class="policy">
+            <a-radio-button value="skip">跳过重复</a-radio-button>
+            <a-radio-button value="keep">保留重复</a-radio-button>
+          </a-radio-group>
           <a-button
             type="primary"
             :loading="busy === 'commit'"
-            :disabled="preview.valid === 0"
+            :disabled="preview.valid === 0 && policy === 'skip'"
             @click="commit"
           >
-            {{ preview.valid > 0 ? `开始导入 ${preview.valid} 道` : '没有可导入的新题' }}
+            {{ commitLabel }}
           </a-button>
         </div>
       </div>
@@ -181,14 +230,17 @@
           <a-button danger ghost :loading="busy === 'revert'">撤销本次导入</a-button>
         </a-popconfirm>
         <span v-else class="muted">本次导入已撤销</span>
-        <a-button type="primary" @click="close">完成</a-button>
+        <a-space>
+          <a-button v-if="result.failed" @click="downloadErrors">下载错误明细</a-button>
+          <a-button type="primary" @click="close">完成</a-button>
+        </a-space>
       </div>
     </div>
   </a-modal>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { banksApi, type Bank, type ImportPreview, type ImportResult } from '@/api/banks'
 import { useAuthStore } from '@/stores/auth'
@@ -215,7 +267,49 @@ const result = ref<ImportResult | null>(null)
 const busy = ref<'' | 'preview' | 'commit' | 'revert'>('')
 const dragActive = ref(false)
 const targetId = ref<number | undefined>(props.bankId)
+const policy = ref<'skip' | 'keep'>('skip')
+const sheet = ref<string | undefined>()
+const headerRow = ref(1)
+const mappingDraft = reactive<Record<string, string | undefined>>({})
 const auth = useAuthStore()
+
+const mappingFields = [
+  { key: 'type', label: '题型' },
+  { key: 'stem', label: '题干' },
+  { key: 'options', label: '选项（合并列）' },
+  { key: 'answer', label: '答案' },
+  { key: 'analysis', label: '解析' },
+  { key: 'difficulty', label: '难度' },
+  { key: 'tags', label: '标签' },
+  { key: 'stemimage', label: '题干图片' },
+  { key: 'option_A', label: '选项 A 列' },
+  { key: 'option_B', label: '选项 B 列' },
+  { key: 'option_C', label: '选项 C 列' },
+  { key: 'option_D', label: '选项 D 列' },
+  { key: 'option_E', label: '选项 E 列' },
+  { key: 'option_F', label: '选项 F 列' },
+  { key: 'option_G', label: '选项 G 列' },
+  { key: 'option_H', label: '选项 H 列' },
+]
+
+function columnName(index: number) {
+  let n = index + 1
+  let out = ''
+  while (n > 0) {
+    n -= 1
+    out = String.fromCharCode(65 + (n % 26)) + out
+    n = Math.floor(n / 26)
+  }
+  return out
+}
+
+const commitLabel = computed(() => {
+  if (!preview.value) return '导入'
+  const count = policy.value === 'keep'
+    ? preview.value.valid + preview.value.duplicate
+    : preview.value.valid
+  return count > 0 ? `开始导入 ${count} 道` : '没有可导入的题目'
+})
 
 const writableBanks = computed(() =>
   (props.banks ?? []).filter(
@@ -237,11 +331,13 @@ const fieldLabels: Record<string, string> = {
   answer: '答案',
   analysis: '解析',
   difficulty: '难度',
+  tags: '标签',
   stemimage: '题图',
   source: '来源',
 }
 
 function colLabel(field: string) {
+  if (field.startsWith('option_')) return `选项 ${field.slice(7)}`
   if (field.startsWith('option:')) return `选项 ${field.slice(7)}`
   return fieldLabels[field] ?? field
 }
@@ -262,6 +358,10 @@ function reset() {
   dragActive.value = false
   reverted.value = false
   newBankName.value = ''
+  policy.value = 'skip'
+  sheet.value = undefined
+  headerRow.value = 1
+  for (const key of Object.keys(mappingDraft)) delete mappingDraft[key]
   targetId.value = props.bankId
   selectedBankId.value = writableBanks.value[0]?.id
   mode.value = writableBanks.value.length ? 'existing' : 'new'
@@ -304,6 +404,9 @@ function setFile(f: File | null) {
   file.value = f
   preview.value = null
   result.value = null
+  sheet.value = undefined
+  headerRow.value = 1
+  for (const key of Object.keys(mappingDraft)) delete mappingDraft[key]
   if (!props.bankId && mode.value === 'new' && !newBankName.value) {
     newBankName.value = f.name.replace(/\.[^.]+$/, '')
   }
@@ -338,14 +441,41 @@ async function startPreview() {
     }
   }
   targetId.value = bankID
+  await runPreview(bankID!)
+}
+
+function previewOptions() {
+  const mapping: Record<string, string> = {}
+  for (const [key, value] of Object.entries(mappingDraft)) {
+    if (value) mapping[key] = value
+  }
+  return {
+    sheet: sheet.value,
+    headerRow: headerRow.value || undefined,
+    mapping: Object.keys(mapping).length ? mapping : undefined,
+  }
+}
+
+async function runPreview(bankID: number) {
+  if (!file.value) return
   busy.value = 'preview'
   try {
-    preview.value = await banksApi.importPreview(bankID!, file.value)
+    const res = await banksApi.importPreview(bankID, file.value, previewOptions())
+    preview.value = res
+    sheet.value = res.sheet || undefined
+    headerRow.value = res.headerRow || 1
+    for (const key of Object.keys(mappingDraft)) delete mappingDraft[key]
+    for (const [key, value] of Object.entries(res.mapping || {})) mappingDraft[key] = value
   } catch {
     preview.value = null
   } finally {
     busy.value = ''
   }
+}
+
+async function applyMapping() {
+  if (!preview.value || !targetId.value) return
+  await runPreview(targetId.value)
 }
 
 function backToForm() {
@@ -356,7 +486,7 @@ async function commit() {
   if (!preview.value || !targetId.value) return
   busy.value = 'commit'
   try {
-    result.value = await banksApi.importCommit(targetId.value, preview.value.token)
+    result.value = await banksApi.importCommit(targetId.value, preview.value.token, policy.value)
     emit('imported', targetId.value)
     message.success(`已导入 ${result.value.inserted} 道题`)
   } catch {
@@ -364,6 +494,17 @@ async function commit() {
   } finally {
     busy.value = ''
   }
+}
+
+async function downloadErrors() {
+  if (!result.value) return
+  const blob = await banksApi.importErrorsCsv(result.value.jobId)
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `导入错误-${result.value.jobId}.csv`
+  link.click()
+  URL.revokeObjectURL(url)
 }
 
 async function undo() {
@@ -449,6 +590,14 @@ function close() {
   color: #1c7a4e;
 }
 .warn { margin-bottom: 8px; }
+.mapping-editor { margin: -6px 0 8px; }
+.mapping-editor :deep(.ant-collapse-header) { padding-left: 0; font-size: 12px; color: #4a5a52; }
+.map-form { display: flex; flex-direction: column; gap: 8px; }
+.map-line { display: flex; align-items: center; gap: 10px; }
+.map-line label { width: 110px; font-size: 12px; color: #4a5a52; }
+.map-gap { width: auto !important; margin-left: 10px; }
+.map-actions { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+.policy { margin-left: auto; }
 .sample { margin-top: 10px; }
 .sample-stem {
   display: -webkit-box;

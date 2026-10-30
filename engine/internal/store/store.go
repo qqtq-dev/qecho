@@ -20,11 +20,30 @@ type Store struct {
 	Dir string
 }
 
+var migrationFiles = []string{
+	"migrations/0001_init.sql",
+	"migrations/0002_exams.sql",
+	"migrations/0003_imports.sql",
+	"migrations/0004_accounts.sql",
+	"migrations/0005_practice.sql",
+	"migrations/0006_images.sql",
+	"migrations/0007_practice_resume.sql",
+	"migrations/0008_polish.sql",
+}
+
+func LatestSchemaVersion() int {
+	return len(migrationFiles)
+}
+
 func Open(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create data dir: %w", err)
 	}
 	path := filepath.Join(dir, "quiz.db")
+	existing := false
+	if info, err := os.Stat(path); err == nil && info.Size() > 0 {
+		existing = true
+	}
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
@@ -45,6 +64,22 @@ func Open(dir string) (*Store, error) {
 			return nil, fmt.Errorf("%s: %w", p, err)
 		}
 	}
+	if existing {
+		version, err := dbSchemaVersion(db)
+		if err != nil {
+			db.Close()
+			return nil, fmt.Errorf("read schema version: %w", err)
+		}
+		if version < LatestSchemaVersion() {
+			backupMu.Lock()
+			_, err = createBackupLocked(db, dir, BackupPreMigrate, version)
+			backupMu.Unlock()
+			if err != nil {
+				db.Close()
+				return nil, fmt.Errorf("backup before migration: %w", err)
+			}
+		}
+	}
 	if err := migrate(db); err != nil {
 		db.Close()
 		return nil, err
@@ -57,14 +92,7 @@ func migrate(db *sql.DB) error {
 	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fmt.Errorf("read user_version: %w", err)
 	}
-	files := []string{
-		"migrations/0001_init.sql",
-		"migrations/0002_exams.sql",
-		"migrations/0003_imports.sql",
-		"migrations/0004_accounts.sql",
-		"migrations/0005_practice.sql",
-	}
-	for i, file := range files {
+	for i, file := range migrationFiles {
 		target := i + 1
 		if version >= target {
 			continue

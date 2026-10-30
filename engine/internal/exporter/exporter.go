@@ -4,6 +4,7 @@ package exporter
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -44,7 +45,7 @@ func BankXLSX(questions []store.Question) ([]byte, error) {
 	for i := 0; i < maxOptions; i++ {
 		headers = append(headers, "选项"+string(rune('A'+i)))
 	}
-	headers = append(headers, "答案", "解析", "难度")
+	headers = append(headers, "答案", "解析", "标签", "难度")
 	if err := f.SetSheetRow(sheetName, "A1", &headers); err != nil {
 		return nil, err
 	}
@@ -79,7 +80,7 @@ func BankXLSX(questions []store.Question) ([]byte, error) {
 	for i := 0; i < maxOptions; i++ {
 		optIndex[string(rune('A'+i))] = i
 	}
-	answerCol, _ := excelize.ColumnNumberToName(headCount - 2)
+	answerCol, _ := excelize.ColumnNumberToName(headCount - 3)
 
 	for n, q := range questions {
 		row := []any{typeLabel(q.Type), q.Stem}
@@ -95,7 +96,8 @@ func BankXLSX(questions []store.Question) ([]byte, error) {
 		for _, c := range contents {
 			row = append(row, c)
 		}
-		row = append(row, strings.Join(q.Answer, ""), q.Analysis, difficultyLabel(q.Difficulty))
+		row = append(row, strings.Join(q.Answer, ""), q.Analysis,
+			strings.Join(q.Tags, "；"), strconv.Itoa(q.Difficulty))
 
 		line := n + 2
 		cell := fmt.Sprintf("A%d", line)
@@ -131,8 +133,10 @@ func BankXLSX(questions []store.Question) ([]byte, error) {
 		widths[name] = 30
 	}
 	widths[answerCol] = 8
-	analysisCol, _ := excelize.ColumnNumberToName(headCount - 1)
+	analysisCol, _ := excelize.ColumnNumberToName(headCount - 2)
 	widths[analysisCol] = 40
+	tagsCol, _ := excelize.ColumnNumberToName(headCount - 1)
+	widths[tagsCol] = 22
 	widths[lastCol] = 8
 	for col, width := range widths {
 		_ = f.SetColWidth(sheetName, col, col, width)
@@ -160,17 +164,6 @@ func typeLabel(t string) string {
 		return "多选"
 	}
 	return "单选"
-}
-
-func difficultyLabel(v int) string {
-	switch {
-	case v >= 3:
-		return "困难"
-	case v == 1:
-		return "简单"
-	default:
-		return "中等"
-	}
 }
 
 func wrapLines(text string, perLine int) int {

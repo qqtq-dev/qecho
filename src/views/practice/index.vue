@@ -1,6 +1,6 @@
 <template>
   <div class="page">
-    <PageHeader title="练习" subtitle="按题库抽题，作答后立即判分并同步错题本">
+    <PageHeader title="练习" subtitle="按题库、题型与难度组卷，作答即时判分并自动保存进度">
       <template #actions>
         <a-button v-if="!session" type="primary" :loading="starting" @click="start()">开始练习</a-button>
       </template>
@@ -14,12 +14,9 @@
               <a-tag v-if="session.source === 'wrong'" color="red">错题复习</a-tag>
               <a-tag v-else color="green">{{ session.bankName }}</a-tag>
               <span class="muted">第 {{ index + 1 }} / {{ session.totalCount }} 题</span>
+              <span class="muted progress-hint">已答 {{ answeredCount }}</span>
             </div>
             <div class="head-right">
-              <span v-if="remainingSec > 0" class="timer" :class="{ low: timeLow }">
-                <Clock :size="13" />
-                {{ remainingText }}
-              </span>
               <a-button v-if="current" size="small" :type="isMarked ? 'primary' : 'default'" @click="toggleMark">
                 <template #icon><Flag :size="12" :fill="isMarked ? 'currentColor' : 'none'" /></template>
                 {{ isMarked ? '已标记' : '标记本题' }}
@@ -30,17 +27,20 @@
           <template v-if="current">
             <div class="q-type">{{ current.type === 'multiple' ? '多选题' : '单选题' }}</div>
             <div class="q-stem">{{ current.stem }}</div>
-            <img v-if="current.stemImage" :src="current.stemImage" class="q-img" alt="题目图片" />
+            <QuestionImage v-if="current.stemImage" :name="current.stemImage" class="q-img" />
 
             <div class="options">
               <div
                 v-for="opt in current.options"
                 :key="opt.key"
                 class="opt"
-                :class="optionClass(opt.key)"
+                :class="optionClass(opt)"
                 @click="toggleOption(opt.key)"
               >
-                <span class="opt-key">{{ opt.key }}</span>
+                <span class="opt-key">{{ opt.label }}</span>
+                <span v-if="opt.image" class="opt-thumb" @click.stop>
+                  <QuestionImage :name="opt.image" :thumb="true" :size="72" />
+                </span>
                 <span class="opt-text">{{ opt.content }}</span>
               </div>
             </div>
@@ -83,17 +83,14 @@
                 <a-button :disabled="index === 0" @click="go(index - 1)">上一题</a-button>
                 <a-button :disabled="index >= session.totalCount - 1" @click="go(index + 1)">下一题</a-button>
               </a-space>
-              <a-space>
-                <a-button v-if="currentAnswer" @click="retryQuestion">重新作答</a-button>
-                <a-popconfirm
-                  :title="`确定交卷？已答 ${answeredCount} / ${session.totalCount} 题`"
-                  ok-text="交卷"
-                  cancel-text="继续作答"
-                  @confirm="finish"
-                >
-                  <a-button type="primary">交卷</a-button>
-                </a-popconfirm>
-              </a-space>
+              <a-popconfirm
+                :title="`确定完成练习？已答 ${answeredCount} / ${session.totalCount} 题`"
+                ok-text="完成"
+                cancel-text="继续作答"
+                @confirm="finish"
+              >
+                <a-button type="primary">完成练习</a-button>
+              </a-popconfirm>
             </div>
           </template>
         </section>
@@ -126,12 +123,12 @@
       </div>
     </template>
 
-    <template v-else-if="finished">
+    <template v-else-if="finished && summary">
       <section class="panel result">
         <a-result
           status="success"
-          :title="`本组练习完成：答对 ${correctCount} / ${sessionTotal} 题`"
-          :sub-title="`错题本当前待复习 ${wrongStore.stats.pending} 道`"
+          :title="`本组练习完成：答对 ${summary.correctCount} / ${summary.totalCount} 题`"
+          :sub-title="`用时 ${formatDuration(summary.durationSec)} · 错题本当前待复习 ${wrongStore.stats.pending} 道`"
         >
           <template #extra>
             <a-space>
@@ -153,14 +150,16 @@
           <a-form layout="vertical">
             <a-form-item label="题库" required>
               <a-select
-                v-model:value="form.bankId"
-                placeholder="请选择题库"
+                v-model:value="form.bankIds"
+                mode="multiple"
+                placeholder="请选择题库（可多选）"
                 :loading="loadingBanks"
                 :options="bankOptions"
-                @change="onBankChange"
+                :max-tag-count="2"
+                allow-clear
               />
             </a-form-item>
-            <a-form-item label="顺序">
+            <a-form-item label="题目顺序">
               <a-radio-group v-model:value="form.order">
                 <a-radio-button value="random">随机</a-radio-button>
                 <a-radio-button value="fixed">按题序</a-radio-button>
@@ -173,12 +172,15 @@
                 <a-radio-button value="multiple">多选</a-radio-button>
               </a-radio-group>
             </a-form-item>
-            <a-form-item label="题量">
-              <a-input-number v-model:value="form.count" :min="1" :max="100" style="width: 100%" />
+            <a-form-item label="难度">
+              <a-select v-model:value="form.difficulty" :options="difficultyOptions" style="width: 100%" />
             </a-form-item>
-            <a-form-item label="限时（分钟）">
-              <a-input-number v-model:value="form.timeLimit" :min="0" :max="300" style="width: 100%" />
-              <div class="muted" style="margin-top: 4px">0 表示不限时，时间到自动交卷</div>
+            <a-form-item label="题量">
+              <a-select v-model:value="form.count" :options="countOptions" style="width: 100%" />
+            </a-form-item>
+            <a-form-item label="选项乱序">
+              <a-switch v-model:checked="form.shuffleOptions" />
+              <span class="muted switch-hint">同一组练习内顺序固定，续答不重新洗牌</span>
             </a-form-item>
             <a-empty v-if="!loadingBanks && banks.length === 0" description="还没有题库">
               <a-button type="primary" ghost @click="router.push('/banks')">去创建题库</a-button>
@@ -190,7 +192,7 @@
       <section class="panel">
         <div class="panel-head">
           <h3>最近练习</h3>
-          <span class="muted">每组练习自动记录</span>
+          <span class="muted">进度自动保存，可随时继续</span>
         </div>
         <div class="panel-body" :class="{ 'empty-state': sessions.length === 0 }">
           <a-empty v-if="sessions.length === 0" description="还没有练习记录">
@@ -200,28 +202,46 @@
             <template #renderItem="{ item }">
               <a-list-item>
                 <div class="recent-row">
-                  <div>
+                  <div class="recent-main">
                     <div class="recent-title">
                       {{ item.source === 'wrong' ? '错题复习' : item.bankName }}
-                      <a-tag v-if="item.source === 'wrong'" color="red" style="margin-left: 6px">错题</a-tag>
+                      <a-tag :color="item.status === 'ongoing' ? 'processing' : 'default'" class="recent-tag">
+                        {{ item.status === 'ongoing' ? '进行中' : '已完成' }}
+                      </a-tag>
                     </div>
                     <div class="muted">
-                      {{ formatTime(item.createdAt) }} · {{ item.totalCount }} 道 ·
+                      {{ formatTime(item.updatedAt || item.createdAt) }} · {{ item.totalCount }} 道 ·
                       {{ item.order === 'random' ? '随机' : '按题序' }}
+                      <template v-if="item.shuffleOptions"> · 选项乱序</template>
                     </div>
                   </div>
-                  <div class="recent-score">
-                    <span>{{ item.answeredCount }}/{{ item.totalCount }}</span>
-                    <span class="muted">答对 {{ item.correctCount }}</span>
+                  <div class="recent-right">
+                    <div class="recent-score">
+                      <span>{{ item.answeredCount }}/{{ item.totalCount }}</span>
+                      <span class="muted">
+                        答对 {{ item.correctCount }}<template v-if="item.durationSec"> · {{ formatDuration(item.durationSec) }}</template>
+                      </span>
+                    </div>
+                    <a-space :size="0">
+                      <a-button
+                        v-if="item.status === 'ongoing'"
+                        type="link"
+                        size="small"
+                        class="recent-continue"
+                        @click="resume(item.id)"
+                      >
+                        继续
+                      </a-button>
+                      <a-popconfirm
+                        title="删除这条练习记录？"
+                        ok-text="删除"
+                        cancel-text="取消"
+                        @confirm="removeSession(item.id)"
+                      >
+                        <a-button type="link" size="small" danger>删除</a-button>
+                      </a-popconfirm>
+                    </a-space>
                   </div>
-                  <a-popconfirm
-                    title="删除这条练习记录？"
-                    ok-text="删除"
-                    cancel-text="取消"
-                    @confirm="removeSession(item.id)"
-                  >
-                    <a-button type="link" size="small" danger class="recent-del">删除</a-button>
-                  </a-popconfirm>
                 </div>
               </a-list-item>
             </template>
@@ -235,16 +255,21 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Clock, Flag } from 'lucide-vue-next'
+import { Flag } from 'lucide-vue-next'
 import { message } from 'ant-design-vue'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/PageHeader.vue'
+import QuestionImage from '@/components/QuestionImage.vue'
 import { banksApi, type Bank } from '@/api/banks'
+import { settingsApi } from '@/api/settings'
 import {
   practiceApi,
   type PracticeAnswerResult,
+  type PracticeDetail,
   type PracticeItem,
+  type PracticeOption,
   type PracticeSession,
+  type PracticeSummary,
 } from '@/api/practice'
 import { useWrongStore } from '@/stores/wrong'
 
@@ -258,12 +283,36 @@ const starting = ref(false)
 const sessions = ref<PracticeSession[]>([])
 
 const form = reactive({
-  bankId: undefined as number | undefined,
+  bankIds: [] as number[],
   order: 'random' as 'random' | 'fixed',
   type: '' as '' | 'single' | 'multiple',
+  difficulty: 0,
   count: 20,
-  timeLimit: 0,
+  shuffleOptions: false,
 })
+
+const countOptions = computed(() => {
+  const options = [
+    { label: '10 题', value: 10 },
+    { label: '20 题', value: 20 },
+    { label: '50 题', value: 50 },
+    { label: '100 题', value: 100 },
+    { label: '全部', value: 0 },
+  ]
+  if (!options.some((o) => o.value === form.count)) {
+    options.splice(options.length - 1, 0, { label: `${form.count} 题`, value: form.count })
+  }
+  return options
+})
+
+const difficultyOptions = [
+  { label: '全部难度', value: 0 },
+  { label: '难度 1', value: 1 },
+  { label: '难度 2', value: 2 },
+  { label: '难度 3', value: 3 },
+  { label: '难度 4', value: 4 },
+  { label: '难度 5', value: 5 },
+]
 
 const bankOptions = computed(() =>
   banks.value.map((b) => ({
@@ -279,8 +328,9 @@ const index = ref(0)
 const chosen = ref<string[]>([])
 const submitting = ref(false)
 const finished = ref(false)
-const sessionTotal = ref(0)
+const summary = ref<PracticeSummary | null>(null)
 const markedIds = ref<number[]>([])
+let questionStartedAt = Date.now()
 
 interface Answered {
   chosen: string[]
@@ -295,35 +345,50 @@ const isMarked = computed(() => !!current.value && markedIds.value.includes(curr
 const answeredCount = computed(() => Object.keys(answers).length)
 const correctCount = computed(() => Object.values(answers).filter((a) => a.result.isCorrect).length)
 
-const remainingSec = ref(0)
-let timer: number | undefined
-const remainingText = computed(() => {
-  const sec = Math.max(0, remainingSec.value)
-  return `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`
-})
-const timeLow = computed(() => remainingSec.value > 0 && remainingSec.value <= 60)
-
-function stopTimer() {
-  if (timer) window.clearInterval(timer)
-  timer = undefined
-}
-
-function startTimer(minutes: number) {
-  stopTimer()
-  remainingSec.value = Math.max(0, Math.round(minutes * 60))
-  if (remainingSec.value === 0) return
-  timer = window.setInterval(() => {
-    remainingSec.value -= 1
-    if (remainingSec.value <= 0) {
-      stopTimer()
-      finish()
-      message.warning('时间到，已自动交卷')
-    }
-  }, 1000)
-}
-
 function formatTime(raw: string) {
   return raw ? dayjs(raw).format('MM-DD HH:mm') : '—'
+}
+
+function formatDuration(seconds: number) {
+  const sec = Math.max(0, Math.round(seconds || 0))
+  const minutes = Math.floor(sec / 60)
+  if (minutes >= 60) return `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分`
+  return `${minutes} 分 ${String(sec % 60).padStart(2, '0')} 秒`
+}
+
+function clearAnswers() {
+  for (const id of Object.keys(answers)) delete answers[Number(id)]
+}
+
+function applySession(detail: PracticeDetail) {
+  clearAnswers()
+  session.value = detail.session
+  questions.value = detail.questions
+  for (const a of detail.answers) {
+    answers[a.questionId] = {
+      chosen: [...a.chosen],
+      result: {
+        isCorrect: a.isCorrect,
+        answer: a.answer,
+        analysis: a.analysis,
+        wrongCount: a.wrongCount,
+        correctStreak: a.correctStreak,
+        mastered: a.mastered,
+        timeSpentMs: a.timeSpentMs,
+        durationSec: detail.session.durationSec,
+        stats: detail.stats,
+      },
+    }
+  }
+  markedIds.value = [...detail.marked]
+  const maxIndex = Math.max(questions.value.length - 1, 0)
+  index.value = Math.min(Math.max(detail.lastSeq - 1, 0), maxIndex)
+  finished.value = false
+  summary.value = null
+  const item = current.value
+  chosen.value = item && answers[item.id] ? [...answers[item.id].chosen] : []
+  questionStartedAt = Date.now()
+  wrongStore.setStats(detail.stats)
 }
 
 async function loadBanks() {
@@ -331,22 +396,29 @@ async function loadBanks() {
   try {
     const res = await banksApi.list()
     banks.value = res.items
-    const preferred = banks.value.find((b) => b.questionCount > 0)
-    if (!form.bankId && preferred) form.bankId = preferred.id
-    if (preferred) form.count = Math.min(20, preferred.questionCount)
+    if (form.bankIds.length === 0) {
+      const preferred = banks.value.find((b) => b.questionCount > 0)
+      if (preferred) form.bankIds = [preferred.id]
+    }
   } finally {
     loadingBanks.value = false
   }
 }
 
-function onBankChange(id: number) {
-  const bank = banks.value.find((b) => b.id === id)
-  if (bank) form.count = Math.min(form.count, bank.questionCount) || 1
-}
-
 async function loadSessions() {
   const res = await practiceApi.sessions()
   sessions.value = res.items
+}
+
+async function loadSettings() {
+  try {
+    const s = await settingsApi.get()
+    form.count = s.practiceCount
+    form.order = s.practiceShuffleQuestions ? 'random' : 'fixed'
+    form.shuffleOptions = s.practiceShuffleOptions
+  } catch {
+    /* 读取失败时沿用默认值 */
+  }
 }
 
 async function removeSession(id: number) {
@@ -355,26 +427,28 @@ async function removeSession(id: number) {
   message.success('已删除练习记录')
 }
 
-async function start(source: 'bank' | 'wrong' = 'bank', bankIdOverride?: number) {
+async function start(source: 'bank' | 'wrong' = 'bank', bankIdsOverride?: number[]) {
   if (starting.value) return
   starting.value = true
   try {
     const res = await practiceApi.start({
-      bankId: source === 'wrong' ? bankIdOverride : form.bankId,
-      count: form.count,
+      bankIds: source === 'wrong' ? bankIdsOverride : form.bankIds,
+      count: source === 'wrong' ? 0 : form.count,
       order: form.order,
       source,
       questionType: form.type || undefined,
+      difficulty: form.difficulty || undefined,
+      shuffleOptions: form.shuffleOptions,
     })
-    session.value = res.session
-    sessionTotal.value = res.session.totalCount
-    questions.value = res.questions
-    index.value = 0
-    finished.value = false
-    for (const id of Object.keys(answers)) delete answers[Number(id)]
-    chosen.value = []
-    markedIds.value = []
-    startTimer(form.timeLimit)
+    applySession({
+      session: res.session,
+      questions: res.questions,
+      answers: [],
+      marked: [],
+      lastSeq: 1,
+      stats: wrongStore.stats,
+    })
+    if (res.truncated) message.info('候选题目超过 5000 道，已截取前 5000 道')
   } finally {
     starting.value = false
   }
@@ -383,19 +457,40 @@ async function start(source: 'bank' | 'wrong' = 'bank', bankIdOverride?: number)
 async function startWrong() {
   const bankId = route.query.bankId ? Number(route.query.bankId) : undefined
   try {
-    await start('wrong', bankId)
+    await start('wrong', bankId ? [bankId] : [])
   } catch {
     message.info('错题本里还没有待复习的题目')
     router.replace('/wrong')
   }
 }
 
-function optionClass(key: string) {
-  const cls: Record<string, boolean> = { selected: chosen.value.includes(key) }
+async function resume(id: number) {
+  try {
+    const detail = await practiceApi.detail(id)
+    if (detail.session.status !== 'ongoing') {
+      message.info('该练习已完成')
+      await loadSessions()
+      return
+    }
+    applySession(detail)
+  } catch {
+    message.error('无法继续该练习，可能已被删除')
+    await loadSessions()
+  }
+}
+
+function savePosition() {
+  if (!session.value) return
+  practiceApi.position(session.value.id, index.value + 1, [...markedIds.value]).catch(() => {})
+}
+
+function optionClass(opt: PracticeOption) {
+  const cls: Record<string, boolean> = { selected: chosen.value.includes(opt.key) }
   const answer = currentAnswer.value
   if (answer) {
-    cls.correct = answer.result.answer.includes(key)
-    cls.wrong = chosen.value.includes(key) && !answer.result.answer.includes(key)
+    const correct = answer.result.answer.includes(opt.label)
+    cls.correct = correct
+    cls.wrong = chosen.value.includes(opt.key) && !correct
   }
   return cls
 }
@@ -403,11 +498,12 @@ function optionClass(key: string) {
 function cellClass(i: number) {
   const q = questions.value[i]
   const answer = q ? answers[q.id] : undefined
+  const marked = !!q && markedIds.value.includes(q.id)
   return {
     current: i === index.value,
     ok: !!answer?.result.isCorrect,
     bad: !!answer && !answer.result.isCorrect,
-    marked: !!q && markedIds.value.includes(q.id),
+    marked,
   }
 }
 
@@ -417,13 +513,14 @@ function toggleMark() {
   const pos = markedIds.value.indexOf(id)
   if (pos >= 0) markedIds.value.splice(pos, 1)
   else markedIds.value.push(id)
+  savePosition()
 }
 
 function toggleOption(key: string) {
   if (submitting.value || currentAnswer.value || !current.value) return
   if (current.value.type === 'multiple') {
-    const idx = chosen.value.indexOf(key)
-    if (idx >= 0) chosen.value.splice(idx, 1)
+    const pos = chosen.value.indexOf(key)
+    if (pos >= 0) chosen.value.splice(pos, 1)
     else chosen.value.push(key)
     chosen.value.sort()
   } else {
@@ -436,20 +533,18 @@ async function submitAnswer() {
   if (!session.value || !current.value || chosen.value.length === 0) return
   submitting.value = true
   try {
-    const result = await practiceApi.answer(session.value.id, current.value.id, chosen.value)
+    const spent = Math.min(Math.max(Date.now() - questionStartedAt, 0), 30 * 60 * 1000)
+    const result = await practiceApi.answer(session.value.id, current.value.id, chosen.value, spent)
     answers[current.value.id] = { chosen: [...chosen.value], result }
     wrongStore.setStats(result.stats)
+    session.value.answeredCount = answeredCount.value
+    session.value.correctCount = correctCount.value
+    session.value.durationSec = result.durationSec
     if (result.isCorrect) message.success('回答正确')
     else message.warning(`回答错误，正确答案：${result.answer.join('')}`)
   } finally {
     submitting.value = false
   }
-}
-
-function retryQuestion() {
-  if (!current.value) return
-  delete answers[current.value.id]
-  chosen.value = []
 }
 
 function go(next: number) {
@@ -458,29 +553,42 @@ function go(next: number) {
   index.value = next
   const item = questions.value[next]
   chosen.value = item && answers[item.id] ? [...answers[item.id].chosen] : []
+  questionStartedAt = Date.now()
+  savePosition()
 }
 
-function finish() {
-  stopTimer()
-  finished.value = true
-  session.value = null
-  questions.value = []
-  loadSessions()
+async function finish() {
+  if (!session.value) return
+  try {
+    summary.value = await practiceApi.submit(session.value.id)
+    finished.value = true
+    session.value = null
+    questions.value = []
+    chosen.value = []
+    await loadSessions()
+  } catch {
+    message.error('完成练习失败，请重试')
+  }
 }
 
 function backToSettings() {
   finished.value = false
+  summary.value = null
   loadSessions()
 }
 
 onMounted(async () => {
-  await Promise.all([loadBanks(), loadSessions(), wrongStore.refresh()])
-  if (route.query.source === 'wrong') {
+  await Promise.all([loadBanks(), loadSessions(), loadSettings(), wrongStore.refresh()])
+  const sessionId = Number(route.query.session ?? 0)
+  if (sessionId > 0) {
+    await resume(sessionId)
+    router.replace({ path: '/practice' })
+  } else if (route.query.source === 'wrong') {
     await startWrong()
   }
 })
 
-onUnmounted(stopTimer)
+onUnmounted(savePosition)
 </script>
 
 <style scoped>
@@ -502,12 +610,8 @@ onUnmounted(stopTimer)
 .quiz { display: flex; flex-direction: column; padding: 18px 20px 20px; }
 .quiz-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .quiz-head .muted { margin-left: 8px; font-size: 13px; }
+.progress-hint { opacity: .8; }
 .head-right { display: flex; align-items: center; gap: 10px; }
-.timer {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-size: 13px; color: var(--text2); font-variant-numeric: tabular-nums;
-}
-.timer.low { color: #d4380d; font-weight: 600; }
 .answer-card { display: flex; flex-direction: column; padding: 14px 12px 12px; min-height: 0; }
 .side-head { display: flex; align-items: baseline; justify-content: space-between; }
 .side-head h3 { margin: 0; font-size: 14px; font-weight: 600; }
@@ -541,7 +645,8 @@ onUnmounted(stopTimer)
 .side-foot { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); text-align: right; }
 .q-type { margin-top: 18px; font-size: 12.5px; color: #6b7570; }
 .q-stem { margin-top: 6px; font-size: 16px; line-height: 1.6; white-space: pre-wrap; }
-.q-img { display: block; max-width: 100%; margin-top: 10px; border-radius: 8px; }
+.q-img { display: block; margin-top: 10px; }
+.opt-thumb { flex: none; }
 .options { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
 .multi-submit { display: flex; justify-content: flex-end; margin-top: 10px; }
 .opt {
@@ -575,9 +680,14 @@ onUnmounted(stopTimer)
 .analysis-text { color: var(--text); white-space: pre-wrap; }
 .quiz-actions { display: flex; justify-content: space-between; margin-top: auto; padding-top: 18px; flex-wrap: wrap; gap: 10px; }
 .result { margin-top: 0; }
+.switch-hint { margin-left: 10px; font-size: 12.5px; }
 .recent-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
-.recent-title { font-weight: 600; }
+.recent-main { min-width: 0; }
+.recent-title { font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.recent-tag { margin-left: 2px; }
+.recent-right { display: flex; align-items: center; gap: 10px; flex: none; }
 .recent-score { display: flex; flex-direction: column; align-items: flex-end; font-size: 13px; }
+.recent-continue { padding-inline: 4px; }
 @media (max-width: 900px) {
   .grid { grid-template-columns: 1fr; }
   .quiz-layout { grid-template-columns: 1fr; grid-template-rows: auto; }

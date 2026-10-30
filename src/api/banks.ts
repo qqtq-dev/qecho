@@ -5,6 +5,8 @@ export interface Bank {
   name: string
   description: string
   questionCount: number
+  answeredCount: number
+  correctRate: number
   ownerId: number | null
   ownerName: string
   isPublic: boolean
@@ -15,6 +17,7 @@ export interface Bank {
 export interface QuestionOption {
   key: string
   content: string
+  image: string
 }
 
 export interface Question {
@@ -26,6 +29,7 @@ export interface Question {
   answer: string[]
   analysis: string
   difficulty: number
+  tags: string[]
   options: QuestionOption[]
   createdAt: string
   updatedAt: string
@@ -38,7 +42,14 @@ export interface QuestionInput {
   answer: string[]
   analysis: string
   difficulty: number
+  tags: string[]
   options: QuestionOption[]
+}
+
+export interface Tag {
+  id: number
+  name: string
+  questionCount: number
 }
 
 export interface PageResult<T> {
@@ -64,6 +75,10 @@ export interface ImportPreview {
   fileName: string
   format: string
   sheet: string
+  sheets: string[]
+  headerRow: number
+  headers: string[]
+  mapping: Record<string, string>
   columns: ImportColumn[]
   total: number
   valid: number
@@ -74,12 +89,44 @@ export interface ImportPreview {
   warnings: string[]
 }
 
+export interface ImportOptions {
+  sheet?: string
+  headerRow?: number
+  mapping?: Record<string, string>
+}
+
 export interface ImportResult {
   jobId: number
   inserted: number
   skipped: number
   failed: number
   errors: { row: number; message: string }[]
+}
+
+export interface ImportJob {
+  id: number
+  sourceName: string
+  format: string
+  total: number
+  inserted: number
+  skipped: number
+  failed: number
+  status: string
+  duplicatePolicy: 'skip' | 'keep' | string
+  createdAt: string
+  revertedAt: string
+  remaining: number
+  revertible: number
+  canRevert: boolean
+}
+
+export interface QuestionQuery {
+  page?: number
+  size?: number
+  keyword?: string
+  type?: '' | 'single' | 'multiple'
+  tag?: string
+  difficulty?: number
 }
 
 export const banksApi = {
@@ -90,27 +137,43 @@ export const banksApi = {
   update: (id: number, data: { name: string; description: string }) =>
     http.put<unknown, Bank>(`/banks/${id}`, data),
   remove: (id: number) => http.delete<unknown, void>(`/banks/${id}`),
-  questions: (id: number, page: number, size: number) =>
-    http.get<unknown, PageResult<Question>>(`/banks/${id}/questions`, { params: { page, size } }),
+  questions: (id: number, query: QuestionQuery = {}) =>
+    http.get<unknown, PageResult<Question>>(`/banks/${id}/questions`, { params: query }),
   createQuestion: (id: number, data: QuestionInput) =>
     http.post<unknown, Question>(`/banks/${id}/questions`, data),
   updateQuestion: (qid: number, data: QuestionInput) =>
     http.put<unknown, Question>(`/questions/${qid}`, data),
   removeQuestion: (qid: number) => http.delete<unknown, void>(`/questions/${qid}`),
-  importPreview: (id: number, file: File) => {
+  bankTags: (id: number) => http.get<unknown, { items: Tag[] }>(`/banks/${id}/tags`),
+  tags: () => http.get<unknown, { items: Tag[] }>('/tags'),
+  importPreview: (id: number, file: File, options?: ImportOptions) => {
     const form = new FormData()
     form.append('file', file)
+    if (options && (options.sheet || options.headerRow || options.mapping)) {
+      form.append('options', JSON.stringify(options))
+    }
     return http.post<unknown, ImportPreview>(`/banks/${id}/imports/preview`, form, {
       timeout: 120000,
     })
   },
-  importCommit: (id: number, token: string) =>
-    http.post<unknown, ImportResult>(`/banks/${id}/imports`, { token }),
+  importCommit: (id: number, token: string, policy: 'skip' | 'keep' = 'skip') =>
+    http.post<unknown, ImportResult>(`/banks/${id}/imports`, { token, policy }),
+  importJobs: (id: number, limit = 20) =>
+    http.get<unknown, { items: ImportJob[] }>(`/banks/${id}/imports`, { params: { limit } }),
+  importErrorsCsv: (jobId: number) =>
+    http.get<unknown, Blob>(`/imports/${jobId}/errors`, {
+      params: { format: 'csv' },
+      responseType: 'blob',
+    }),
   revertImport: (jobId: number) =>
-    http.post<unknown, { reverted: number }>(`/imports/${jobId}/revert`),
+    http.post<unknown, { reverted: number; kept: number }>(`/imports/${jobId}/revert`),
   exportTo: (id: number, path: string) =>
     http.post<unknown, { path: string; count: number; name: string }>(`/banks/${id}/export`, {
       path,
     }),
   exportFile: (id: number) => http.get<unknown, Blob>(`/banks/${id}/export`, { responseType: 'blob' }),
+  exportImagesTo: (id: number, path: string) =>
+    http.post<unknown, { path: string; count: number }>(`/banks/${id}/export-images`, { path }),
+  exportImagesFile: (id: number) =>
+    http.get<unknown, Blob>(`/banks/${id}/export-images`, { responseType: 'blob' }),
 }

@@ -1,7 +1,7 @@
 <template>
   <AuthShell>
     <template #title>注册账号</template>
-    <template #subtitle>注册后可创建自己的题库，并与公共题库一起练习</template>
+    <template #subtitle>注册成功后自动登录，首个账号将成为管理员</template>
 
     <a-form layout="vertical" class="form" @submit.prevent="submit">
       <a-form-item label="用户名">
@@ -11,7 +11,7 @@
           autocomplete="username"
           :maxlength="20"
         >
-          <template #prefix><UserRound :size="16" /></template>
+          <template #prefix><UserRound :size="15" /></template>
         </a-input>
       </a-form-item>
       <a-form-item label="密码">
@@ -19,48 +19,37 @@
           v-model:value="password"
           placeholder="至少 8 位"
           autocomplete="new-password"
+          @press-enter="submit"
         >
-          <template #prefix><LockKeyhole :size="16" /></template>
-        </a-input-password>
-      </a-form-item>
-      <a-form-item label="确认密码">
-        <a-input-password
-          v-model:value="confirm"
-          placeholder="再次输入密码"
-          autocomplete="new-password"
-        >
-          <template #prefix><ShieldCheck :size="16" /></template>
+          <template #prefix><LockKeyhole :size="15" /></template>
         </a-input-password>
       </a-form-item>
       <a-form-item label="验证码">
         <div class="captcha-row">
           <a-input
             v-model:value="captchaAnswer"
-            placeholder="计算结果"
+            placeholder="输入右侧字符"
             :maxlength="4"
+            autocomplete="off"
             @press-enter="submit"
-          />
-          <button type="button" class="captcha-box" title="点击刷新" @click="loadCaptcha">
-            <span v-if="captcha">{{ captcha.question }}</span>
-            <span v-else class="muted">加载中</span>
+          >
+            <template #prefix><ShieldCheck :size="15" /></template>
+          </a-input>
+          <button type="button" class="captcha-box" title="看不清？点击换一张" @click="loadCaptcha">
+            <img v-if="captcha" :src="captcha.image" alt="图片验证码" />
+            <span v-else class="captcha-loading">加载中</span>
           </button>
         </div>
       </a-form-item>
-      <a-button
-        type="primary"
-        block
-        html-type="submit"
-        class="submit"
-        :loading="loading"
-        :disabled="!canSubmit"
-      >
-        注册并登录
-      </a-button>
+      <div class="actions">
+        <button type="submit" class="action">
+          {{ loading ? '注册中…' : '注 册' }}
+        </button>
+        <button type="button" class="action" @click="router.push('/login')">
+          返回登录
+        </button>
+      </div>
     </a-form>
-
-    <template #footer>
-      已有账号？<router-link to="/login">去登录</router-link>
-    </template>
   </AuthShell>
 </template>
 
@@ -78,33 +67,35 @@ const auth = useAuthStore()
 
 const username = ref('')
 const password = ref('')
-const confirm = ref('')
 const captcha = ref<Captcha | null>(null)
 const captchaAnswer = ref('')
 const loading = ref(false)
 
 const canSubmit = computed(
   () =>
-    !!username.value.trim() &&
+    username.value.trim().length >= 2 &&
     password.value.length >= 8 &&
-    confirm.value === password.value &&
     !!captcha.value &&
-    !!captchaAnswer.value.trim(),
+    captchaAnswer.value.trim().length > 0,
 )
 
 async function loadCaptcha() {
+  captchaAnswer.value = ''
   try {
     captcha.value = await authApi.captcha()
-    captchaAnswer.value = ''
   } catch {
     captcha.value = null
   }
 }
 
 async function submit() {
-  if (!canSubmit.value || !captcha.value) return
-  if (password.value !== confirm.value) {
-    message.warning('两次输入的密码不一致')
+  if (loading.value) return
+  if (!captcha.value) {
+    message.warning('验证码加载失败，请点击图片刷新')
+    return
+  }
+  if (!canSubmit.value) {
+    message.warning('请填写用户名、密码和图片验证码')
     return
   }
   loading.value = true
@@ -128,41 +119,62 @@ onMounted(loadCaptcha)
 </script>
 
 <style scoped>
+.form :deep(.ant-form-item) { margin-bottom: 16px; }
+.form :deep(.ant-form-item-label) { padding: 0 0 6px; }
 .form :deep(.ant-form-item-label > label) {
+  height: auto;
   font-size: 13px;
-  color: #4a544f;
+  color: rgba(0, 0, 0, 0.65);
 }
 .form :deep(.ant-input-affix-wrapper) {
-  height: 44px;
+  height: 40px;
+  padding: 0 12px;
+  border-color: #d9d9d9;
   border-radius: 8px;
+}
+.form :deep(.ant-input-affix-wrapper:focus-within) {
+  border-color: #24945f;
+  box-shadow: 0 0 0 2px rgba(36, 148, 95, 0.12);
 }
 .form :deep(.ant-input-affix-wrapper .anticon),
 .form :deep(.ant-input-prefix) {
-  color: #9aa5a0;
+  color: rgba(0, 0, 0, 0.35);
   margin-right: 8px;
 }
-.form :deep(.ant-form-item) { margin-bottom: 14px; }
-.captcha-row { display: flex; gap: 10px; }
+.captcha-row { display: flex; align-items: center; gap: 10px; }
 .captcha-box {
-  flex: 0 0 128px;
-  height: 44px;
-  border: 1px solid #d6dde0;
+  flex: 0 0 auto;
+  height: 40px;
+  padding: 0 4px;
+  border: 1px solid #d9d9d9;
   border-radius: 8px;
   background: #f6faf8;
-  color: #1c7a4e;
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: 1px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
 }
 .captcha-box:hover { border-color: #24945f; }
-.submit {
-  height: 46px;
-  border-radius: 8px;
-  font-size: 15.5px;
-  font-weight: 600;
-  letter-spacing: 1px;
+.captcha-box img { height: 100%; width: auto; display: block; }
+.captcha-loading { font-size: 12px; color: #9aa5a0; padding: 0 8px; }
+.actions {
+  display: flex;
+  gap: 10px;
   margin-top: 4px;
-  box-shadow: 0 8px 20px rgba(36, 148, 95, 0.25);
 }
+.action {
+  flex: 1;
+  height: 40px;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 3px;
+  cursor: pointer;
+  background: #24945f;
+  color: #fff;
+  transition: background 0.15s;
+}
+.action:hover { background: #1f8756; }
 </style>

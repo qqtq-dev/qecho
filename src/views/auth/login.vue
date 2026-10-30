@@ -1,28 +1,29 @@
 <template>
   <AuthShell>
-    <template #title>登录</template>
+    <template #title>账号登录</template>
     <template #subtitle>
-      {{ isDesktop ? '本机账号默认无需密码，直接登录即可' : '登录后可管理题库、发起练习与考试' }}
+      {{ isDesktop ? '本机账号默认免密码，直接登录即可' : '登录后可管理题库、发起练习与考试' }}
     </template>
 
     <a-form layout="vertical" class="form" @submit.prevent="submit">
       <a-form-item label="用户名">
         <a-input
           v-model:value="username"
-          placeholder="请输入用户名"
+          :placeholder="isDesktop ? '本机账号 local' : '请输入用户名'"
           autocomplete="username"
           :maxlength="20"
         >
-          <template #prefix><UserRound :size="16" /></template>
+          <template #prefix><UserRound :size="15" /></template>
         </a-input>
       </a-form-item>
       <a-form-item label="密码">
         <a-input-password
           v-model:value="password"
-          :placeholder="isDesktop ? '本机账号可留空' : '请输入密码'"
+          :placeholder="isDesktop ? '本机可留空' : '请输入密码'"
           autocomplete="current-password"
+          @press-enter="submit"
         >
-          <template #prefix><LockKeyhole :size="16" /></template>
+          <template #prefix><LockKeyhole :size="15" /></template>
         </a-input-password>
       </a-form-item>
       <a-button
@@ -31,20 +32,17 @@
         html-type="submit"
         class="submit"
         :loading="loading"
-        :disabled="!canSubmit"
       >
-        登 录
+        {{ loading ? '登录中…' : '登 录' }}
       </a-button>
-    </a-form>
 
-    <template #footer>
-      <template v-if="isDesktop">
-        本机模式 · 数据保存在这台电脑
-      </template>
-      <template v-else>
-        还没有账号？<router-link to="/register">立即注册</router-link>
-      </template>
-    </template>
+      <div class="tip">
+        <template v-if="isDesktop">本机模式 · 账号数据保存在这台电脑</template>
+        <template v-else>
+          还没有账号？<router-link to="/register">立即注册</router-link>，注册需填写图片验证码。
+        </template>
+      </div>
+    </a-form>
   </AuthShell>
 </template>
 
@@ -69,7 +67,11 @@ const loading = ref(false)
 const canSubmit = computed(() => !!username.value.trim() && (!!password.value || isDesktop))
 
 async function submit() {
-  if (!canSubmit.value) return
+  if (!canSubmit.value) {
+    message.warning(isDesktop ? '请输入用户名' : '请输入用户名和密码')
+    return
+  }
+  if (loading.value) return
   loading.value = true
   try {
     await auth.login(username.value.trim(), password.value)
@@ -85,26 +87,55 @@ async function submit() {
 </script>
 
 <style scoped>
+.form :deep(.ant-form-item) { margin-bottom: 16px; }
+.form :deep(.ant-form-item-label) { padding: 0 0 6px; }
 .form :deep(.ant-form-item-label > label) {
+  height: auto;
   font-size: 13px;
-  color: #4a544f;
+  color: rgba(0, 0, 0, 0.65);
 }
 .form :deep(.ant-input-affix-wrapper) {
-  height: 44px;
+  height: 40px;
+  padding: 0 12px;
+  border-color: #d9d9d9;
   border-radius: 8px;
+}
+.form :deep(.ant-input-affix-wrapper:focus-within) {
+  border-color: #24945f;
+  box-shadow: 0 0 0 2px rgba(36, 148, 95, 0.12);
 }
 .form :deep(.ant-input-affix-wrapper .anticon),
 .form :deep(.ant-input-prefix) {
-  color: #9aa5a0;
+  color: rgba(0, 0, 0, 0.35);
   margin-right: 8px;
 }
-.form :deep(.ant-form-item) { margin-bottom: 20px; }
-.submit {
-  height: 46px;
+.form :deep(.submit) {
+  height: 40px;
+  margin-top: 4px;
   border-radius: 8px;
-  font-size: 15.5px;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 4px;
+  background: #24945f;
+  border-color: #24945f;
+  box-shadow: none;
+}
+.form :deep(.submit:not(:disabled):hover) {
+  background: #1f8756;
+  border-color: #1f8756;
+}
+.tip {
+  margin-top: 16px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: rgba(0, 0, 0, 0.45);
+  border: 1px solid #cbe3d6;
+  background: #f3faf6;
+  border-radius: 6px;
+}
+.tip a {
+  color: #24945f;
   font-weight: 600;
-  letter-spacing: 2px;
-  box-shadow: 0 8px 20px rgba(36, 148, 95, 0.25);
 }
 </style>

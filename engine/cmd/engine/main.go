@@ -63,6 +63,9 @@ func main() {
 		log.SetOutput(io.MultiWriter(os.Stdout, logFile))
 	}
 
+	if err := store.ApplyPendingRestore(absDir); err != nil {
+		log.Printf("apply pending restore: %v", err)
+	}
 	st, err := store.Open(absDir)
 	if err != nil {
 		log.Fatalf("open store: %v", err)
@@ -72,6 +75,11 @@ func main() {
 		if _, err := st.EnsureLocalUser(); err != nil {
 			log.Printf("ensure local user: %v", err)
 		}
+	}
+	if info, err := st.EnsureDailyBackup(); err != nil {
+		log.Printf("daily backup: %v", err)
+	} else if info != nil {
+		log.Printf("daily backup created: %s", info.Name)
 	}
 	if *webDir != "" {
 		info, err := os.Stat(*webDir)

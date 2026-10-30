@@ -6,6 +6,7 @@
     <PageHeader :title="bank?.name || '题库详情'" :subtitle="bank?.description || '维护题目、答案与解析'">
       <template #actions>
         <a-button :loading="exporting" :disabled="total === 0" @click="exportBank">导出题目</a-button>
+        <a-button :loading="exportingImages" @click="exportImages">导出图片</a-button>
         <template v-if="canEdit">
           <a-button @click="openEditBank">编辑题库</a-button>
           <a-button @click="importOpen = true">导入题目</a-button>
@@ -19,6 +20,35 @@
       <div class="panel-head">
         <h3>题目</h3>
         <span class="muted">共 {{ total }} 道</span>
+      </div>
+      <div class="filters">
+        <a-input-search
+          v-model:value="filters.keyword"
+          placeholder="搜索题干或解析"
+          allow-clear
+          style="width: 240px"
+          @search="applyFilters"
+        />
+        <a-select v-model:value="filters.type" style="width: 110px" @change="applyFilters">
+          <a-select-option value="">全部题型</a-select-option>
+          <a-select-option value="single">单选</a-select-option>
+          <a-select-option value="multiple">多选</a-select-option>
+        </a-select>
+        <a-select v-model:value="filters.difficulty" style="width: 110px" @change="applyFilters">
+          <a-select-option :value="0">全部难度</a-select-option>
+          <a-select-option v-for="d in 5" :key="d" :value="d">难度 {{ d }}</a-select-option>
+        </a-select>
+        <a-select
+          v-model:value="filters.tag"
+          style="width: 150px"
+          placeholder="全部标签"
+          allow-clear
+          @change="applyFilters"
+        >
+          <a-select-option v-for="tag in bankTags" :key="tag.id" :value="tag.name">
+            {{ tag.name }}（{{ tag.questionCount }}）
+          </a-select-option>
+        </a-select>
       </div>
       <div class="panel-body" :class="{ 'empty-state': !loading && items.length === 0 }">
         <a-spin :spinning="loading">
@@ -44,10 +74,16 @@
                 </template>
                 <template v-else-if="column.key === 'stem'">
                   <div class="stem">{{ record.stem }}</div>
-                  <div v-if="record.stemImage" class="muted">含图片</div>
+                  <div v-if="hasImage(record)" class="muted">含图片</div>
                 </template>
                 <template v-else-if="column.key === 'answer'">
                   <span class="mono answer">{{ record.answer.join('') || '—' }}</span>
+                </template>
+                <template v-else-if="column.key === 'tags'">
+                  <a-space v-if="record.tags?.length" :size="4" wrap>
+                    <a-tag v-for="tag in record.tags" :key="tag" class="tag-chip">{{ tag }}</a-tag>
+                  </a-space>
+                  <span v-else class="muted">—</span>
                 </template>
                 <template v-else-if="column.key === 'difficulty'">
                   <span class="muted">{{ difficultyLabel(record.difficulty) }}</span>
@@ -79,6 +115,67 @@
             </div>
           </template>
         </a-spin>
+      </div>
+    </section>
+
+    <section v-if="importJobs.length" class="panel">
+      <div class="panel-head">
+        <h3>导入记录</h3>
+        <span class="muted">最近 {{ importJobs.length }} 次，7 天内可撤销</span>
+      </div>
+      <div class="panel-body">
+        <a-table
+          :data-source="importJobs"
+          :columns="importColumns"
+          :pagination="false"
+          row-key="id"
+          size="small"
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'createdAt'">
+              <span class="muted">{{ formatTime(record.createdAt) }}</span>
+            </template>
+            <template v-else-if="column.key === 'source'">
+              <div class="import-file">{{ record.sourceName }}</div>
+              <div class="muted small">{{ record.format?.toUpperCase() }}</div>
+            </template>
+            <template v-else-if="column.key === 'summary'">
+              <span>新增 {{ record.inserted }}</span>
+              <span class="muted"> · 跳过 {{ record.skipped }}</span>
+              <span v-if="record.failed" class="danger"> · 失败 {{ record.failed }}</span>
+            </template>
+            <template v-else-if="column.key === 'status'">
+              <a-tag :color="record.status === 'reverted' ? 'default' : record.failed ? 'orange' : 'green'">
+                {{ record.status === 'reverted' ? '已撤销' : record.failed ? '部分失败' : '已完成' }}
+              </a-tag>
+              <span v-if="record.status !== 'reverted'" class="muted small">
+                · 现存 {{ record.remaining }}
+              </span>
+            </template>
+            <template v-else-if="column.key === 'actions'">
+              <a-space>
+                <a-button
+                  v-if="record.failed"
+                  type="link"
+                  size="small"
+                  @click="downloadErrors(record)"
+                >
+                  错误明细
+                </a-button>
+                <a-popconfirm
+                  v-if="record.canRevert"
+                  title="撤销将删除本次导入且未编辑过的题目，确定吗？"
+                  ok-text="撤销"
+                  cancel-text="取消"
+                  @confirm="revertJob(record)"
+                >
+                  <a-button type="link" size="small" danger>撤销</a-button>
+                </a-popconfirm>
+                <span v-else-if="record.status !== 'reverted'" class="muted small">不可撤销</span>
+              </a-space>
+            </template>
+          </template>
+        </a-table>
       </div>
     </section>
 
@@ -121,9 +218,7 @@
           </a-form-item>
           <a-form-item label="难度">
             <a-select v-model:value="qForm.difficulty" style="width: 120px">
-              <a-select-option :value="1">简单</a-select-option>
-              <a-select-option :value="2">中等</a-select-option>
-              <a-select-option :value="3">困难</a-select-option>
+              <a-select-option v-for="d in 5" :key="d" :value="d">难度 {{ d }}</a-select-option>
             </a-select>
           </a-form-item>
         </div>
@@ -137,18 +232,24 @@
           />
         </a-form-item>
 
-        <a-form-item label="题目图片地址">
-          <a-input v-model:value="qForm.stemImage" placeholder="可选，填写图片链接（http/https）" />
+        <a-form-item label="题目图片">
+          <ImageUploadField
+            v-model="qForm.stemImage"
+            hint="支持 PNG / JPEG / WebP / GIF，单张不超过 8 MB"
+          />
         </a-form-item>
 
         <a-form-item label="选项" required>
           <div v-for="(opt, idx) in qForm.options" :key="opt.key" class="opt-row">
             <span class="opt-key">{{ opt.key }}</span>
-            <a-input
-              v-model:value="opt.content"
-              :placeholder="`选项 ${opt.key} 内容`"
-              :maxlength="500"
-            />
+            <div class="opt-main">
+              <a-input
+                v-model:value="opt.content"
+                :placeholder="`选项 ${opt.key} 内容`"
+                :maxlength="500"
+              />
+              <ImageUploadField v-model="opt.image" />
+            </div>
             <a-button
               type="text"
               danger
@@ -190,6 +291,17 @@
             placeholder="可选，交卷后向参与者展示"
           />
         </a-form-item>
+
+        <a-form-item label="标签">
+          <a-select
+            v-model:value="qForm.tags"
+            mode="tags"
+            :max-tag-count="6"
+            placeholder="输入标签后回车，例如：第一章、重点"
+            :options="bankTags.map((t) => ({ value: t.name, label: t.name }))"
+          />
+          <div class="muted tag-hint">最多 10 个标签，可在题库列表中按标签筛选</div>
+        </a-form-item>
       </a-form>
     </a-modal>
 
@@ -209,7 +321,8 @@ import dayjs from 'dayjs'
 import { message } from 'ant-design-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ImportQuestionsModal from '@/components/ImportQuestionsModal.vue'
-import { banksApi, type Bank, type Question, type QuestionOption } from '@/api/banks'
+import ImageUploadField from '@/components/ImageUploadField.vue'
+import { banksApi, type Bank, type ImportJob, type Question, type QuestionOption, type Tag } from '@/api/banks'
 import { isTauri } from '@/api/request'
 import { useAuthStore } from '@/stores/auth'
 
@@ -225,6 +338,13 @@ const page = ref(1)
 const size = 20
 const loading = ref(false)
 const importOpen = ref(false)
+const bankTags = ref<Tag[]>([])
+const filters = reactive({
+  keyword: '',
+  type: '' as '' | 'single' | 'multiple',
+  tag: undefined as string | undefined,
+  difficulty: 0,
+})
 
 const canEdit = computed(() => {
   if (!bank.value) return false
@@ -236,24 +356,54 @@ const columns = computed(() => {
     { title: '#', key: 'index', width: 56 },
     { title: '题型', key: 'type', width: 76 },
     { title: '题干', key: 'stem', dataIndex: 'stem' },
+    { title: '标签', key: 'tags', width: 150 },
     { title: '答案', key: 'answer', width: 90 },
-    { title: '难度', key: 'difficulty', width: 76 },
+    { title: '难度', key: 'difficulty', width: 90 },
   ]
   if (canEdit.value) base.push({ title: '操作', key: 'actions', width: 130 })
   return base
 })
 
-const difficultyLabel = (v: number) => (v >= 3 ? '困难' : v === 1 ? '简单' : '中等')
+const DIFFICULTY_LABELS = ['', '很简单', '简单', '中等', '困难', '极难']
+const difficultyLabel = (v: number) => DIFFICULTY_LABELS[v] || DIFFICULTY_LABELS[3]
+const hasImage = (q: Question) => !!q.stemImage || q.options.some((o) => !!o.image)
 
 async function loadBank() {
   bank.value = await banksApi.get(bankId)
 }
 
 const exporting = ref(false)
+const exportingImages = ref(false)
 
-function exportFileName() {
+function exportFileName(suffix = '') {
   const name = (bank.value?.name ?? '题库').replace(/[\\/:*?"<>|]/g, '_').trim() || '题库'
-  return `${name}-${dayjs().format('YYYYMMDD')}.xlsx`
+  return `${name}${suffix}-${dayjs().format('YYYYMMDD')}.xlsx`
+}
+
+async function exportImages() {
+  if (!bank.value || exportingImages.value) return
+  exportingImages.value = true
+  try {
+    const fileName = exportFileName('-图片').replace(/\.xlsx$/, '.zip')
+    if (isTauri()) {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const path = await invoke<string | null>('pick_export_path', { fileName })
+      if (!path) return
+      const res = await banksApi.exportImagesTo(bankId, path)
+      message.success(`已导出 ${res.count} 张图片到 ${res.path}`)
+      return
+    }
+    const blob = await banksApi.exportImagesFile(bankId)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = fileName
+    link.click()
+    URL.revokeObjectURL(url)
+    message.success('已开始下载')
+  } finally {
+    exportingImages.value = false
+  }
 }
 
 async function exportBank() {
@@ -285,12 +435,75 @@ async function exportBank() {
 async function loadQuestions() {
   loading.value = true
   try {
-    const res = await banksApi.questions(bankId, page.value, size)
+    const res = await banksApi.questions(bankId, {
+      page: page.value,
+      size,
+      keyword: filters.keyword.trim() || undefined,
+      type: filters.type || undefined,
+      tag: filters.tag,
+      difficulty: filters.difficulty || undefined,
+    })
     items.value = res.items
     total.value = res.total
   } finally {
     loading.value = false
   }
+}
+
+function applyFilters() {
+  page.value = 1
+  void loadQuestions()
+}
+
+async function loadTags() {
+  try {
+    const res = await banksApi.bankTags(bankId)
+    bankTags.value = res.items
+  } catch {
+    bankTags.value = []
+  }
+}
+
+const importJobs = ref<ImportJob[]>([])
+const importColumns = [
+  { title: '导入时间', key: 'createdAt', width: 150 },
+  { title: '文件', key: 'source', dataIndex: 'sourceName' },
+  { title: '结果', key: 'summary', width: 180 },
+  { title: '状态', key: 'status', width: 170 },
+  { title: '操作', key: 'actions', width: 150 },
+]
+
+function formatTime(raw: string) {
+  return raw ? dayjs(raw).format('YYYY-MM-DD HH:mm') : '—'
+}
+
+async function loadImportJobs() {
+  try {
+    const res = await banksApi.importJobs(bankId)
+    importJobs.value = res.items
+  } catch {
+    importJobs.value = []
+  }
+}
+
+function saveBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+async function downloadErrors(job: ImportJob) {
+  const blob = await banksApi.importErrorsCsv(job.id)
+  saveBlob(blob, `导入错误-${job.id}.csv`)
+}
+
+async function revertJob(job: ImportJob) {
+  const res = await banksApi.revertImport(job.id)
+  message.success(`已撤销 ${res.reverted} 道题${res.kept ? `，保留 ${res.kept} 道已编辑题目` : ''}`)
+  await Promise.all([loadImportJobs(), loadQuestions(), loadBank(), loadTags()])
 }
 
 const bankModalOpen = ref(false)
@@ -330,6 +543,7 @@ const qForm = reactive({
   answer: [] as string[],
   analysis: '',
   difficulty: 2,
+  tags: [] as string[],
   options: [] as QuestionOption[],
 })
 
@@ -349,9 +563,10 @@ function resetForm() {
   qForm.answer = []
   qForm.analysis = ''
   qForm.difficulty = 2
+  qForm.tags = []
   qForm.options = [
-    { key: 'A', content: '' },
-    { key: 'B', content: '' },
+    { key: 'A', content: '', image: '' },
+    { key: 'B', content: '', image: '' },
   ]
 }
 
@@ -367,8 +582,9 @@ function openEditQuestion(q: Question) {
   qForm.stem = q.stem
   qForm.stemImage = q.stemImage
   qForm.analysis = q.analysis
-  qForm.difficulty = q.difficulty >= 3 ? 3 : q.difficulty === 1 ? 1 : 2
-  qForm.options = q.options.map((o) => ({ key: o.key, content: o.content }))
+  qForm.difficulty = q.difficulty >= 1 && q.difficulty <= 5 ? q.difficulty : 3
+  qForm.tags = [...(q.tags ?? [])]
+  qForm.options = q.options.map((o) => ({ key: o.key, content: o.content, image: o.image }))
   qForm.answer = [...q.answer]
   qModalOpen.value = true
 }
@@ -381,7 +597,7 @@ function onTypeChange() {
 
 function addOption() {
   if (qForm.options.length >= 8) return
-  qForm.options.push({ key: LETTERS[qForm.options.length], content: '' })
+  qForm.options.push({ key: LETTERS[qForm.options.length], content: '', image: '' })
 }
 
 function removeOption(index: number) {
@@ -408,7 +624,11 @@ async function saveQuestion() {
     message.warning('请填写题干')
     return
   }
-  const options = qForm.options.map((o) => ({ key: o.key, content: o.content.trim() }))
+  const options = qForm.options.map((o) => ({
+    key: o.key,
+    content: o.content.trim(),
+    image: o.image,
+  }))
   if (options.some((o) => !o.content)) {
     message.warning('请填写完整的选项内容')
     return
@@ -434,6 +654,7 @@ async function saveQuestion() {
       answer: qForm.answer,
       analysis: qForm.analysis.trim(),
       difficulty: qForm.difficulty,
+      tags: qForm.tags,
       options,
     }
     if (editingQuestion.value) {
@@ -444,7 +665,7 @@ async function saveQuestion() {
       message.success('题目已添加')
     }
     qModalOpen.value = false
-    await Promise.all([loadQuestions(), loadBank()])
+    await Promise.all([loadQuestions(), loadBank(), loadTags()])
   } finally {
     qSaving.value = false
   }
@@ -454,17 +675,17 @@ async function removeQuestion(q: Question) {
   await banksApi.removeQuestion(q.id)
   message.success('题目已删除')
   if (items.value.length === 1 && page.value > 1) page.value -= 1
-  await Promise.all([loadQuestions(), loadBank()])
+  await Promise.all([loadQuestions(), loadBank(), loadTags()])
 }
 
 async function onImported() {
   page.value = 1
-  await Promise.all([loadBank(), loadQuestions()])
+  await Promise.all([loadBank(), loadQuestions(), loadTags(), loadImportJobs()])
 }
 
 onMounted(async () => {
   await loadBank()
-  await loadQuestions()
+  await Promise.all([loadQuestions(), loadTags(), loadImportJobs()])
 })
 </script>
 
@@ -481,7 +702,9 @@ onMounted(async () => {
 .answer { font-weight: 600; color: var(--accent, #24945f); }
 .pager { display: flex; justify-content: flex-end; margin-top: 12px; }
 .form-row { display: flex; gap: 24px; align-items: flex-start; }
-.opt-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.opt-row { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
+.opt-row .opt-key { margin-top: 4px; }
+.opt-main { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .opt-key {
   flex: none;
   width: 26px;
@@ -496,4 +719,20 @@ onMounted(async () => {
   justify-content: center;
 }
 .panel-body :deep(.ant-spin-nested-loading) { min-height: 40px; }
+.filters {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 0 0 14px;
+}
+.import-file {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.small { font-size: 12px; }
+.danger { color: #c0392b; }
+.tag-chip { margin-inline-end: 0; }
+.tag-hint { margin-top: 4px; font-size: 12px; }
 </style>

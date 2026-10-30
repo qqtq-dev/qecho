@@ -112,11 +112,12 @@ func (s *Store) Overview(user *User) (*Overview, error) {
 	}
 
 	rows, err := s.DB.Query(`
-		SELECT s.id, COALESCE(b.name, CASE WHEN s.source = 'wrong' THEN '错题本' ELSE '题库已删除' END),
+		SELECT s.id, COALESCE(NULLIF(s.bank_name_snapshot, ''), b.name,
+		                     CASE WHEN s.source = 'wrong' THEN '错题本' ELSE '题库已删除' END),
 		       s.source, s.total_count, s.created_at,
 		       (SELECT COUNT(*) FROM practice_answers a WHERE a.session_id = s.id)
 		FROM practice_sessions s LEFT JOIN banks b ON b.id = s.bank_id
-		WHERE s.user_id = ?
+		WHERE s.user_id = ? AND s.status = 'ongoing'
 		  AND (SELECT COUNT(*) FROM practice_answers a WHERE a.session_id = s.id) < s.total_count
 		  AND datetime(s.created_at) >= datetime('now', '-30 days')
 		ORDER BY s.id DESC LIMIT 3`, user.ID)

@@ -57,7 +57,16 @@ func New(st *store.Store, version, dataDir, shutdownToken string, port int, desk
 	mux.HandleFunc("POST /api/v1/auth/logout", s.auth(s.logout))
 	mux.HandleFunc("GET /api/v1/auth/me", s.auth(s.me))
 	mux.HandleFunc("GET /api/v1/system/status", s.auth(s.status))
+	mux.HandleFunc("POST /api/v1/images", s.auth(s.uploadImage))
+	mux.HandleFunc("GET /api/v1/images/{filename}", s.serveImage)
+	mux.HandleFunc("GET /images/{filename}", s.serveImage)
 	mux.HandleFunc("GET /api/v1/overview", s.auth(s.overview))
+	mux.HandleFunc("GET /api/v1/stats", s.auth(s.stats))
+	mux.HandleFunc("GET /api/v1/backups", s.auth(s.listBackups))
+	mux.HandleFunc("POST /api/v1/backups", s.auth(s.createBackup))
+	mux.HandleFunc("DELETE /api/v1/backups", s.auth(s.deleteBackup))
+	mux.HandleFunc("POST /api/v1/backups/restore", s.auth(s.restoreBackup))
+	mux.HandleFunc("DELETE /api/v1/backups/restore", s.auth(s.cancelRestore))
 	mux.HandleFunc("POST /api/v1/system/shutdown", s.shutdown)
 
 	mux.HandleFunc("GET /api/v1/banks", s.auth(s.listBanks))
@@ -67,11 +76,19 @@ func New(st *store.Store, version, dataDir, shutdownToken string, port int, desk
 	mux.HandleFunc("DELETE /api/v1/banks/{id}", s.auth(s.deleteBank))
 	mux.HandleFunc("GET /api/v1/banks/{id}/export", s.auth(s.downloadBank))
 	mux.HandleFunc("POST /api/v1/banks/{id}/export", s.auth(s.exportBank))
+	mux.HandleFunc("GET /api/v1/banks/{id}/export-images", s.auth(s.downloadBankImages))
+	mux.HandleFunc("POST /api/v1/banks/{id}/export-images", s.auth(s.exportBankImages))
 	mux.HandleFunc("GET /api/v1/banks/{id}/questions", s.auth(s.listQuestions))
 	mux.HandleFunc("POST /api/v1/banks/{id}/questions", s.auth(s.createQuestion))
+	mux.HandleFunc("GET /api/v1/banks/{id}/tags", s.auth(s.listBankTags))
+	mux.HandleFunc("GET /api/v1/tags", s.auth(s.listTags))
 	mux.HandleFunc("POST /api/v1/banks/{id}/imports/preview", s.auth(s.previewImport))
 	mux.HandleFunc("POST /api/v1/banks/{id}/imports", s.auth(s.commitImport))
+	mux.HandleFunc("GET /api/v1/banks/{id}/imports", s.auth(s.listImportJobs))
+	mux.HandleFunc("GET /api/v1/imports/{id}/errors", s.auth(s.importErrors))
 	mux.HandleFunc("POST /api/v1/imports/{id}/revert", s.auth(s.revertImport))
+	mux.HandleFunc("GET /api/v1/settings", s.auth(s.getSettings))
+	mux.HandleFunc("PUT /api/v1/settings", s.auth(s.updateSettings))
 	mux.HandleFunc("PUT /api/v1/questions/{id}", s.auth(s.updateQuestion))
 	mux.HandleFunc("DELETE /api/v1/questions/{id}", s.auth(s.deleteQuestion))
 
@@ -86,8 +103,11 @@ func New(st *store.Store, version, dataDir, shutdownToken string, port int, desk
 
 	mux.HandleFunc("GET /api/v1/practice/sessions", s.auth(s.listPracticeSessions))
 	mux.HandleFunc("POST /api/v1/practice/sessions", s.auth(s.createPractice))
+	mux.HandleFunc("GET /api/v1/practice/sessions/{id}", s.auth(s.getPracticeSession))
 	mux.HandleFunc("DELETE /api/v1/practice/sessions/{id}", s.auth(s.deletePracticeSession))
 	mux.HandleFunc("POST /api/v1/practice/sessions/{id}/answers", s.auth(s.answerPractice))
+	mux.HandleFunc("POST /api/v1/practice/sessions/{id}/position", s.auth(s.updatePracticePosition))
+	mux.HandleFunc("POST /api/v1/practice/sessions/{id}/submit", s.auth(s.submitPractice))
 	mux.HandleFunc("GET /api/v1/wrong", s.auth(s.listWrong))
 	mux.HandleFunc("GET /api/v1/wrong/stats", s.auth(s.wrongStats))
 	mux.HandleFunc("DELETE /api/v1/wrong/{id}", s.auth(s.removeWrong))
@@ -156,6 +176,13 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 		if !ok {
 			response.Unauthorized(w, 40100, "未登录或会话已过期")
 			return
+		}
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && s.store.RestorePending() {
+			path := r.URL.Path
+			if path != "/api/v1/auth/logout" && path != "/api/v1/backups/restore" {
+				response.Forbidden(w, "数据恢复将在重启后生效，请先重启应用或取消恢复")
+				return
+			}
 		}
 		next(w, r.WithContext(context.WithValue(r.Context(), userKey, user)))
 	}

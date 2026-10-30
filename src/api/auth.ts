@@ -16,7 +16,7 @@ export interface Profile {
 
 export interface Captcha {
   id: string
-  question: string
+  image: string
 }
 
 export const authApi = {

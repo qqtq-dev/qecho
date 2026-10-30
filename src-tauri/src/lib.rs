@@ -131,6 +131,12 @@ fn set_close_behavior(state: State<'_, CloseBehavior>, behavior: String) {
     }
 }
 
+#[tauri::command]
+fn restart_app(app: tauri::AppHandle) {
+    shutdown_engine(&app);
+    app.restart();
+}
+
 fn show_main(app: &tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
         let _ = win.show();
@@ -310,6 +316,7 @@ pub fn run() {
             engine_base_url,
             set_window_size,
             set_close_behavior,
+            restart_app,
             request_lan_access,
             pick_export_path
         ])

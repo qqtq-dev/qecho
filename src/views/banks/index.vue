@@ -33,6 +33,13 @@
               <template v-else-if="column.key === 'questionCount'">
                 <a-tag color="green">{{ record.questionCount }} 道</a-tag>
               </template>
+              <template v-else-if="column.key === 'practice'">
+                <template v-if="record.answeredCount > 0">
+                  <span class="mono">{{ formatRate(record.correctRate) }}</span>
+                  <div class="muted small">作答 {{ record.answeredCount }} 次</div>
+                </template>
+                <span v-else class="muted">—</span>
+              </template>
               <template v-else-if="column.key === 'owner'">
                 <a-tag v-if="record.isPublic" color="blue">公共</a-tag>
                 <a-tag v-else color="default">{{ record.ownerName || '我的' }}</a-tag>
@@ -125,11 +132,16 @@ function canWrite(bank: Bank) {
 
 const columns = [
   { title: '题库', key: 'name', dataIndex: 'name' },
-  { title: '题目数', key: 'questionCount', dataIndex: 'questionCount', width: 110 },
-  { title: '归属', key: 'owner', width: 120 },
-  { title: '更新时间', key: 'updatedAt', dataIndex: 'updatedAt', width: 170 },
+  { title: '题目数', key: 'questionCount', dataIndex: 'questionCount', width: 100 },
+  { title: '练习正确率', key: 'practice', width: 130 },
+  { title: '归属', key: 'owner', width: 110 },
+  { title: '更新时间', key: 'updatedAt', dataIndex: 'updatedAt', width: 165 },
   { title: '操作', key: 'actions', width: 190 },
 ]
+
+function formatRate(rate: number) {
+  return `${(Math.round(rate * 1000) / 10).toFixed(1)}%`
+}
 
 function formatTime(raw: string) {
   if (!raw) return '—'
@@ -208,4 +220,5 @@ onMounted(load)
 .panel-body :deep(.ant-spin-nested-loading) { min-height: 40px; }
 .switch-hint { margin-left: 10px; font-size: 12px; }
 .readonly { font-size: 12px; }
+.small { font-size: 12px; }
 </style>

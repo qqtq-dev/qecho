@@ -29,21 +29,36 @@ type Row struct {
 }
 
 type Result struct {
-	Format   string
-	Sheet    string
-	Columns  []Column
-	Warnings []string
-	Rows     []Row
+	Format    string
+	Sheet     string
+	Sheets    []string
+	HeaderRow int
+	Mapping   map[string]string
+	Headers   []string
+	Columns   []Column
+	Warnings  []string
+	Rows      []Row
+}
+
+// Options 允许前端覆盖工作表、表头行与列映射后重新解析。
+type Options struct {
+	Sheet     string
+	HeaderRow int
+	Mapping   map[string]string
 }
 
 const maxRows = 20000
 
 func Parse(fileName string, data []byte) (*Result, error) {
+	return ParseWithOptions(fileName, data, Options{})
+}
+
+func ParseWithOptions(fileName string, data []byte, opts Options) (*Result, error) {
 	switch strings.ToLower(filepath.Ext(fileName)) {
 	case ".xlsx", ".xlsm":
-		return parseXLSX(data)
+		return parseXLSX(data, opts)
 	case ".csv":
-		return parseCSV(data)
+		return parseCSV(data, opts)
 	case ".xls":
 		return nil, fmt.Errorf("不支持旧版 .xls，请在 Excel/WPS 中另存为 .xlsx")
 	case ".zip":
@@ -53,47 +68,56 @@ func Parse(fileName string, data []byte) (*Result, error) {
 	}
 }
 
-func parseXLSX(data []byte) (*Result, error) {
+func parseXLSX(data []byte, opts Options) (*Result, error) {
 	f, err := excelize.OpenReader(bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("无法解析 Excel 文件：%w", err)
 	}
 	defer f.Close()
 
+	sheets := f.GetSheetList()
 	bestSheet := ""
 	var bestRows [][]string
-	for _, name := range f.GetSheetList() {
-		rows, err := f.GetRows(name)
+	if opts.Sheet != "" {
+		rows, err := f.GetRows(opts.Sheet)
 		if err != nil || len(rows) == 0 {
-			continue
+			return nil, fmt.Errorf("工作表「%s」不存在或为空", opts.Sheet)
 		}
-		if bestSheet == "" || len(rows) > len(bestRows) {
-			bestSheet, bestRows = name, rows
-		}
-	}
-	for _, name := range f.GetSheetList() {
-		if name == "题目" {
-			if rows, err := f.GetRows(name); err == nil && len(rows) > 0 {
+		bestSheet, bestRows = opts.Sheet, rows
+	} else {
+		for _, name := range sheets {
+			rows, err := f.GetRows(name)
+			if err != nil || len(rows) == 0 {
+				continue
+			}
+			if bestSheet == "" || len(rows) > len(bestRows) {
 				bestSheet, bestRows = name, rows
 			}
-			break
+		}
+		for _, name := range sheets {
+			if name == "题目" {
+				if rows, err := f.GetRows(name); err == nil && len(rows) > 0 {
+					bestSheet, bestRows = name, rows
+				}
+				break
+			}
 		}
 	}
 	if bestSheet == "" {
 		return nil, fmt.Errorf("工作簿没有可读取的数据")
 	}
-	res := &Result{Format: "xlsx", Sheet: bestSheet}
+	res := &Result{Format: "xlsx", Sheet: bestSheet, Sheets: sheets}
 	if pics, err := f.GetPictures(bestSheet, "A1:XFD1048576"); err == nil && len(pics) > 0 {
 		res.Warnings = append(res.Warnings,
 			fmt.Sprintf("检测到 %d 张内嵌图片，暂未自动关联到题目", len(pics)))
 	}
-	if err := parseTable(bestRows, res); err != nil {
+	if err := parseTable(bestRows, res, opts); err != nil {
 		return nil, err
 	}
 	return res, nil
 }
 
-func parseCSV(data []byte) (*Result, error) {
+func parseCSV(data []byte, opts Options) (*Result, error) {
 	decoded, err := decodeCSV(data)
 	if err != nil {
 		return nil, err
@@ -109,7 +133,7 @@ func parseCSV(data []byte) (*Result, error) {
 		return nil, fmt.Errorf("CSV 文件为空")
 	}
 	res := &Result{Format: "csv"}
-	if err := parseTable(records, res); err != nil {
+	if err := parseTable(records, res, opts); err != nil {
 		return nil, err
 	}
 	return res, nil
@@ -127,12 +151,32 @@ func decodeCSV(data []byte) ([]byte, error) {
 	return decoded, nil
 }
 
-func parseTable(rows [][]string, res *Result) error {
-	header, err := findHeader(rows)
+func parseTable(rows [][]string, res *Result, opts Options) error {
+	var header *headerInfo
+	var err error
+	switch {
+	case opts.HeaderRow > 0:
+		if opts.HeaderRow > len(rows) {
+			return fmt.Errorf("表头行超出文件范围")
+		}
+		idx := opts.HeaderRow - 1
+		if len(opts.Mapping) > 0 {
+			header, err = mappingHeader(rows[idx], idx, opts.Mapping)
+		} else {
+			header, err = mapHeader(rows[idx], idx)
+		}
+	case len(opts.Mapping) > 0:
+		return fmt.Errorf("请同时指定表头行")
+	default:
+		header, err = findHeader(rows)
+	}
 	if err != nil {
 		return err
 	}
+	res.HeaderRow = header.index + 1
+	res.Headers = rows[header.index]
 	res.Columns = header.columns
+	res.Mapping = mappingSnapshot(header)
 	if header.warning != "" {
 		res.Warnings = append(res.Warnings, header.warning)
 	}
@@ -195,6 +239,82 @@ func findHeader(rows [][]string) (*headerInfo, error) {
 	return best, nil
 }
 
+func mappingHeader(cells []string, index int, spec map[string]string) (*headerInfo, error) {
+	info := &headerInfo{index: index, mapping: map[string]int{}, optionCols: map[string]int{}}
+	for field, rawCol := range spec {
+		col := strings.ToUpper(strings.TrimSpace(rawCol))
+		if col == "" {
+			continue
+		}
+		idx := columnIndex(col)
+		if idx < 0 {
+			return nil, fmt.Errorf("列 %s 无效", col)
+		}
+		if idx >= len(cells) {
+			return nil, fmt.Errorf("列 %s 超出表头范围", col)
+		}
+		if strings.HasPrefix(field, "option_") {
+			key := strings.TrimPrefix(field, "option_")
+			if len(key) != 1 || key < "A" || key > "H" {
+				continue
+			}
+			info.optionCols[key] = idx
+		} else {
+			info.mapping[field] = idx
+		}
+		info.columns = append(info.columns, Column{Field: field, Header: strings.TrimSpace(cells[idx])})
+	}
+	if _, ok := info.mapping["stem"]; !ok {
+		return nil, fmt.Errorf("缺少题干列映射")
+	}
+	if _, ok := info.mapping["answer"]; !ok {
+		return nil, fmt.Errorf("缺少答案列映射")
+	}
+	if _, ok := info.mapping["options"]; !ok && len(info.optionCols) < 2 {
+		return nil, fmt.Errorf("缺少选项列映射：请选择合并选项列，或至少两个分列选项")
+	}
+	return info, nil
+}
+
+func mappingSnapshot(info *headerInfo) map[string]string {
+	out := map[string]string{}
+	for field, idx := range info.mapping {
+		out[field] = columnName(idx)
+	}
+	for key, idx := range info.optionCols {
+		out["option_"+key] = columnName(idx)
+	}
+	return out
+}
+
+func columnIndex(name string) int {
+	n := 0
+	for _, ch := range strings.ToUpper(strings.TrimSpace(name)) {
+		if ch < 'A' || ch > 'Z' {
+			return -1
+		}
+		n = n*26 + int(ch-'A'+1)
+	}
+	if n == 0 {
+		return -1
+	}
+	return n - 1
+}
+
+func columnName(index int) string {
+	n := index + 1
+	if n <= 0 {
+		return ""
+	}
+	out := ""
+	for n > 0 {
+		n--
+		out = string(rune('A'+n%26)) + out
+		n /= 26
+	}
+	return out
+}
+
 func mapHeader(cells []string, index int) (*headerInfo, error) {
 	info := &headerInfo{index: index, mapping: map[string]int{}, optionCols: map[string]int{}}
 	seen := map[string]string{}
@@ -242,6 +362,7 @@ var fieldAliases = map[string][]string{
 	"answer":     {"答案", "正确答案", "参考答案", "answer"},
 	"analysis":   {"解析", "答案解析", "试题解析", "analysis", "explain"},
 	"difficulty": {"难度", "difficulty", "level"},
+	"tags":       {"标签", "知识点", "tags"},
 	"stemimage":  {"题干图片", "图片", "图片地址", "图片链接", "stemimage", "image"},
 	"source":     {"来源", "出处", "source"},
 }
@@ -323,7 +444,7 @@ func parseRow(rec []string, header *headerInfo, number int) Row {
 
 	var options []store.QuestionOption
 	if len(header.optionCols) >= 2 {
-		options, errs = parseOptionColumns(rec, header.optionCols, errs)
+		options, errs = parseOptionColumns(rec, header.optionCols, errs, judge)
 	} else if idx, ok := header.mapping["options"]; ok && idx < len(rec) {
 		parsed, err := parseCombinedOptions(rec[idx])
 		if err != nil {
@@ -365,6 +486,7 @@ func parseRow(rec []string, header *headerInfo, number int) Row {
 		Answer:     keys,
 		Analysis:   cleanBlock(get("analysis")),
 		Difficulty: difficulty,
+		Tags:       splitTags(get("tags")),
 		Options:    options,
 	}
 	if len(errs) == 0 {
@@ -377,7 +499,7 @@ func parseRow(rec []string, header *headerInfo, number int) Row {
 	return row
 }
 
-func parseOptionColumns(rec []string, cols map[string]int, errs []string) ([]store.QuestionOption, []string) {
+func parseOptionColumns(rec []string, cols map[string]int, errs []string, allowEmpty bool) ([]store.QuestionOption, []string) {
 	contents := map[string]string{}
 	last := -1
 	for r := 'A'; r <= 'H'; r++ {
@@ -389,6 +511,12 @@ func parseOptionColumns(rec []string, cols map[string]int, errs []string) ([]sto
 				last = int(r - 'A')
 			}
 		}
+	}
+	if last < 0 {
+		if allowEmpty {
+			return nil, errs
+		}
+		return nil, append(errs, "有效选项少于 2 个")
 	}
 	if last < 1 {
 		return nil, append(errs, "有效选项少于 2 个")
@@ -514,6 +642,23 @@ func parseType(raw string) (string, bool, error) {
 	default:
 		return "", false, fmt.Errorf("无法识别题型“%s”", raw)
 	}
+}
+
+func splitTags(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	replacer := strings.NewReplacer("，", ",", "、", ",", "；", ",", ";", ",", "；", ",", "\n", ",", "\t", ",")
+	parts := strings.Split(replacer.Replace(raw), ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		name := strings.TrimSpace(part)
+		if name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 func parseJudgeAnswer(raw string) []string {

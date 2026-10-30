@@ -177,7 +177,22 @@
   }
   .q-type { flex: none; font-size: 12px; color: var(--text2); }
   .q-stem { flex: 1; font-size: 15.5px; white-space: pre-wrap; word-break: break-word; }
-  .q-img { display: block; max-width: 100%; border-radius: 8px; margin: 8px 0 4px; }
+  .q-img { display: block; max-width: 100%; max-height: 420px; object-fit: contain; border-radius: 8px; margin: 8px 0 4px; cursor: zoom-in; }
+  .opt-img-box { flex: none; width: 72px; height: 72px; border-radius: 6px; overflow: hidden; background: #f4f6f5; }
+  .opt-img { display: block; width: 72px; height: 72px; object-fit: cover; cursor: zoom-in; }
+  .img-missing {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 120px; padding: 10px; margin: 8px 0 4px;
+    border: 1px dashed #d7ded9; border-radius: 8px; background: #f7f9f8;
+    color: #8a938e; font-size: 12px; text-align: center; word-break: break-all;
+  }
+  .img-missing.thumb { width: 72px; height: 72px; min-height: 0; margin: 0; padding: 4px; font-size: 10px; border-radius: 6px; }
+  .img-viewer {
+    position: fixed; inset: 0; z-index: 9999;
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px; background: rgba(12, 18, 15, .88); cursor: zoom-out;
+  }
+  .img-viewer img { max-width: 94vw; max-height: 92vh; border-radius: 6px; background: #fff; }
   .opt {
     display: flex; align-items: flex-start; gap: 10px;
     padding: 11px 12px; margin-top: 8px;
@@ -297,6 +312,38 @@
       node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
     });
     return node;
+  }
+
+  function imgSrc(name) {
+    if (!name) return '';
+    if (/^https?:\/\//i.test(name)) return name;
+    return '/images/' + encodeURIComponent(name);
+  }
+
+  function openPreview(src) {
+    var mask = el('div', { class: 'img-viewer' }, [el('img', { src: src, alt: '题目图片' })]);
+    mask.addEventListener('click', function () {
+      if (mask.parentNode) mask.parentNode.removeChild(mask);
+    });
+    document.body.appendChild(mask);
+  }
+
+  function appendImage(parent, name, cls, thumb) {
+    if (!name) return null;
+    var img = el('img', { class: cls || '', src: imgSrc(name), alt: '题目图片', loading: 'lazy' });
+    img.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      openPreview(img.src);
+    });
+    img.addEventListener('error', function () {
+      var box = el('div', {
+        class: 'img-missing' + (thumb ? ' thumb' : ''),
+        text: '图片缺失：' + name,
+      });
+      if (img.parentNode) img.parentNode.replaceChild(box, img);
+    });
+    parent.appendChild(img);
+    return img;
   }
 
   function api(path, options) {
@@ -630,20 +677,22 @@
     ]);
     card.appendChild(head);
     card.appendChild(el('div', { class: 'q-stem', text: q.stem }));
-    if (q.stemImage) {
-      card.appendChild(el('img', { class: 'q-img', src: q.stemImage, alt: '题目图片', loading: 'lazy' }));
-    }
+    appendImage(card, q.stemImage, 'q-img');
 
     (q.options || []).forEach(function (opt) {
+      var children = [el('span', { class: 'opt-key', text: opt.label || opt.key })];
+      if (opt.image) {
+        var box = el('span', { class: 'opt-img-box' });
+        appendImage(box, opt.image, 'opt-img', true);
+        children.push(box);
+      }
+      children.push(el('span', { class: 'opt-text', text: opt.content }));
       var node = el('div', {
         class: 'opt' + (isMulti ? ' multi' : ''),
         role: 'button',
         'data-seq': String(q.seq),
         'data-key': opt.key,
-      }, [
-        el('span', { class: 'opt-key', text: opt.key }),
-        el('span', { class: 'opt-text', text: opt.content }),
-      ]);
+      }, children);
       node.addEventListener('click', function () {
         toggleAnswer(q, opt.key, isMulti);
         syncQuestionSelection(q.seq);
@@ -766,15 +815,15 @@
         ]),
         el('div', { class: 'q-stem', text: d.stem }),
       ]);
-      if (d.stemImage) box.appendChild(el('img', { class: 'q-img', src: d.stemImage, alt: '题目图片' }));
+      appendImage(box, d.stemImage, 'q-img', false);
       box.appendChild(el('div', { class: 'ans-line' }, [
         el('span', { class: 'muted', text: '你的答案：' }),
-        el('span', { class: d.isCorrect ? 'ans-ok' : 'ans-bad', text: keyList(d.chosen) }),
+        el('span', { class: d.isCorrect ? 'ans-ok' : 'ans-bad', text: keyList(d.chosenLabels || d.chosen) }),
       ]));
       if (!d.isCorrect) {
         box.appendChild(el('div', { class: 'ans-line' }, [
           el('span', { class: 'muted', text: '正确答案：' }),
-          el('span', { class: 'ans-ok', text: keyList(d.answer) }),
+          el('span', { class: 'ans-ok', text: keyList(d.answerLabels || d.answer) }),
         ]));
       }
       if (d.analysis) box.appendChild(el('div', { class: 'analysis', text: d.analysis }));

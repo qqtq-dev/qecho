@@ -7,9 +7,12 @@
             <span class="logo-mark">Q</span>
             <span class="brand-name">Qecho</span>
           </div>
-          <h2 class="hero">题库 · 练习 · 考试<br />都在一个应用里</h2>
+          <h2 class="hero">题库导入、随机练习、在线考试全都有<br />一个应用全部搞定</h2>
           <p class="side-desc">
-            离线可用的本机题库工具，支持 Excel 导入、随机练习、错题复习与局域网在线考试。
+            Excel 批量导入题库，按题型、难度、标签筛选组卷；随机练习逐题判分，错题自动收录、连对自动移出；局域网在线考试连手机就能答。数据全部保存在本机，离线也能用。
+          </p>
+          <p class="side-desc">
+            题库、题图与练习记录都可整体导出，换台电脑导入即可接着练习。
           </p>
           <div class="chips">
             <span>题库导入</span>
@@ -47,7 +50,7 @@ onMounted(async () => {
   if (!isTauri) return
   try {
     const { invoke } = await import('@tauri-apps/api/core')
-    await invoke('set_window_size', { width: 840, height: 500, resizable: true })
+    await invoke('set_window_size', { width: 800, height: 500, resizable: true })
   } catch {
     /* 尺寸调整失败不影响登录 */
   }
@@ -65,12 +68,11 @@ onMounted(async () => {
 }
 .auth-shell {
   width: 100%;
-  max-width: 920px;
-  height: min(580px, calc(100vh - 64px));
-  min-height: 540px;
+  max-width: 800px;
+  height: min(500px, calc(100vh - 48px));
   display: flex;
   background: #fff;
-  border-radius: 16px;
+  border-radius: 20px;
   overflow: hidden;
   box-shadow: 0 22px 60px rgba(15, 40, 30, 0.16);
 }
@@ -83,14 +85,13 @@ onMounted(async () => {
   border-radius: 0;
   box-shadow: none;
 }
-.auth-page.is-desktop .side { flex: 0 0 34%; max-width: 420px; }
-.auth-page.is-desktop .main-inner { max-width: 300px; }
+.auth-page.is-desktop .main-inner { max-width: 340px; }
 
 .side {
   position: relative;
-  flex: 0 0 40%;
-  max-width: 372px;
-  padding: 26px 30px 18px;
+  flex: 0 0 47%;
+  max-width: 380px;
+  padding: 38px 26px 16px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -111,41 +112,40 @@ onMounted(async () => {
 }
 .brand { display: flex; align-items: center; gap: 10px; }
 .logo-mark {
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
   background: linear-gradient(160deg, #2fb273, #187a4b);
   color: #fff;
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: 0 5px 14px rgba(36, 148, 95, 0.4);
 }
-.brand-name { font-size: 16px; font-weight: 700; letter-spacing: 1px; }
+.brand-name { font-size: 15px; font-weight: 700; letter-spacing: 1px; }
 .hero {
-  margin: 28px 0 0;
-  font-size: 22px;
+  margin: 18px 0 0;
+  font-size: 18px;
   line-height: 1.4;
   font-weight: 700;
   letter-spacing: 0.5px;
 }
 .side-desc {
   margin: 12px 0 0;
-  max-width: 270px;
-  font-size: 11.5px;
+  font-size: 12.5px;
   line-height: 1.75;
-  color: rgba(255, 255, 255, 0.62);
+  color: rgba(255, 255, 255, 0.68);
 }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 18px; }
+.chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 16px; }
 .chips span {
-  padding: 3px 9px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 6px;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.78);
-  background: rgba(255, 255, 255, 0.04);
+  padding: 4px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 7px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.05);
 }
 .side-foot {
   margin: 0;
@@ -161,7 +161,7 @@ onMounted(async () => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 32px 40px 36px;
+  padding: 28px 40px;
   background: #fff;
 }
 .win-controls {
@@ -172,11 +172,13 @@ onMounted(async () => {
 }
 .win-controls :deep(.wc:hover) { background: rgba(15, 40, 30, 0.06); }
 .win-controls :deep(.wc.close:hover) { background: #dc2626; color: #fff; }
-.main-inner { width: 100%; max-width: 300px; }
-.head h1 { margin: 0; font-size: 20px; font-weight: 700; color: #17211c; letter-spacing: 0.5px; }
-.head .sub { margin: 5px 0 18px; font-size: 12px; color: #6b7570; line-height: 1.6; }
+.main-inner { width: 100%; max-width: 340px; }
+.head { margin-bottom: 0; }
+.head h1 { margin: 0 0 6px; font-size: 20px; font-weight: 600; color: rgba(0, 0, 0, 0.88); letter-spacing: 0; }
+.head .sub { margin: 0 0 24px; font-size: 13px; color: rgba(0, 0, 0, 0.45); line-height: 1.6; }
 .main-inner :deep(.ant-form-item) { margin-bottom: 14px; }
-.main-inner :deep(.ant-form-item-label > label) { font-size: 12.5px; height: 24px; }
+.main-inner :deep(.ant-form-item-label) { padding: 0 0 2px; }
+.main-inner :deep(.ant-form-item-label > label) { font-size: 12.5px; height: 22px; }
 .foot {
   margin-top: 14px;
   text-align: center;

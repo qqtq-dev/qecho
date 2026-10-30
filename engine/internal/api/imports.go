@@ -3,11 +3,15 @@ package api
 import (
 	"crypto/rand"
 	"database/sql"
+	"encoding/csv"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -65,6 +69,14 @@ func readImportFile(w http.ResponseWriter, r *http.Request) (string, []byte, err
 	return header.Filename, data, nil
 }
 
+func previewOptions(r *http.Request) importer.Options {
+	opts := importer.Options{}
+	if raw := strings.TrimSpace(r.FormValue("options")); raw != "" {
+		_ = json.Unmarshal([]byte(raw), &opts)
+	}
+	return opts
+}
+
 func (s *Server) previewImport(w http.ResponseWriter, r *http.Request) {
 	bankID, ok := pathID(r, "id")
 	if !ok {
@@ -79,7 +91,7 @@ func (s *Server) previewImport(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, err.Error())
 		return
 	}
-	result, err := importer.Parse(fileName, data)
+	result, err := importer.ParseWithOptions(fileName, data, previewOptions(r))
 	if err != nil {
 		response.BadRequest(w, err.Error())
 		return
@@ -149,6 +161,10 @@ func (s *Server) previewImport(w http.ResponseWriter, r *http.Request) {
 		"fileName":  fileName,
 		"format":    result.Format,
 		"sheet":     result.Sheet,
+		"sheets":    result.Sheets,
+		"headerRow": result.HeaderRow,
+		"headers":   result.Headers,
+		"mapping":   result.Mapping,
 		"columns":   result.Columns,
 		"total":     len(result.Rows),
 		"valid":     valid,
@@ -167,7 +183,8 @@ func (s *Server) commitImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Token string `json:"token"`
+		Token  string `json:"token"`
+		Policy string `json:"policy"`
 	}
 	if err := decodeJSON(r, &in); err != nil {
 		response.BadRequest(w, "请求格式不正确")
@@ -190,11 +207,16 @@ func (s *Server) commitImport(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.bankFor(w, r, bankID, true); !ok {
 		return
 	}
+	if _, err := s.store.CreateBackup(store.BackupPreImport); err != nil {
+		log.Printf("pre-import backup: %v", err)
+		response.BadRequest(w, "导入前自动备份失败，已取消本次导入")
+		return
+	}
 	items := make([]store.ImportItem, len(pending.rows))
 	for i, row := range pending.rows {
 		items[i] = store.ImportItem{Row: row.Number, Input: row.Input, Err: row.Err}
 	}
-	outcome, err := s.store.ImportQuestions(bankID, pending.fileName, pending.format, items)
+	outcome, err := s.store.ImportQuestions(bankID, pending.fileName, pending.format, items, in.Policy)
 	if err != nil {
 		response.BadRequest(w, err.Error())
 		return
@@ -220,12 +242,72 @@ func (s *Server) revertImport(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.bankFor(w, r, bankID, true); !ok {
 		return
 	}
-	count, err := s.store.RevertImport(id)
+	count, kept, err := s.store.RevertImport(id)
 	if err != nil {
 		response.BadRequest(w, err.Error())
 		return
 	}
-	response.OK(w, map[string]any{"reverted": count})
+	response.OK(w, map[string]any{"reverted": count, "kept": kept})
+}
+
+func (s *Server) listImportJobs(w http.ResponseWriter, r *http.Request) {
+	bankID, ok := pathID(r, "id")
+	if !ok {
+		response.BadRequest(w, "题库编号无效")
+		return
+	}
+	if _, ok := s.bankFor(w, r, bankID, false); !ok {
+		return
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	jobs, err := s.store.ListImportJobs(bankID, limit)
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	response.OK(w, map[string]any{"items": jobs})
+}
+
+// importErrors 返回某批次的错误明细；format=csv 时直接下载。
+func (s *Server) importErrors(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r, "id")
+	if !ok {
+		response.BadRequest(w, "导入编号无效")
+		return
+	}
+	bankID, err := s.store.ImportJobBankID(id)
+	if errors.Is(err, sql.ErrNoRows) {
+		response.NotFound(w, "导入记录不存在")
+		return
+	}
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	if _, ok := s.bankFor(w, r, bankID, false); !ok {
+		return
+	}
+	rows, err := s.store.ImportJobErrors(id)
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	if r.URL.Query().Get("format") == "csv" {
+		var buf strings.Builder
+		buf.WriteString("\ufeff")
+		cw := csv.NewWriter(&buf)
+		_ = cw.Write([]string{"行号", "错误原因"})
+		for _, item := range rows {
+			_ = cw.Write([]string{strconv.Itoa(item.Row), item.Message})
+		}
+		cw.Flush()
+		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(
+			`attachment; filename="import-%d-errors.csv"`, id))
+		_, _ = io.WriteString(w, buf.String())
+		return
+	}
+	response.OK(w, map[string]any{"items": rows})
 }
 
 func truncateRunes(s string, limit int) string {

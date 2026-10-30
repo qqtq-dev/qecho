@@ -11,6 +11,8 @@ export interface Exam {
   closeAt: string
   status: 'published' | 'closed'
   token: string
+  shuffleQuestions: boolean
+  shuffleOptions: boolean
   participantCount: number
   submittedCount: number
   avgScore: number
@@ -26,6 +28,7 @@ export interface ExamCreateInput {
   closeAt: string
   password: string
   shuffleQuestions: boolean
+  shuffleOptions: boolean
 }
 
 export interface AttemptSummary {

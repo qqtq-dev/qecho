@@ -10,27 +10,41 @@ import (
 )
 
 type Bank struct {
-	ID            int64  `json:"id"`
-	Name          string `json:"name"`
-	Description   string `json:"description"`
-	QuestionCount int    `json:"questionCount"`
-	OwnerID       *int64 `json:"ownerId"`
-	OwnerName     string `json:"ownerName"`
-	IsPublic      bool   `json:"isPublic"`
-	CreatedAt     string `json:"createdAt"`
-	UpdatedAt     string `json:"updatedAt"`
+	ID            int64   `json:"id"`
+	Name          string  `json:"name"`
+	Description   string  `json:"description"`
+	QuestionCount int     `json:"questionCount"`
+	AnsweredCount int     `json:"answeredCount"`
+	CorrectRate   float64 `json:"correctRate"`
+	OwnerID       *int64  `json:"ownerId"`
+	OwnerName     string  `json:"ownerName"`
+	IsPublic      bool    `json:"isPublic"`
+	CreatedAt     string  `json:"createdAt"`
+	UpdatedAt     string  `json:"updatedAt"`
 }
 
 const bankColumns = `b.id, b.name, b.description,
 	(SELECT COUNT(*) FROM questions q WHERE q.bank_id = b.id AND q.is_deleted = 0),
+	(SELECT COUNT(*) FROM practice_answers pa
+	   JOIN practice_sessions ps ON ps.id = pa.session_id
+	   JOIN questions q ON q.id = pa.question_id
+	  WHERE q.bank_id = b.id AND ps.status = 'finished'),
+	(SELECT COALESCE(SUM(pa.is_correct), 0) FROM practice_answers pa
+	   JOIN practice_sessions ps ON ps.id = pa.session_id
+	   JOIN questions q ON q.id = pa.question_id
+	  WHERE q.bank_id = b.id AND ps.status = 'finished'),
 	b.owner_id, COALESCE(u.username,''), b.created_at, b.updated_at`
 
 func scanBank(row interface{ Scan(...any) error }) (*Bank, error) {
 	var b Bank
 	var owner sql.NullInt64
+	var correct int
 	if err := row.Scan(&b.ID, &b.Name, &b.Description, &b.QuestionCount,
-		&owner, &b.OwnerName, &b.CreatedAt, &b.UpdatedAt); err != nil {
+		&b.AnsweredCount, &correct, &owner, &b.OwnerName, &b.CreatedAt, &b.UpdatedAt); err != nil {
 		return nil, err
+	}
+	if b.AnsweredCount > 0 {
+		b.CorrectRate = float64(correct) / float64(b.AnsweredCount)
 	}
 	if owner.Valid {
 		id := owner.Int64
@@ -43,6 +57,7 @@ func scanBank(row interface{ Scan(...any) error }) (*Bank, error) {
 type QuestionOption struct {
 	Key     string `json:"key"`
 	Content string `json:"content"`
+	Image   string `json:"image"`
 }
 
 type Question struct {
@@ -54,6 +69,7 @@ type Question struct {
 	Answer     []string         `json:"answer"`
 	Analysis   string           `json:"analysis"`
 	Difficulty int              `json:"difficulty"`
+	Tags       []string         `json:"tags"`
 	Options    []QuestionOption `json:"options"`
 	CreatedAt  string           `json:"createdAt"`
 	UpdatedAt  string           `json:"updatedAt"`
@@ -66,6 +82,7 @@ type QuestionInput struct {
 	Answer     []string         `json:"answer"`
 	Analysis   string           `json:"analysis"`
 	Difficulty int              `json:"difficulty"`
+	Tags       []string         `json:"tags"`
 	Options    []QuestionOption `json:"options"`
 }
 
@@ -171,25 +188,55 @@ func (s *Store) GetBank(id int64) (*Bank, error) {
 	return scanBank(row)
 }
 
-func (s *Store) ListQuestions(bankID int64, page, size int) ([]Question, int, error) {
+type QuestionFilter struct {
+	Page       int
+	Size       int
+	Keyword    string
+	Type       string
+	Tag        string
+	Difficulty int
+}
+
+func (s *Store) ListQuestions(bankID int64, filter QuestionFilter) ([]Question, int, error) {
+	page, size := filter.Page, filter.Size
 	if page < 1 {
 		page = 1
 	}
 	if size < 1 || size > 500 {
 		size = 50
 	}
+	where := []string{"q.bank_id = ?", "q.is_deleted = 0"}
+	args := []any{bankID}
+	if keyword := strings.TrimSpace(filter.Keyword); keyword != "" {
+		like := "%" + keyword + "%"
+		where = append(where, "(q.stem LIKE ? OR q.analysis LIKE ?)")
+		args = append(args, like, like)
+	}
+	if filter.Type == "single" || filter.Type == "multiple" {
+		where = append(where, "q.type = ?")
+		args = append(args, filter.Type)
+	}
+	if filter.Difficulty >= 1 && filter.Difficulty <= 5 {
+		where = append(where, "q.difficulty = ?")
+		args = append(args, filter.Difficulty)
+	}
+	if tag := strings.TrimSpace(filter.Tag); tag != "" {
+		where = append(where, `EXISTS (
+			SELECT 1 FROM question_tags qt JOIN tags t ON t.id = qt.tag_id
+			WHERE qt.question_id = q.id AND t.name = ?)`)
+		args = append(args, tag)
+	}
+	whereSQL := strings.Join(where, " AND ")
 	var total int
-	if err := s.DB.QueryRow(
-		"SELECT COUNT(*) FROM questions WHERE bank_id = ? AND is_deleted = 0", bankID,
-	).Scan(&total); err != nil {
+	if err := s.DB.QueryRow("SELECT COUNT(*) FROM questions q WHERE "+whereSQL, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	rows, err := s.DB.Query(`
-		SELECT id, bank_id, type, stem, COALESCE(stem_image,''), answer, analysis,
-		       difficulty, created_at, updated_at
-		FROM questions WHERE bank_id = ? AND is_deleted = 0
-		ORDER BY sort_order, id LIMIT ? OFFSET ?`,
-		bankID, size, (page-1)*size,
+		SELECT q.id, q.bank_id, q.type, q.stem, COALESCE(q.stem_image,''), q.answer, q.analysis,
+		       q.difficulty, q.created_at, q.updated_at
+		FROM questions q WHERE `+whereSQL+`
+		ORDER BY q.sort_order, q.id LIMIT ? OFFSET ?`,
+		append(args, size, (page-1)*size)...,
 	)
 	if err != nil {
 		return nil, 0, err
@@ -213,6 +260,9 @@ func (s *Store) ListQuestions(bankID int64, page, size int) ([]Question, int, er
 		if err := s.loadOptions(&list[i]); err != nil {
 			return nil, 0, err
 		}
+		if err := s.loadQuestionTags(&list[i]); err != nil {
+			return nil, 0, err
+		}
 	}
 	return list, total, nil
 }
@@ -221,7 +271,7 @@ func (s *Store) ListQuestions(bankID int64, page, size int) ([]Question, int, er
 func (s *Store) ExportQuestions(bankID int64) ([]Question, error) {
 	out := []Question{}
 	for page := 1; ; page++ {
-		list, total, err := s.ListQuestions(bankID, page, 500)
+		list, total, err := s.ListQuestions(bankID, QuestionFilter{Page: page, Size: 500})
 		if err != nil {
 			return nil, err
 		}
@@ -248,12 +298,15 @@ func (s *Store) GetQuestion(id int64) (*Question, error) {
 	if err := s.loadOptions(&q); err != nil {
 		return nil, err
 	}
+	if err := s.loadQuestionTags(&q); err != nil {
+		return nil, err
+	}
 	return &q, nil
 }
 
 func (s *Store) loadOptions(q *Question) error {
 	rows, err := s.DB.Query(
-		"SELECT key, content FROM question_options WHERE question_id = ? ORDER BY sort_order, key",
+		"SELECT key, content, COALESCE(image,'') FROM question_options WHERE question_id = ? ORDER BY sort_order, key",
 		q.ID,
 	)
 	if err != nil {
@@ -263,7 +316,7 @@ func (s *Store) loadOptions(q *Question) error {
 	q.Options = []QuestionOption{}
 	for rows.Next() {
 		var o QuestionOption
-		if err := rows.Scan(&o.Key, &o.Content); err != nil {
+		if err := rows.Scan(&o.Key, &o.Content, &o.Image); err != nil {
 			return err
 		}
 		q.Options = append(q.Options, o)
@@ -287,6 +340,11 @@ func validateQuestionInput(in *QuestionInput) error {
 	for i := range in.Options {
 		in.Options[i].Key = strings.ToUpper(strings.TrimSpace(in.Options[i].Key))
 		in.Options[i].Content = strings.TrimSpace(in.Options[i].Content)
+		image, err := NormalizeImageRef(in.Options[i].Image)
+		if err != nil {
+			return err
+		}
+		in.Options[i].Image = image
 		key := in.Options[i].Key
 		if len(key) != 1 || key < "A" || key > "H" {
 			return fmt.Errorf("选项键必须是 A–H")
@@ -317,8 +375,13 @@ func validateQuestionInput(in *QuestionInput) error {
 	if in.Difficulty < 1 || in.Difficulty > 5 {
 		in.Difficulty = 2
 	}
+	in.Tags = normalizeTags(in.Tags)
 	in.Analysis = strings.TrimSpace(in.Analysis)
-	in.StemImage = strings.TrimSpace(in.StemImage)
+	image, err := NormalizeImageRef(in.StemImage)
+	if err != nil {
+		return err
+	}
+	in.StemImage = image
 	return nil
 }
 
@@ -376,11 +439,14 @@ func (s *Store) CreateQuestion(bankID int64, in QuestionInput) (*Question, error
 	id, _ := res.LastInsertId()
 	for i, o := range in.Options {
 		if _, err := tx.Exec(
-			"INSERT INTO question_options(question_id, key, content, sort_order) VALUES(?, ?, ?, ?)",
-			id, o.Key, o.Content, i,
+			"INSERT INTO question_options(question_id, key, content, image, sort_order) VALUES(?, ?, ?, ?, ?)",
+			id, o.Key, o.Content, nullable(o.Image), i,
 		); err != nil {
 			return nil, err
 		}
+	}
+	if err := s.setQuestionTags(tx, id, in.Tags); err != nil {
+		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
@@ -417,15 +483,19 @@ func (s *Store) UpdateQuestion(id int64, in QuestionInput) (*Question, error) {
 	}
 	for i, o := range in.Options {
 		if _, err := tx.Exec(
-			"INSERT INTO question_options(question_id, key, content, sort_order) VALUES(?, ?, ?, ?)",
-			id, o.Key, o.Content, i,
+			"INSERT INTO question_options(question_id, key, content, image, sort_order) VALUES(?, ?, ?, ?, ?)",
+			id, o.Key, o.Content, nullable(o.Image), i,
 		); err != nil {
 			return nil, err
 		}
 	}
+	if err := s.setQuestionTags(tx, id, in.Tags); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	s.deleteOrphanTags()
 	return s.GetQuestion(id)
 }
 
@@ -433,6 +503,9 @@ func (s *Store) DeleteQuestion(id int64) error {
 	_, err := s.DB.Exec(
 		"UPDATE questions SET is_deleted = 1, updated_at = ? WHERE id = ?", nowString(), id,
 	)
+	if err == nil {
+		s.deleteOrphanTags()
+	}
 	return err
 }
 

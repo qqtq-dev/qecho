@@ -1,14 +1,14 @@
 <template>
   <div class="page">
-    <PageHeader title="错题本" subtitle="只收录作答判错的题，连续答对 2 次自动移出">
+    <PageHeader title="错题本" :subtitle="`只收录作答判错的题，连续答对 ${threshold} 次自动移出`">
       <template #actions>
         <a-button :disabled="wrongStore.stats.pending === 0" @click="startReview">开始错题练习</a-button>
       </template>
     </PageHeader>
 
     <div class="metrics">
-      <MetricTile label="待复习" :value="wrongStore.stats.pending" hint="尚未连续答对 2 次" />
-      <MetricTile label="已掌握" :value="wrongStore.stats.mastered" hint="连续答对 2 次后移出" />
+      <MetricTile label="待复习" :value="wrongStore.stats.pending" :hint="`尚未连续答对 ${threshold} 次`" />
+      <MetricTile label="已掌握" :value="wrongStore.stats.mastered" :hint="`连续答对 ${threshold} 次后移出`" />
       <MetricTile label="累计收录" :value="wrongStore.stats.total" hint="按题目去重统计" />
     </div>
 
@@ -36,8 +36,13 @@
             >
               <template #bodyCell="{ column, record }">
                 <template v-if="column.key === 'stem'">
-                  <div class="stem">{{ record.stem }}</div>
-                  <div class="muted">{{ record.bankName }}</div>
+                  <div class="stem-row">
+                    <QuestionImage v-if="record.stemImage" :name="record.stemImage" :thumb="true" :size="40" />
+                    <div>
+                      <div class="stem">{{ record.stem }}</div>
+                      <div class="muted">{{ record.bankName }}</div>
+                    </div>
+                  </div>
                 </template>
                 <template v-else-if="column.key === 'type'">
                   <a-tag :color="record.type === 'multiple' ? 'purple' : 'blue'">
@@ -48,7 +53,7 @@
                   <a-tag color="red">{{ record.wrongCount }} 次</a-tag>
                 </template>
                 <template v-else-if="column.key === 'streak'">
-                  <span>{{ record.correctStreak }} / 2</span>
+                  <span>{{ record.correctStreak }} / {{ threshold }}</span>
                 </template>
                 <template v-else-if="column.key === 'status'">
                   <a-tag :color="record.mastered ? 'green' : 'orange'">
@@ -74,8 +79,14 @@
               </template>
               <template #expandedRowRender="{ record }">
                 <div class="detail">
+                  <QuestionImage
+                    v-if="record.stemImage"
+                    :name="record.stemImage"
+                    class="detail-stem-img"
+                  />
                   <div v-for="opt in record.options" :key="opt.key" class="detail-opt">
                     <span class="opt-key" :class="{ right: record.answer.includes(opt.key) }">{{ opt.key }}</span>
+                    <QuestionImage v-if="opt.image" :name="opt.image" :thumb="true" :size="48" />
                     <span>{{ opt.content }}</span>
                   </div>
                   <div class="muted" style="margin-top: 8px">正确答案：{{ record.answer.join('') || '—' }}</div>
@@ -106,11 +117,15 @@ import { useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/PageHeader.vue'
 import MetricTile from '@/components/MetricTile.vue'
+import QuestionImage from '@/components/QuestionImage.vue'
 import { wrongApi, type WrongItem } from '@/api/wrong'
+import { practiceApi } from '@/api/practice'
+import { settingsApi } from '@/api/settings'
 import { useWrongStore } from '@/stores/wrong'
 
 const router = useRouter()
 const wrongStore = useWrongStore()
+const threshold = ref(2)
 
 const items = ref<WrongItem[]>([])
 const total = ref(0)
@@ -160,8 +175,24 @@ function startReview() {
   router.push('/practice?source=wrong')
 }
 
-function startSingle(item: WrongItem) {
-  router.push({ path: '/practice', query: { source: 'wrong', bankId: String(item.bankId) } })
+const startingId = ref(0)
+
+async function startSingle(item: WrongItem) {
+  if (startingId.value) return
+  startingId.value = item.questionId
+  try {
+    const res = await practiceApi.start({
+      questionIds: [item.questionId],
+      count: 0,
+      order: 'fixed',
+      source: 'wrong',
+    })
+    router.push({ path: '/practice', query: { session: String(res.session.id) } })
+  } catch {
+    /* 失败原因由请求层提示 */
+  } finally {
+    startingId.value = 0
+  }
 }
 
 // 练习页面作答后会递增 revision，这里即时重新拉取，保证跨页面同步。
@@ -172,12 +203,22 @@ watch(
   },
 )
 
+async function loadSettings() {
+  try {
+    const s = await settingsApi.get()
+    threshold.value = s.wrongMasterThreshold
+  } catch {
+    /* 读取失败时按默认阈值展示 */
+  }
+}
+
 function onVisible() {
   if (document.visibilityState === 'visible') load()
 }
 
 onMounted(() => {
   load()
+  loadSettings()
   document.addEventListener('visibilitychange', onVisible)
 })
 onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible))
@@ -197,8 +238,10 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible
   overflow: hidden;
   max-width: 620px;
 }
+.stem-row { display: flex; align-items: flex-start; gap: 10px; }
 .detail { padding: 4px 8px 8px; }
-.detail-opt { display: flex; align-items: flex-start; gap: 8px; padding: 3px 0; }
+.detail-stem-img { display: block; margin-bottom: 8px; }
+.detail-opt { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
 .opt-key {
   flex: none; width: 22px; height: 22px; border-radius: 50%;
   background: #f0f2f1; color: #6b7570; font-size: 12px; font-weight: 600;

@@ -66,6 +66,7 @@ func (s *Server) createExam(w http.ResponseWriter, r *http.Request) {
 		CloseAt          string `json:"closeAt"`
 		Password         string `json:"password"`
 		ShuffleQuestions bool   `json:"shuffleQuestions"`
+		ShuffleOptions   bool   `json:"shuffleOptions"`
 	}
 	if err := decodeJSON(r, &in); err != nil {
 		response.BadRequest(w, "请求格式不正确")
@@ -96,6 +97,7 @@ func (s *Server) createExam(w http.ResponseWriter, r *http.Request) {
 		CloseAt:          closeAt,
 		Password:         in.Password,
 		ShuffleQuestions: in.ShuffleQuestions,
+		ShuffleOptions:   in.ShuffleOptions,
 	}, userFrom(r).ID)
 	if err != nil {
 		writeStoreError(w, err)

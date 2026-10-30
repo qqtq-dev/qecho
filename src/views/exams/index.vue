@@ -36,6 +36,7 @@
               <template v-if="column.key === 'title'">
                 <div class="exam-title">{{ record.title }}</div>
                 <div class="muted">{{ record.bankName || '题库已删除' }} · {{ record.totalCount }} 道题 · {{ Math.round(record.timeLimitSec / 60) }} 分钟</div>
+                <div v-if="record.shuffleOptions" class="muted">选项乱序</div>
               </template>
               <template v-else-if="column.key === 'window'">
                 <div>{{ formatTime(record.openAt) }}</div>
@@ -134,6 +135,7 @@
         </a-form-item>
         <a-form-item>
           <a-checkbox v-model:checked="form.shuffle">打乱题目顺序</a-checkbox>
+          <a-checkbox v-model:checked="form.shuffleOptions" class="shuffle-option">打乱选项顺序</a-checkbox>
         </a-form-item>
       </a-form>
     </a-modal>
@@ -300,6 +302,7 @@ const form = reactive({
   minutes: 30,
   password: '',
   shuffle: true,
+  shuffleOptions: true,
   range: null as [Dayjs, Dayjs] | null,
 })
 
@@ -310,6 +313,7 @@ function openCreate() {
   form.minutes = 30
   form.password = ''
   form.shuffle = true
+  form.shuffleOptions = true
   form.range = [dayjs().add(10, 'minute').second(0), dayjs().add(70, 'minute').second(0)]
   createOpen.value = true
 }
@@ -342,6 +346,7 @@ async function createExam() {
       closeAt: form.range[1].toISOString(),
       password: form.password.trim(),
       shuffleQuestions: form.shuffle,
+      shuffleOptions: form.shuffleOptions,
     })
     createOpen.value = false
     await load()
@@ -476,6 +481,7 @@ onMounted(load)
 .exam-title { font-weight: 600; }
 .form-row { display: flex; gap: 16px; align-items: flex-start; }
 .form-row .grow { flex: 1; }
+.shuffle-option { margin-left: 16px; }
 .no-bank { color: #ad6800; font-size: 13px; margin-top: -8px; }
 .share-exam { padding: 10px 12px; background: #f6faf8; border: 1px solid #e2efe8; border-radius: 8px; }
 .share-exam-title { font-weight: 600; }

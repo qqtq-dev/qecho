@@ -36,6 +36,8 @@ type Exam struct {
 	SubmittedCount   int     `json:"submittedCount"`
 	AvgScore         float64 `json:"avgScore"`
 	OwnerID          int64   `json:"ownerId"`
+	ShuffleQuestions bool    `json:"shuffleQuestions"`
+	ShuffleOptions   bool    `json:"shuffleOptions"`
 	CreatedAt        string  `json:"createdAt"`
 }
 
@@ -48,14 +50,22 @@ type CreateExamInput struct {
 	CloseAt          time.Time
 	Password         string
 	ShuffleQuestions bool
+	ShuffleOptions   bool
+}
+
+type PublicOption struct {
+	Key     string `json:"key"`
+	Label   string `json:"label"`
+	Content string `json:"content"`
+	Image   string `json:"image"`
 }
 
 type PublicQuestion struct {
-	Seq       int              `json:"seq"`
-	Type      string           `json:"type"`
-	Stem      string           `json:"stem"`
-	StemImage string           `json:"stemImage"`
-	Options   []QuestionOption `json:"options"`
+	Seq       int            `json:"seq"`
+	Type      string         `json:"type"`
+	Stem      string         `json:"stem"`
+	StemImage string         `json:"stemImage"`
+	Options   []PublicOption `json:"options"`
 }
 
 type SavedAnswer struct {
@@ -64,15 +74,17 @@ type SavedAnswer struct {
 }
 
 type ResultDetail struct {
-	Seq       int              `json:"seq"`
-	Type      string           `json:"type"`
-	Stem      string           `json:"stem"`
-	StemImage string           `json:"stemImage"`
-	Options   []QuestionOption `json:"options"`
-	Chosen    []string         `json:"chosen"`
-	Answer    []string         `json:"answer"`
-	Analysis  string           `json:"analysis"`
-	IsCorrect bool             `json:"isCorrect"`
+	Seq          int            `json:"seq"`
+	Type         string         `json:"type"`
+	Stem         string         `json:"stem"`
+	StemImage    string         `json:"stemImage"`
+	Options      []PublicOption `json:"options"`
+	Chosen       []string       `json:"chosen"`
+	Answer       []string       `json:"answer"`
+	ChosenLabels []string       `json:"chosenLabels"`
+	AnswerLabels []string       `json:"answerLabels"`
+	Analysis     string         `json:"analysis"`
+	IsCorrect    bool           `json:"isCorrect"`
 }
 
 type ExamResult struct {
@@ -85,18 +97,18 @@ type ExamResult struct {
 }
 
 type ExamStart struct {
-	State         string           `json:"state"`
-	AttemptToken  string           `json:"attemptToken,omitempty"`
-	Name          string           `json:"name,omitempty"`
-	StudentNo     string           `json:"studentNo,omitempty"`
-	DeadlineAt    string           `json:"deadlineAt,omitempty"`
-	RemainingSec  int              `json:"remainingSec"`
-	Title         string           `json:"title"`
-	TotalCount    int              `json:"totalCount"`
-	TimeLimitSec  int              `json:"timeLimitSec"`
-	Questions     []PublicQuestion `json:"questions,omitempty"`
-	Saved         []SavedAnswer    `json:"saved,omitempty"`
-	Result        *ExamResult      `json:"result,omitempty"`
+	State        string           `json:"state"`
+	AttemptToken string           `json:"attemptToken,omitempty"`
+	Name         string           `json:"name,omitempty"`
+	StudentNo    string           `json:"studentNo,omitempty"`
+	DeadlineAt   string           `json:"deadlineAt,omitempty"`
+	RemainingSec int              `json:"remainingSec"`
+	Title        string           `json:"title"`
+	TotalCount   int              `json:"totalCount"`
+	TimeLimitSec int              `json:"timeLimitSec"`
+	Questions    []PublicQuestion `json:"questions,omitempty"`
+	Saved        []SavedAnswer    `json:"saved,omitempty"`
+	Result       *ExamResult      `json:"result,omitempty"`
 }
 
 type AttemptSummary struct {
@@ -127,6 +139,41 @@ type examRecord struct {
 	QuestionIDs  []int64
 	PasswordSalt string
 	PasswordHash string
+}
+
+func initialOptionOrder(options []QuestionOption, shuffle bool) []string {
+	keys := make([]string, 0, len(options))
+	for _, o := range options {
+		keys = append(keys, o.Key)
+	}
+	if shuffle {
+		return shuffleKeys(keys)
+	}
+	return keys
+}
+
+func publicOptions(options []QuestionOption, order []string) []PublicOption {
+	ordered := orderedOptionKeys(order, options)
+	byKey := make(map[string]QuestionOption, len(options))
+	for _, o := range options {
+		byKey[o.Key] = o
+	}
+	out := make([]PublicOption, 0, len(ordered))
+	for i, key := range ordered {
+		opt := byKey[key]
+		out = append(out, PublicOption{
+			Key: key, Label: optionLabel(i), Content: opt.Content, Image: opt.Image,
+		})
+	}
+	return out
+}
+
+func optionOrderOf(raw string, options []QuestionOption) []string {
+	var order []string
+	if raw != "" {
+		_ = json.Unmarshal([]byte(raw), &order)
+	}
+	return orderedOptionKeys(order, options)
 }
 
 func randomToken() (string, error) {
@@ -205,10 +252,10 @@ func (s *Store) CreateExam(in CreateExamInput, ownerID int64) (*Exam, error) {
 		INSERT INTO exams(title, bank_id, question_ids_json, total_count, time_limit_sec,
 		                  open_at, close_at, password_salt, password_hash, token, status,
 		                  shuffle_questions, shuffle_options, owner_id, created_at, updated_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', ?, 0, ?, ?, ?)`,
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', ?, ?, ?, ?, ?)`,
 		in.Title, in.BankID, string(questionIDs), len(ids), in.TimeLimitSec,
 		in.OpenAt.UTC().Format(time.RFC3339Nano), in.CloseAt.UTC().Format(time.RFC3339Nano),
-		salt, hash, token, boolInt(in.ShuffleQuestions), ownerID, now, now,
+		salt, hash, token, boolInt(in.ShuffleQuestions), boolInt(in.ShuffleOptions), ownerID, now, now,
 	)
 	if err != nil {
 		return nil, err
@@ -217,9 +264,10 @@ func (s *Store) CreateExam(in CreateExamInput, ownerID int64) (*Exam, error) {
 	return &Exam{
 		ID: id, Title: in.Title, BankID: in.BankID, BankName: bankName,
 		TotalCount: len(ids), TimeLimitSec: in.TimeLimitSec,
-		OpenAt: in.OpenAt.UTC().Format(time.RFC3339Nano),
+		OpenAt:  in.OpenAt.UTC().Format(time.RFC3339Nano),
 		CloseAt: in.CloseAt.UTC().Format(time.RFC3339Nano),
-		Status: "published", Token: token, OwnerID: ownerID, CreatedAt: now,
+		Status:  "published", Token: token, OwnerID: ownerID, CreatedAt: now,
+		ShuffleQuestions: in.ShuffleQuestions, ShuffleOptions: in.ShuffleOptions,
 	}, nil
 }
 
@@ -237,7 +285,7 @@ func (s *Store) ListExams(viewer *User) ([]Exam, error) {
 		       (SELECT COUNT(*) FROM exam_attempts a WHERE a.exam_id = e.id),
 		       (SELECT COUNT(*) FROM exam_attempts a WHERE a.exam_id = e.id AND a.status = 'submitted'),
 		       COALESCE((SELECT AVG(score) FROM exam_attempts a WHERE a.exam_id = e.id AND a.status = 'submitted'), 0),
-		       COALESCE(e.owner_id, 0)
+		       COALESCE(e.owner_id, 0), e.shuffle_questions, e.shuffle_options
 		FROM exams e LEFT JOIN banks b ON b.id = e.bank_id`
 	args := []any{}
 	if viewer.Role != "admin" {
@@ -253,11 +301,15 @@ func (s *Store) ListExams(viewer *User) ([]Exam, error) {
 	out := []Exam{}
 	for rows.Next() {
 		var e Exam
+		var shuffleQ, shuffleO int
 		if err := rows.Scan(&e.ID, &e.Title, &e.BankID, &e.BankName, &e.TotalCount, &e.TimeLimitSec,
 			&e.OpenAt, &e.CloseAt, &e.Status, &e.Token, &e.CreatedAt,
-			&e.ParticipantCount, &e.SubmittedCount, &e.AvgScore, &e.OwnerID); err != nil {
+			&e.ParticipantCount, &e.SubmittedCount, &e.AvgScore, &e.OwnerID,
+			&shuffleQ, &shuffleO); err != nil {
 			return nil, err
 		}
+		e.ShuffleQuestions = shuffleQ == 1
+		e.ShuffleOptions = shuffleO == 1
 		out = append(out, e)
 	}
 	return out, rows.Err()
@@ -265,32 +317,36 @@ func (s *Store) ListExams(viewer *User) ([]Exam, error) {
 
 func (s *Store) GetExam(id int64) (*Exam, error) {
 	var e Exam
+	var shuffleQ, shuffleO int
 	err := s.DB.QueryRow(`
 		SELECT e.id, e.title, e.bank_id, COALESCE(b.name,''), e.total_count, e.time_limit_sec,
 		       e.open_at, e.close_at, e.status, e.token, e.created_at,
 		       (SELECT COUNT(*) FROM exam_attempts a WHERE a.exam_id = e.id),
 		       (SELECT COUNT(*) FROM exam_attempts a WHERE a.exam_id = e.id AND a.status = 'submitted'),
 		       COALESCE((SELECT AVG(score) FROM exam_attempts a WHERE a.exam_id = e.id AND a.status = 'submitted'), 0),
-		       COALESCE(e.owner_id, 0)
+		       COALESCE(e.owner_id, 0), e.shuffle_questions, e.shuffle_options
 		FROM exams e LEFT JOIN banks b ON b.id = e.bank_id WHERE e.id = ?`, id,
 	).Scan(&e.ID, &e.Title, &e.BankID, &e.BankName, &e.TotalCount, &e.TimeLimitSec,
 		&e.OpenAt, &e.CloseAt, &e.Status, &e.Token, &e.CreatedAt,
-		&e.ParticipantCount, &e.SubmittedCount, &e.AvgScore, &e.OwnerID)
+		&e.ParticipantCount, &e.SubmittedCount, &e.AvgScore, &e.OwnerID, &shuffleQ, &shuffleO)
 	if err != nil {
 		return nil, err
 	}
+	e.ShuffleQuestions = shuffleQ == 1
+	e.ShuffleOptions = shuffleO == 1
 	return &e, nil
 }
 
 func (s *Store) examByToken(token string) (*examRecord, error) {
 	var e examRecord
 	var idsJSON, salt, hash string
+	var shuffleOptions int
 	err := s.DB.QueryRow(`
 		SELECT id, title, bank_id, total_count, time_limit_sec, open_at, close_at, status,
-		       token, created_at, question_ids_json, password_salt, password_hash
+		       token, created_at, question_ids_json, password_salt, password_hash, shuffle_options
 		FROM exams WHERE token = ?`, token,
 	).Scan(&e.ID, &e.Title, &e.BankID, &e.TotalCount, &e.TimeLimitSec, &e.OpenAt, &e.CloseAt,
-		&e.Status, &e.Token, &e.CreatedAt, &idsJSON, &salt, &hash)
+		&e.Status, &e.Token, &e.CreatedAt, &idsJSON, &salt, &hash, &shuffleOptions)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrExamNotFound
@@ -299,6 +355,7 @@ func (s *Store) examByToken(token string) (*examRecord, error) {
 	}
 	e.PasswordSalt = salt
 	e.PasswordHash = hash
+	e.ShuffleOptions = shuffleOptions == 1
 	_ = json.Unmarshal([]byte(idsJSON), &e.QuestionIDs)
 	return &e, nil
 }
@@ -446,13 +503,16 @@ func (s *Store) StartExamAttempt(token, name, studentNo, password string) (*Exam
 	questions := make([]PublicQuestion, 0, len(snapshots))
 	for i, snap := range snapshots {
 		raw, _ := json.Marshal(snap)
+		order := initialOptionOrder(snap.Options, exam.ShuffleOptions)
+		orderJSON, _ := json.Marshal(order)
 		if _, err := tx.Exec(`
-			INSERT INTO exam_answers(attempt_id, seq, question_id, snapshot_json)
-			VALUES(?, ?, ?, ?)`, attemptID, i+1, snap.ID, string(raw)); err != nil {
+			INSERT INTO exam_answers(attempt_id, seq, question_id, snapshot_json, option_order)
+			VALUES(?, ?, ?, ?, ?)`, attemptID, i+1, snap.ID, string(raw), string(orderJSON)); err != nil {
 			return nil, err
 		}
 		questions = append(questions, PublicQuestion{
-			Seq: i + 1, Type: snap.Type, Stem: snap.Stem, StemImage: snap.StemImage, Options: snap.Options,
+			Seq: i + 1, Type: snap.Type, Stem: snap.Stem, StemImage: snap.StemImage,
+			Options: publicOptions(snap.Options, order),
 		})
 	}
 	if err := tx.Commit(); err != nil {
@@ -460,9 +520,9 @@ func (s *Store) StartExamAttempt(token, name, studentNo, password string) (*Exam
 	}
 	return &ExamStart{
 		State: "ongoing", AttemptToken: attemptToken, Name: name, StudentNo: studentNo,
-		DeadlineAt: deadlineAt.Format(time.RFC3339Nano),
+		DeadlineAt:   deadlineAt.Format(time.RFC3339Nano),
 		RemainingSec: int(deadlineAt.Sub(now).Seconds()),
-		Title: exam.Title, TotalCount: exam.TotalCount, TimeLimitSec: exam.TimeLimitSec,
+		Title:        exam.Title, TotalCount: exam.TotalCount, TimeLimitSec: exam.TimeLimitSec,
 		Questions: questions, Saved: []SavedAnswer{},
 	}, nil
 }
@@ -476,7 +536,7 @@ func (s *Store) loadAttempt(examID int64, attemptToken string) ([]PublicQuestion
 		return nil, nil, ErrAttemptNotFound
 	}
 	rows, err := s.DB.Query(`
-		SELECT seq, snapshot_json, COALESCE(chosen,'') FROM exam_answers
+		SELECT seq, snapshot_json, COALESCE(chosen,''), COALESCE(option_order,'') FROM exam_answers
 		WHERE attempt_id = ? ORDER BY seq`, attemptID)
 	if err != nil {
 		return nil, nil, err
@@ -486,16 +546,18 @@ func (s *Store) loadAttempt(examID int64, attemptToken string) ([]PublicQuestion
 	saved := []SavedAnswer{}
 	for rows.Next() {
 		var seq int
-		var raw, chosenRaw string
-		if err := rows.Scan(&seq, &raw, &chosenRaw); err != nil {
+		var raw, chosenRaw, orderRaw string
+		if err := rows.Scan(&seq, &raw, &chosenRaw, &orderRaw); err != nil {
 			return nil, nil, err
 		}
 		var snap questionSnapshot
 		if err := json.Unmarshal([]byte(raw), &snap); err != nil {
 			return nil, nil, err
 		}
+		order := optionOrderOf(orderRaw, snap.Options)
 		questions = append(questions, PublicQuestion{
-			Seq: seq, Type: snap.Type, Stem: snap.Stem, StemImage: snap.StemImage, Options: snap.Options,
+			Seq: seq, Type: snap.Type, Stem: snap.Stem, StemImage: snap.StemImage,
+			Options: publicOptions(snap.Options, order),
 		})
 		if chosenRaw != "" {
 			saved = append(saved, SavedAnswer{Seq: seq, Chosen: parseKeys(chosenRaw)})
@@ -583,7 +645,7 @@ func (s *Store) SubmitExamAttempt(examToken, attemptToken string) (*ExamResult, 
 
 func (s *Store) finalizeAttempt(attemptID, examID int64) (*ExamResult, error) {
 	rows, err := s.DB.Query(`
-		SELECT seq, snapshot_json, COALESCE(chosen,'') FROM exam_answers
+		SELECT seq, snapshot_json, COALESCE(chosen,''), COALESCE(option_order,'') FROM exam_answers
 		WHERE attempt_id = ? ORDER BY seq`, attemptID)
 	if err != nil {
 		return nil, err
@@ -592,8 +654,8 @@ func (s *Store) finalizeAttempt(attemptID, examID int64) (*ExamResult, error) {
 	correct, answered := 0, 0
 	for rows.Next() {
 		var seq int
-		var raw, chosenRaw string
-		if err := rows.Scan(&seq, &raw, &chosenRaw); err != nil {
+		var raw, chosenRaw, orderRaw string
+		if err := rows.Scan(&seq, &raw, &chosenRaw, &orderRaw); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -602,6 +664,7 @@ func (s *Store) finalizeAttempt(attemptID, examID int64) (*ExamResult, error) {
 			rows.Close()
 			return nil, err
 		}
+		order := optionOrderOf(orderRaw, snap.Options)
 		chosen := parseKeys(chosenRaw)
 		isCorrect := len(chosen) > 0 && equalKeys(chosen, snap.Answer)
 		if len(chosen) > 0 {
@@ -612,8 +675,9 @@ func (s *Store) finalizeAttempt(attemptID, examID int64) (*ExamResult, error) {
 		}
 		details = append(details, ResultDetail{
 			Seq: seq, Type: snap.Type, Stem: snap.Stem, StemImage: snap.StemImage,
-			Options: snap.Options, Chosen: chosen, Answer: snap.Answer, Analysis: snap.Analysis,
-			IsCorrect: isCorrect,
+			Options: publicOptions(snap.Options, order), Chosen: chosen, Answer: snap.Answer,
+			ChosenLabels: displayLabels(order, chosen), AnswerLabels: displayLabels(order, snap.Answer),
+			Analysis: snap.Analysis, IsCorrect: isCorrect,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -698,7 +762,7 @@ func (s *Store) resultForAttempt(attemptID int64) (*ExamResult, error) {
 		return nil, ErrAttemptNotFound
 	}
 	rows, err := s.DB.Query(`
-		SELECT seq, snapshot_json, COALESCE(chosen,''), COALESCE(is_correct,0)
+		SELECT seq, snapshot_json, COALESCE(chosen,''), COALESCE(is_correct,0), COALESCE(option_order,'')
 		FROM exam_answers WHERE attempt_id = ? ORDER BY seq`, attemptID)
 	if err != nil {
 		return nil, err
@@ -707,17 +771,20 @@ func (s *Store) resultForAttempt(attemptID int64) (*ExamResult, error) {
 	details := []ResultDetail{}
 	for rows.Next() {
 		var seq, isCorrect int
-		var raw, chosenRaw string
-		if err := rows.Scan(&seq, &raw, &chosenRaw, &isCorrect); err != nil {
+		var raw, chosenRaw, orderRaw string
+		if err := rows.Scan(&seq, &raw, &chosenRaw, &isCorrect, &orderRaw); err != nil {
 			return nil, err
 		}
 		var snap questionSnapshot
 		if err := json.Unmarshal([]byte(raw), &snap); err != nil {
 			return nil, err
 		}
+		order := optionOrderOf(orderRaw, snap.Options)
+		chosen := parseKeys(chosenRaw)
 		details = append(details, ResultDetail{
 			Seq: seq, Type: snap.Type, Stem: snap.Stem, StemImage: snap.StemImage,
-			Options: snap.Options, Chosen: parseKeys(chosenRaw), Answer: snap.Answer,
+			Options: publicOptions(snap.Options, order), Chosen: chosen, Answer: snap.Answer,
+			ChosenLabels: displayLabels(order, chosen), AnswerLabels: displayLabels(order, snap.Answer),
 			Analysis: snap.Analysis, IsCorrect: isCorrect == 1,
 		})
 	}
