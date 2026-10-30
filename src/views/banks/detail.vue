@@ -49,6 +49,7 @@
             {{ tag.name }}（{{ tag.questionCount }}）
           </a-select-option>
         </a-select>
+        <a-button v-if="auth.isAdmin" type="link" size="small" @click="openTagManager">标签管理</a-button>
       </div>
       <div class="panel-body" :class="{ 'empty-state': !loading && items.length === 0 }">
         <a-spin :spinning="loading">
@@ -178,6 +179,86 @@
         </a-table>
       </div>
     </section>
+
+    <a-modal
+      v-model:open="tagModalOpen"
+      title="标签管理"
+      :footer="null"
+      :width="620"
+    >
+      <div class="tag-manage">
+        <a-empty v-if="allTags.length === 0" description="还没有标签，可在编辑题目时添加" />
+        <a-table
+          v-else
+          :data-source="allTags"
+          :columns="tagColumns"
+          row-key="id"
+          size="small"
+          :pagination="false"
+          :scroll="{ y: 360 }"
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'name'">
+              <a-input
+                v-if="editingTagId === record.id"
+                v-model:value="editingTagName"
+                size="small"
+                :maxlength="20"
+                @press-enter="saveTagRename(record)"
+              />
+              <span v-else>{{ record.name }}</span>
+            </template>
+            <template v-else-if="column.key === 'questionCount'">
+              <span class="muted">{{ record.questionCount }} 道</span>
+            </template>
+            <template v-else-if="column.key === 'actions'">
+              <a-space>
+                <template v-if="editingTagId === record.id">
+                  <a-button type="link" size="small" @click="saveTagRename(record)">保存</a-button>
+                  <a-button type="link" size="small" @click="cancelTagRename">取消</a-button>
+                </template>
+                <template v-else>
+                  <a-button type="link" size="small" @click="startTagRename(record)">重命名</a-button>
+                  <a-button
+                    type="link"
+                    size="small"
+                    :disabled="allTags.length < 2"
+                    @click="openMerge(record)"
+                  >
+                    合并
+                  </a-button>
+                  <a-popconfirm
+                    :title="`删除标签「${record.name}」？只解除题目标签，不会删除题目。`"
+                    ok-text="删除"
+                    cancel-text="取消"
+                    @confirm="removeTag(record)"
+                  >
+                    <a-button type="link" size="small" danger>删除</a-button>
+                  </a-popconfirm>
+                </template>
+              </a-space>
+            </template>
+          </template>
+        </a-table>
+      </div>
+    </a-modal>
+
+    <a-modal
+      v-model:open="mergeModalOpen"
+      :title="`合并标签「${mergeSource?.name ?? ''}」`"
+      :confirm-loading="mergeSaving"
+      ok-text="确认合并"
+      cancel-text="取消"
+      :width="420"
+      @ok="confirmMerge"
+    >
+      <p class="muted merge-tip">合并后该标签下的题目会转到目标标签，原标签将被删除。</p>
+      <a-select v-model:value="mergeTargetId" style="width: 100%" placeholder="选择合并到的标签">
+        <a-select-option v-for="t in mergeTargets" :key="t.id" :value="t.id">
+          {{ t.name }}（{{ t.questionCount }} 道）
+        </a-select-option>
+      </a-select>
+    </a-modal>
 
     <a-modal
       v-model:open="bankModalOpen"
@@ -464,6 +545,93 @@ async function loadTags() {
   }
 }
 
+const tagModalOpen = ref(false)
+const allTags = ref<Tag[]>([])
+const tagColumns = [
+  { title: '标签', key: 'name', dataIndex: 'name' },
+  { title: '题目数', key: 'questionCount', width: 90 },
+  { title: '操作', key: 'actions', width: 200 },
+]
+const editingTagId = ref<number | null>(null)
+const editingTagName = ref('')
+const mergeModalOpen = ref(false)
+const mergeSource = ref<Tag | null>(null)
+const mergeTargetId = ref<number | undefined>(undefined)
+const mergeSaving = ref(false)
+const mergeTargets = computed(() => allTags.value.filter((t) => t.id !== mergeSource.value?.id))
+
+async function loadAllTags() {
+  const res = await banksApi.tags()
+  allTags.value = res.items
+}
+
+function openTagManager() {
+  tagModalOpen.value = true
+  void loadAllTags()
+}
+
+function startTagRename(tag: Tag) {
+  editingTagId.value = tag.id
+  editingTagName.value = tag.name
+}
+
+function cancelTagRename() {
+  editingTagId.value = null
+  editingTagName.value = ''
+}
+
+async function refreshAfterTagChange() {
+  await Promise.all([loadAllTags(), loadTags()])
+  if (filters.tag && !bankTags.value.some((t) => t.name === filters.tag)) {
+    filters.tag = undefined
+  }
+  await loadQuestions()
+}
+
+async function saveTagRename(tag: Tag) {
+  const name = editingTagName.value.trim()
+  if (!name) {
+    message.warning('标签名称不能为空')
+    return
+  }
+  if (name === tag.name) {
+    cancelTagRename()
+    return
+  }
+  await banksApi.renameTag(tag.id, name)
+  message.success('标签已重命名')
+  cancelTagRename()
+  await refreshAfterTagChange()
+}
+
+function openMerge(tag: Tag) {
+  mergeSource.value = tag
+  mergeTargetId.value = undefined
+  mergeModalOpen.value = true
+}
+
+async function confirmMerge() {
+  if (!mergeSource.value || !mergeTargetId.value) {
+    message.warning('请选择合并到的标签')
+    return
+  }
+  mergeSaving.value = true
+  try {
+    await banksApi.mergeTag(mergeSource.value.id, mergeTargetId.value)
+    message.success('标签已合并')
+    mergeModalOpen.value = false
+    await refreshAfterTagChange()
+  } finally {
+    mergeSaving.value = false
+  }
+}
+
+async function removeTag(tag: Tag) {
+  await banksApi.removeTag(tag.id)
+  message.success('标签已删除')
+  await refreshAfterTagChange()
+}
+
 const importJobs = ref<ImportJob[]>([])
 const importColumns = [
   { title: '导入时间', key: 'createdAt', width: 150 },
@@ -735,4 +903,5 @@ onMounted(async () => {
 .danger { color: #c0392b; }
 .tag-chip { margin-inline-end: 0; }
 .tag-hint { margin-top: 4px; font-size: 12px; }
+.merge-tip { margin: 0 0 12px; }
 </style>

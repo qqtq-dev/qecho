@@ -63,6 +63,28 @@
           判断题自动转为单选；导入前会列出列映射，可手动调整；默认跳过与题库内已有题目重复的行。
         </div>
 
+        <div class="image-row">
+          <input
+            ref="imageInput"
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            multiple
+            hidden
+            @change="onImagesChange"
+          />
+          <a-button size="small" :disabled="!!busy" @click="pickImages">选择题图文件</a-button>
+          <template v-if="images.length === 0">
+            <span class="muted small">
+              可选：题干图片列填的是文件名时，在这里一起选择对应图片，导入时按文件名自动关联
+            </span>
+          </template>
+          <template v-else>
+            <a-tag color="green">{{ images.length }} 张题图</a-tag>
+            <span class="muted small image-names">{{ imageNamesText }}</span>
+            <a-button type="link" size="small" @click="clearImages">清空</a-button>
+          </template>
+        </div>
+
         <div class="footer">
           <a-button @click="close">取消</a-button>
           <a-button
@@ -87,6 +109,9 @@
             <a-tag color="green">可导入 {{ preview.valid }}</a-tag>
             <a-tag v-if="preview.duplicate" color="orange">重复跳过 {{ preview.duplicate }}</a-tag>
             <a-tag v-if="preview.invalid" color="red">错误 {{ preview.invalid }}</a-tag>
+            <a-tag v-if="preview.imageUploaded" color="geekblue">
+              题图已关联 {{ preview.imageMatched }} 道 / 上传 {{ preview.imageUploaded }} 张
+            </a-tag>
           </div>
         </div>
 
@@ -258,6 +283,8 @@ const emit = defineEmits<{
 }>()
 
 const fileInput = ref<HTMLInputElement | null>(null)
+const imageInput = ref<HTMLInputElement | null>(null)
+const images = ref<File[]>([])
 const mode = ref<'existing' | 'new'>('existing')
 const selectedBankId = ref<number | undefined>()
 const newBankName = ref('')
@@ -324,6 +351,11 @@ const sizeText = computed(() => {
   return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(file.value.size / 1024))} KB`
 })
 
+const imageNamesText = computed(() => {
+  const names = images.value.slice(0, 3).map((f) => f.name)
+  return names.join('、') + (images.value.length > 3 ? ' 等' : '')
+})
+
 const fieldLabels: Record<string, string> = {
   type: '题型',
   stem: '题干',
@@ -361,11 +393,13 @@ function reset() {
   policy.value = 'skip'
   sheet.value = undefined
   headerRow.value = 1
+  images.value = []
   for (const key of Object.keys(mappingDraft)) delete mappingDraft[key]
   targetId.value = props.bankId
   selectedBankId.value = writableBanks.value[0]?.id
   mode.value = writableBanks.value.length ? 'existing' : 'new'
   if (fileInput.value) fileInput.value.value = ''
+  if (imageInput.value) imageInput.value.value = ''
 }
 
 watch(
@@ -378,6 +412,40 @@ watch(
 function pickFile() {
   if (busy.value) return
   fileInput.value?.click()
+}
+
+function pickImages() {
+  if (busy.value) return
+  imageInput.value?.click()
+}
+
+function onImagesChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  addImages(Array.from(input.files ?? []))
+  input.value = ''
+}
+
+function addImages(list: File[]) {
+  if (!list.length) return
+  const accepted: File[] = []
+  for (const f of list) {
+    if (!/\.(png|jpe?g|webp|gif)$/i.test(f.name)) continue
+    if (f.size > 8 * 1024 * 1024) continue
+    if (images.value.some((i) => i.name === f.name && i.size === f.size)) continue
+    accepted.push(f)
+  }
+  if (accepted.length < list.length) {
+    message.warning('已忽略不符合要求的图片（PNG / JPEG / WebP / GIF，单张不超过 8 MB）')
+  }
+  if (images.value.length + accepted.length > 300) {
+    message.warning('一次最多选择 300 张题图')
+  }
+  images.value = images.value.concat(accepted).slice(0, 300)
+}
+
+function clearImages() {
+  images.value = []
+  if (imageInput.value) imageInput.value.value = ''
 }
 
 function onFileChange(event: Event) {
@@ -460,7 +528,7 @@ async function runPreview(bankID: number) {
   if (!file.value) return
   busy.value = 'preview'
   try {
-    const res = await banksApi.importPreview(bankID, file.value, previewOptions())
+    const res = await banksApi.importPreview(bankID, file.value, previewOptions(), images.value)
     preview.value = res
     sheet.value = res.sheet || undefined
     headerRow.value = res.headerRow || 1
@@ -564,6 +632,23 @@ function close() {
   color: #6b7a73;
   font-size: 12px;
   line-height: 1.7;
+}
+.image-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e2e6e4;
+  border-radius: 8px;
+  background: #fbfdfc;
+}
+.image-names {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .footer {
   display: flex;

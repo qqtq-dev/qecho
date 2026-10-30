@@ -24,8 +24,85 @@
 
       <section class="panel">
         <div class="panel-head">
+          <h3>账号安全</h3>
+        </div>
+        <div class="panel-body">
+          <div class="row">
+            <div>
+              <div class="row-title">{{ auth.username }}</div>
+              <div class="muted">
+                {{ auth.isAdmin ? '管理员账号' : '普通账号' }} · 密码用于网页版登录与重新登录
+              </div>
+            </div>
+            <a-button @click="openPasswordModal">修改密码</a-button>
+          </div>
+        </div>
+      </section>
+
+      <section v-if="auth.isAdmin" class="panel">
+        <div class="panel-head">
+          <h3>用户管理</h3>
+          <a-button size="small" :loading="usersLoading" @click="loadUsers">刷新</a-button>
+        </div>
+        <div class="panel-body">
+          <a-table
+            :data-source="users"
+            :columns="userColumns"
+            :pagination="false"
+            row-key="id"
+            size="small"
+            :loading="usersLoading"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'username'">
+                <div class="user-cell">
+                  <span>{{ record.username }}</span>
+                  <a-tag v-if="record.username === auth.username" color="green">当前账号</a-tag>
+                  <a-tag v-if="record.username === 'local'" color="blue">本机</a-tag>
+                </div>
+              </template>
+              <template v-else-if="column.key === 'role'">
+                <a-tag :color="record.role === 'admin' ? 'green' : 'default'">
+                  {{ record.role === 'admin' ? '管理员' : '普通用户' }}
+                </a-tag>
+              </template>
+              <template v-else-if="column.key === 'createdAt'">
+                <span class="muted">{{ formatTime(record.createdAt) }}</span>
+              </template>
+              <template v-else-if="column.key === 'lastLoginAt'">
+                <span class="muted">{{ record.lastLoginAt ? formatTime(record.lastLoginAt) : '—' }}</span>
+              </template>
+              <template v-else-if="column.key === 'actions'">
+                <a-space :size="6">
+                  <a-button
+                    size="small"
+                    :disabled="record.username === 'local' || record.username === auth.username"
+                    @click="toggleRole(record)"
+                  >
+                    {{ record.role === 'admin' ? '设为普通用户' : '设为管理员' }}
+                  </a-button>
+                  <a-button
+                    size="small"
+                    :disabled="record.username === 'local'"
+                    @click="openReset(record)"
+                  >
+                    重置密码
+                  </a-button>
+                </a-space>
+              </template>
+            </template>
+          </a-table>
+          <p class="note">重置密码会让该用户已登录的会话失效；本机账号请使用上方“修改密码”。</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
           <h3>本地引擎</h3>
-          <a-tag :color="healthy ? 'green' : 'red'">{{ healthy ? '正常' : '异常' }}</a-tag>
+          <a-space>
+            <a-button v-if="auth.isAdmin" size="small" @click="openLogs">诊断日志</a-button>
+            <a-tag :color="healthy ? 'green' : 'red'">{{ healthy ? '正常' : '异常' }}</a-tag>
+          </a-space>
         </div>
         <div class="panel-body">
           <dl class="kv">
@@ -157,11 +234,73 @@
           <dl class="kv">
             <div><dt>应用</dt><dd>Qecho</dd></div>
             <div><dt>技术栈</dt><dd>Tauri 2 · Vue 3 · Go · SQLite</dd></div>
-            <div><dt>版本</dt><dd>0.1.0</dd></div>
+            <div><dt>版本</dt><dd>{{ status?.version ?? appStore.health?.version ?? '—' }}</dd></div>
           </dl>
         </div>
       </section>
     </div>
+
+    <a-drawer v-model:open="logsOpen" title="诊断日志" :width="680" placement="right">
+      <div class="diag">
+        <a-descriptions :column="1" size="small" bordered>
+          <a-descriptions-item label="引擎版本">
+            {{ logs?.version ?? status?.version ?? '—' }}
+          </a-descriptions-item>
+          <a-descriptions-item label="监听端口">{{ logs?.port ?? '—' }}</a-descriptions-item>
+          <a-descriptions-item label="数据目录">
+            {{ logs?.dataDir ?? status?.dataDir ?? '—' }}
+          </a-descriptions-item>
+          <a-descriptions-item label="日志行数">{{ logs?.lines.length ?? 0 }}</a-descriptions-item>
+        </a-descriptions>
+        <div class="log-toolbar">
+          <span class="muted">最近 {{ logs?.lines.length ?? 0 }} 行 · 含慢请求与错误记录</span>
+          <a-space>
+            <a-button size="small" :loading="logsLoading" @click="loadLogs">刷新</a-button>
+            <a-button size="small" :disabled="!logText" @click="copyLogs">复制</a-button>
+          </a-space>
+        </div>
+        <pre class="log-box">{{ logText || '暂时没有日志' }}</pre>
+        <p class="note">完整日志按天保存在数据目录的 logs 文件夹，可连同截图一起反馈问题。</p>
+      </div>
+    </a-drawer>
+
+    <a-modal
+      v-model:open="pwdOpen"
+      title="修改密码"
+      :confirm-loading="pwdSaving"
+      ok-text="保存"
+      cancel-text="取消"
+      :width="420"
+      @ok="savePassword"
+    >
+      <a-form layout="vertical">
+        <a-form-item label="当前密码" :extra="auth.username === 'local' ? '本机账号尚未设置密码时可留空' : undefined">
+          <a-input-password v-model:value="pwdForm.oldPassword" autocomplete="current-password" />
+        </a-form-item>
+        <a-form-item label="新密码" extra="8–72 位">
+          <a-input-password v-model:value="pwdForm.newPassword" autocomplete="new-password" />
+        </a-form-item>
+        <a-form-item label="确认新密码">
+          <a-input-password v-model:value="pwdForm.confirm" autocomplete="new-password" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
+    <a-modal
+      v-model:open="resetOpen"
+      :title="`重置密码：${resetUser?.username ?? ''}`"
+      :confirm-loading="resetSaving"
+      ok-text="重置"
+      cancel-text="取消"
+      :width="420"
+      @ok="saveReset"
+    >
+      <a-form layout="vertical">
+        <a-form-item label="新密码" extra="8–72 位；重置后该用户需用新密码重新登录">
+          <a-input-password v-model:value="resetForm.password" autocomplete="new-password" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
@@ -169,7 +308,9 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { Modal, message } from 'ant-design-vue'
 import PageHeader from '@/components/PageHeader.vue'
-import { engineApi, type EngineStatus } from '@/api/engine'
+import { authApi } from '@/api/auth'
+import { usersApi, type UserItem } from '@/api/users'
+import { engineApi, type EngineStatus, type SystemLogs } from '@/api/engine'
 import { backupsApi, type BackupItem, type BackupOverview } from '@/api/backups'
 import { settingsApi, type Settings } from '@/api/settings'
 import { getApiBase, isTauri } from '@/api/request'
@@ -266,6 +407,100 @@ function formatTime(value: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleString('zh-CN', { hour12: false })
+}
+
+const users = ref<UserItem[]>([])
+const usersLoading = ref(false)
+const userColumns = [
+  { title: '用户', key: 'username', dataIndex: 'username' },
+  { title: '角色', key: 'role', width: 100 },
+  { title: '注册时间', key: 'createdAt', width: 160 },
+  { title: '最近登录', key: 'lastLoginAt', width: 160 },
+  { title: '操作', key: 'actions', width: 210 },
+]
+
+async function loadUsers() {
+  usersLoading.value = true
+  try {
+    users.value = (await usersApi.list()).items
+  } finally {
+    usersLoading.value = false
+  }
+}
+
+function toggleRole(item: UserItem) {
+  const target: 'admin' | 'user' = item.role === 'admin' ? 'user' : 'admin'
+  Modal.confirm({
+    title: target === 'admin' ? '设为管理员' : '取消管理员',
+    content:
+      target === 'admin'
+        ? `将 ${item.username} 设为管理员，可管理用户、共享标签与全局设置。`
+        : `将 ${item.username} 设为普通用户，其只能管理自己的题库。`,
+    okText: '确定',
+    cancelText: '取消',
+    async onOk() {
+      await usersApi.updateRole(item.id, target)
+      message.success('角色已更新')
+      await loadUsers()
+    },
+  })
+}
+
+const resetOpen = ref(false)
+const resetSaving = ref(false)
+const resetUser = ref<UserItem | null>(null)
+const resetForm = reactive({ password: '' })
+
+function openReset(item: UserItem) {
+  resetUser.value = item
+  resetForm.password = ''
+  resetOpen.value = true
+}
+
+async function saveReset() {
+  if (!resetUser.value) return
+  if (resetForm.password.length < 8 || resetForm.password.length > 72) {
+    message.warning('密码长度需为 8–72 位')
+    return
+  }
+  resetSaving.value = true
+  try {
+    await usersApi.resetPassword(resetUser.value.id, resetForm.password)
+    message.success(`已重置 ${resetUser.value.username} 的密码`)
+    resetOpen.value = false
+  } finally {
+    resetSaving.value = false
+  }
+}
+
+const pwdOpen = ref(false)
+const pwdSaving = ref(false)
+const pwdForm = reactive({ oldPassword: '', newPassword: '', confirm: '' })
+
+function openPasswordModal() {
+  pwdForm.oldPassword = ''
+  pwdForm.newPassword = ''
+  pwdForm.confirm = ''
+  pwdOpen.value = true
+}
+
+async function savePassword() {
+  if (pwdForm.newPassword.length < 8 || pwdForm.newPassword.length > 72) {
+    message.warning('新密码长度需为 8–72 位')
+    return
+  }
+  if (pwdForm.newPassword !== pwdForm.confirm) {
+    message.warning('两次输入的新密码不一致')
+    return
+  }
+  pwdSaving.value = true
+  try {
+    await authApi.changePassword(pwdForm.oldPassword, pwdForm.newPassword)
+    message.success('密码已更新')
+    pwdOpen.value = false
+  } finally {
+    pwdSaving.value = false
+  }
 }
 
 async function loadBackups() {
@@ -388,6 +623,47 @@ async function loadStatus() {
   }
 }
 
+const logsOpen = ref(false)
+const logsLoading = ref(false)
+const logs = ref<SystemLogs | null>(null)
+const logText = computed(() => (logs.value?.lines ?? []).join('\n'))
+
+function openLogs() {
+  logsOpen.value = true
+  void loadLogs()
+}
+
+async function loadLogs() {
+  logsLoading.value = true
+  try {
+    logs.value = await engineApi.logs()
+  } finally {
+    logsLoading.value = false
+  }
+}
+
+async function copyLogs() {
+  const text = logText.value
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    message.success('日志已复制')
+    return
+  } catch {
+    /* 回退到 execCommand */
+  }
+  const area = document.createElement('textarea')
+  area.value = text
+  area.style.position = 'fixed'
+  area.style.opacity = '0'
+  document.body.appendChild(area)
+  area.select()
+  const ok = document.execCommand('copy')
+  document.body.removeChild(area)
+  if (ok) message.success('日志已复制')
+  else message.error('复制失败，请手动选择日志内容')
+}
+
 async function syncCloseBehavior(behavior: string) {
   if (!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) return
   try {
@@ -402,7 +678,10 @@ onMounted(() => {
   loadStatus()
   loadSettings()
   syncCloseBehavior(closeBehavior.value)
-  if (auth.isAdmin) loadBackups()
+  if (auth.isAdmin) {
+    loadBackups()
+    loadUsers()
+  }
 })
 </script>
 
@@ -415,6 +694,7 @@ onMounted(() => {
 .retention-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 12px; margin-bottom: 10px; }
 .retention-row label { display: inline-flex; align-items: center; gap: 6px; color: var(--text2); }
 .row-title { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+.user-cell { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .kv { margin: 0; display: grid; gap: 10px; }
 .kv > div { display: flex; justify-content: space-between; gap: 16px; }
 .kv dt { color: var(--text2); font-size: 12px; flex: 0 0 auto; }
@@ -428,4 +708,21 @@ onMounted(() => {
 .backup-row:last-child { border-bottom: 0; }
 .backup-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .backup-name { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diag { display: grid; gap: 14px; }
+.log-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.log-box {
+  margin: 0;
+  min-height: 240px;
+  max-height: 52vh;
+  overflow: auto;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #101713;
+  color: #cfe8da;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
 </style>

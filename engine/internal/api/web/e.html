@@ -215,6 +215,8 @@
 
   .save-state { text-align: center; font-size: 12.5px; color: var(--text2); min-height: 18px; margin-top: 4px; }
   .save-state.err { color: var(--danger); }
+  .kbd-hint { text-align: center; font-size: 12px; color: var(--text2); margin-top: 2px; }
+  @media (hover: none) { .kbd-hint { display: none; } }
 
   .submit-bar {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
@@ -583,6 +585,61 @@
     return num;
   }
 
+  function activeSeq() {
+    var cards = document.querySelectorAll('.q-card[data-card-seq]');
+    var best = 0;
+    var bestDist = Infinity;
+    for (var i = 0; i < cards.length; i++) {
+      var rect = cards[i].getBoundingClientRect();
+      if (rect.bottom < 120) continue;
+      var dist = Math.abs(rect.top - 110);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = Number(cards[i].getAttribute('data-card-seq'));
+      }
+    }
+    return best;
+  }
+
+  function scrollToSeq(seq) {
+    var target = document.querySelector('.q-card[data-card-seq="' + seq + '"]');
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function onKeydown(e) {
+    if (!state.questions.length || state.submitting) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    var target = e.target;
+    var tag = (target && target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (target && target.isContentEditable)) return;
+    if (document.querySelector('.modal-mask') || document.querySelector('.img-viewer')) return;
+    var seq = activeSeq();
+    var question = null;
+    for (var i = 0; i < state.questions.length; i++) {
+      if (state.questions[i].seq === seq) { question = state.questions[i]; break; }
+    }
+    if (!question) return;
+    var upper = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+    var letterIdx = e.key.length === 1 && upper >= 'A' && upper <= 'H' ? upper.charCodeAt(0) - 65 : -1;
+    var numberIdx = e.key.length === 1 && e.key >= '1' && e.key <= '8' ? Number(e.key) - 1 : -1;
+    var optIdx = letterIdx >= 0 ? letterIdx : numberIdx;
+    if (optIdx >= 0) {
+      var opts = question.options || [];
+      if (!opts[optIdx]) return;
+      e.preventDefault();
+      toggleAnswer(question, opts[optIdx].key, question.type === 'multiple');
+      syncQuestionSelection(question.seq);
+      return;
+    }
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      scrollToSeq(Math.min(seq + 1, state.questions.length));
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      scrollToSeq(Math.max(seq - 1, 1));
+    }
+  }
+
   function enterExam(data) {
     state.attemptToken = data.attemptToken;
     state.questions = data.questions || [];
@@ -621,7 +678,8 @@
     });
 
     var saveState = el('div', { class: 'save-state', id: 'save-state', text: '答案会自动保存' });
-    var main = el('div', { class: 'exam-main' }, [head, nav, saveState]);
+    var kbdHint = el('div', { class: 'kbd-hint', text: '键盘作答：A–H / 1–8 选择选项 · ↑ ↓ 切换题目' });
+    var main = el('div', { class: 'exam-main' }, [head, nav, saveState, kbdHint]);
     state.questions.forEach(function (q) {
       main.appendChild(renderQuestion(q));
     });
@@ -856,6 +914,7 @@
   }
 
   function boot() {
+    document.addEventListener('keydown', onKeydown);
     if (!token) { fatal('链接无效', '缺少考试标识，请向组织者索取完整链接。'); return; }
     loading();
     var savedRaw = localStorage.getItem(storeKey);

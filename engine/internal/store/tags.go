@@ -2,6 +2,8 @@ package store
 
 import (
 	"database/sql"
+	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -136,4 +138,89 @@ func (s *Store) loadQuestionTags(q *Question) error {
 // deleteOrphanTags 清理已没有任何题目的标签。
 func (s *Store) deleteOrphanTags() {
 	_, _ = s.DB.Exec(`DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM question_tags)`)
+}
+
+func (s *Store) RenameTag(id int64, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("标签名称不能为空")
+	}
+	if len([]rune(name)) > 20 {
+		return fmt.Errorf("标签名称不能超过 20 个字")
+	}
+	var existing int64
+	err := s.DB.QueryRow("SELECT id FROM tags WHERE name = ? COLLATE NOCASE", name).Scan(&existing)
+	if err == nil && existing != id {
+		return fmt.Errorf("已存在同名标签")
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	res, err := s.DB.Exec("UPDATE tags SET name = ? WHERE id = ?", name, id)
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") {
+			return fmt.Errorf("已存在同名标签")
+		}
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func tagExists(tx *sql.Tx, id int64) error {
+	var got int64
+	if err := tx.QueryRow("SELECT id FROM tags WHERE id = ?", id).Scan(&got); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MergeTag 把 source 下的题目改挂到 target，再删除 source。
+func (s *Store) MergeTag(sourceID, targetID int64) error {
+	if sourceID == targetID {
+		return fmt.Errorf("不能合并到自身")
+	}
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := tagExists(tx, sourceID); err != nil {
+		return err
+	}
+	if err := tagExists(tx, targetID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT OR IGNORE INTO question_tags(question_id, tag_id)
+		SELECT question_id, ? FROM question_tags WHERE tag_id = ?`, targetID, sourceID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("DELETE FROM question_tags WHERE tag_id = ?", sourceID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("DELETE FROM tags WHERE id = ?", sourceID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// DeleteTag 只解除题目标签关联，不影响题目本身。
+func (s *Store) DeleteTag(id int64) error {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := tagExists(tx, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("DELETE FROM question_tags WHERE tag_id = ?", id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec("DELETE FROM tags WHERE id = ?", id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

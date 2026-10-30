@@ -18,6 +18,13 @@ type StatsBank struct {
 	Correct  int    `json:"correct"`
 }
 
+type StatsTag struct {
+	TagID    int64  `json:"tagId"`
+	TagName  string `json:"tagName"`
+	Answered int    `json:"answered"`
+	Correct  int    `json:"correct"`
+}
+
 type Stats struct {
 	Range            string            `json:"range"`
 	AnsweredTotal    int               `json:"answeredTotal"`
@@ -32,22 +39,9 @@ type Stats struct {
 
 // Stats 按时间范围汇总练习与考试作答，趋势按本地日期分组。
 func (s *Store) Stats(user *User, rangeKey string) (*Stats, error) {
-	days := 7
-	switch rangeKey {
-	case "30d":
-		days = 30
-	case "all":
-		days = 0
-	default:
-		rangeKey = "7d"
-	}
-
+	rangeKey, days, startDay := statsRange(rangeKey)
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	startDay := ""
-	if days > 0 {
-		startDay = today.AddDate(0, 0, -(days - 1)).Format("2006-01-02")
-	}
 
 	admin := user.Role == "admin"
 	out := &Stats{Range: rangeKey}
@@ -185,6 +179,74 @@ func (s *Store) Stats(user *User, rangeKey string) (*Stats, error) {
 	}
 	out.Banks = banks
 	return out, nil
+}
+
+func statsRange(rangeKey string) (string, int, string) {
+	days := 7
+	switch rangeKey {
+	case "30d":
+		days = 30
+	case "all":
+		days = 0
+	default:
+		rangeKey = "7d"
+	}
+	if days == 0 {
+		return rangeKey, 0, ""
+	}
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	return rangeKey, days, today.AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+}
+
+// StatsTags 统计带标签题目的作答正确率，范围与 Stats 一致。
+func (s *Store) StatsTags(user *User, rangeKey string) ([]StatsTag, error) {
+	_, _, startDay := statsRange(rangeKey)
+
+	pq := `SELECT a.question_id, a.is_correct
+		FROM practice_answers a JOIN practice_sessions s ON s.id = a.session_id
+		WHERE s.user_id = ?`
+	pArgs := []any{user.ID}
+	if startDay != "" {
+		pq += " AND date(a.answered_at, 'localtime') >= ?"
+		pArgs = append(pArgs, startDay)
+	}
+
+	xq := `SELECT a.question_id, a.is_correct
+		FROM exam_answers a
+		JOIN exam_attempts t ON t.id = a.attempt_id
+		JOIN exams e ON e.id = t.exam_id
+		WHERE t.status = 'submitted' AND a.is_correct IS NOT NULL`
+	xArgs := []any{}
+	if startDay != "" {
+		xq += " AND date(t.submitted_at, 'localtime') >= ?"
+		xArgs = append(xArgs, startDay)
+	}
+	if user.Role != "admin" {
+		xq += " AND e.owner_id = ?"
+		xArgs = append(xArgs, user.ID)
+	}
+
+	query := `SELECT t.id, t.name, COUNT(*), COALESCE(SUM(x.is_correct), 0)
+		FROM (` + pq + ` UNION ALL ` + xq + `) x
+		JOIN question_tags qt ON qt.question_id = x.question_id
+		JOIN tags t ON t.id = qt.tag_id
+		GROUP BY t.id, t.name
+		ORDER BY COUNT(*) DESC, t.name`
+	rows, err := s.DB.Query(query, append(pArgs, xArgs...)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []StatsTag{}
+	for rows.Next() {
+		var t StatsTag
+		if err := rows.Scan(&t.TagID, &t.TagName, &t.Answered, &t.Correct); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) scanTrend(query string, args []any, add func(date string, n, c int)) error {

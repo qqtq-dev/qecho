@@ -87,6 +87,8 @@ export interface ImportPreview {
   sample: ImportPreviewQuestion[]
   errors: { row: number; message: string }[]
   warnings: string[]
+  imageUploaded: number
+  imageMatched: number
 }
 
 export interface ImportOptions {
@@ -146,14 +148,19 @@ export const banksApi = {
   removeQuestion: (qid: number) => http.delete<unknown, void>(`/questions/${qid}`),
   bankTags: (id: number) => http.get<unknown, { items: Tag[] }>(`/banks/${id}/tags`),
   tags: () => http.get<unknown, { items: Tag[] }>('/tags'),
-  importPreview: (id: number, file: File, options?: ImportOptions) => {
+  renameTag: (id: number, name: string) => http.put<unknown, void>(`/tags/${id}`, { name }),
+  mergeTag: (id: number, targetId: number) =>
+    http.post<unknown, void>(`/tags/${id}/merge`, { targetId }),
+  removeTag: (id: number) => http.delete<unknown, void>(`/tags/${id}`),
+  importPreview: (id: number, file: File, options?: ImportOptions, images: File[] = []) => {
     const form = new FormData()
     form.append('file', file)
+    for (const image of images) form.append('images', image)
     if (options && (options.sheet || options.headerRow || options.mapping)) {
       form.append('options', JSON.stringify(options))
     }
     return http.post<unknown, ImportPreview>(`/banks/${id}/imports/preview`, form, {
-      timeout: 120000,
+      timeout: 300000,
     })
   },
   importCommit: (id: number, token: string, policy: 'skip' | 'keep' = 'skip') =>

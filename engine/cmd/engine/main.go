@@ -58,9 +58,10 @@ func main() {
 	)
 	if err != nil {
 		log.Printf("open log file failed, fallback to stdout: %v", err)
+		log.SetOutput(io.MultiWriter(os.Stdout, api.LogWriter()))
 	} else {
 		defer logFile.Close()
-		log.SetOutput(io.MultiWriter(os.Stdout, logFile))
+		log.SetOutput(io.MultiWriter(os.Stdout, logFile, api.LogWriter()))
 	}
 
 	if err := store.ApplyPendingRestore(absDir); err != nil {

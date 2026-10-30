@@ -31,4 +31,6 @@ export const authApi = {
   captcha: () => http.get<unknown, Captcha>('/auth/captcha'),
   logout: () => http.post<unknown, void>('/auth/logout'),
   me: () => http.get<unknown, Profile>('/auth/me'),
+  changePassword: (oldPassword: string, newPassword: string) =>
+    http.put<unknown, void>('/auth/password', { oldPassword, newPassword }),
 }

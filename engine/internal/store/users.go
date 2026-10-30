@@ -40,6 +40,57 @@ func (s *Store) CountUsers() (int, error) {
 	return n, err
 }
 
+func (s *Store) ListUsers() ([]User, error) {
+	rows, err := s.DB.Query(`
+		SELECT id, username, role, created_at, COALESCE(last_login_at, '')
+		FROM users ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []User{}
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt, &u.LastLoginAt); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) SetUserRole(id int64, role string) error {
+	res, err := s.DB.Exec("UPDATE users SET role = ? WHERE id = ?", role, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (s *Store) UpdateUserPassword(id int64, password string) error {
+	salt, hash, err := HashPassword(password)
+	if err != nil {
+		return err
+	}
+	res, err := s.DB.Exec(
+		"UPDATE users SET password_salt = ?, password_hash = ? WHERE id = ?", salt, hash, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (s *Store) RevokeUserSessions(id int64) error {
+	_, err := s.DB.Exec("DELETE FROM sessions WHERE user_id = ?", id)
+	return err
+}
+
 func (s *Store) CountAdmins() (int, error) {
 	var n int
 	err := s.DB.QueryRow("SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_disabled = 0").Scan(&n)

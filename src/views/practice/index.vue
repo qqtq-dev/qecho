@@ -92,6 +92,9 @@
                 <a-button type="primary">完成练习</a-button>
               </a-popconfirm>
             </div>
+            <div class="kbd-hint muted">
+              快捷键：A–H / 1–8 选择选项 · Enter 确认或下一题 · ← → 切换题目
+            </div>
           </template>
         </section>
 
@@ -547,6 +550,47 @@ async function submitAnswer() {
   }
 }
 
+function isTypingTarget(target: EventTarget | null) {
+  const el = target as HTMLElement | null
+  if (!el) return false
+  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable
+}
+
+function hasOpenLayer() {
+  return !!document.querySelector('.ant-modal-wrap, .ant-popover:not(.ant-popover-hidden)')
+}
+
+function onKeydown(e: KeyboardEvent) {
+  if (!session.value || !current.value || submitting.value) return
+  if (e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target) || hasOpenLayer()) return
+  const q = current.value
+  const upper = e.key.length === 1 ? e.key.toUpperCase() : e.key
+  const letterIdx =
+    e.key.length === 1 && upper >= 'A' && upper <= 'H' ? upper.charCodeAt(0) - 65 : -1
+  const numberIdx = e.key.length === 1 && e.key >= '1' && e.key <= '8' ? Number(e.key) - 1 : -1
+  const optIdx = letterIdx >= 0 ? letterIdx : numberIdx
+  if (optIdx >= 0) {
+    const opt = q.options[optIdx]
+    if (!opt) return
+    e.preventDefault()
+    toggleOption(opt.key)
+    return
+  }
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    if (currentAnswer.value) go(index.value + 1)
+    else if (q.type === 'multiple' && chosen.value.length > 0) void submitAnswer()
+    return
+  }
+  if (e.key === 'ArrowLeft') {
+    e.preventDefault()
+    go(index.value - 1)
+  } else if (e.key === 'ArrowRight') {
+    e.preventDefault()
+    go(index.value + 1)
+  }
+}
+
 function go(next: number) {
   if (!session.value) return
   if (next < 0 || next >= session.value.totalCount) return
@@ -578,6 +622,7 @@ function backToSettings() {
 }
 
 onMounted(async () => {
+  window.addEventListener('keydown', onKeydown)
   await Promise.all([loadBanks(), loadSessions(), loadSettings(), wrongStore.refresh()])
   const sessionId = Number(route.query.session ?? 0)
   if (sessionId > 0) {
@@ -588,7 +633,10 @@ onMounted(async () => {
   }
 })
 
-onUnmounted(savePosition)
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeydown)
+  savePosition()
+})
 </script>
 
 <style scoped>
@@ -679,6 +727,7 @@ onUnmounted(savePosition)
 .analysis-title { margin-bottom: 6px; font-size: 13px; font-weight: 600; }
 .analysis-text { color: var(--text); white-space: pre-wrap; }
 .quiz-actions { display: flex; justify-content: space-between; margin-top: auto; padding-top: 18px; flex-wrap: wrap; gap: 10px; }
+.kbd-hint { margin-top: 10px; font-size: 12px; text-align: right; }
 .result { margin-top: 0; }
 .switch-hint { margin-left: 10px; font-size: 12.5px; }
 .recent-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }

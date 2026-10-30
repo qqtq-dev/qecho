@@ -13,6 +13,13 @@ export interface StatsBank {
   correct: number
 }
 
+export interface StatsTag {
+  tagId: number
+  tagName: string
+  answered: number
+  correct: number
+}
+
 export interface Stats {
   range: '7d' | '30d' | 'all'
   answeredTotal: number
@@ -27,4 +34,6 @@ export interface Stats {
 
 export const statsApi = {
   get: (range: string) => http.get<unknown, Stats>('/stats', { params: { range } }),
+  tags: (range: string) =>
+    http.get<unknown, { items: StatsTag[] }>('/stats/tags', { params: { range } }),
 }

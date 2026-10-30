@@ -11,6 +11,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -21,8 +22,11 @@ import (
 )
 
 const (
-	maxImportBytes = 20 << 20
-	pendingTTL     = 2 * time.Hour
+	maxImportBytes        = 20 << 20
+	maxImportImagesBytes  = 100 << 20
+	maxImportImageCount   = 300
+	maxImportRequestBytes = maxImportBytes + maxImportImagesBytes + 1<<20
+	pendingTTL            = 2 * time.Hour
 )
 
 type pendingImport struct {
@@ -50,7 +54,7 @@ func newImportToken() (string, error) {
 }
 
 func readImportFile(w http.ResponseWriter, r *http.Request) (string, []byte, error) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxImportBytes+1<<20)
+	r.Body = http.MaxBytesReader(w, r.Body, maxImportRequestBytes)
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
 		return "", nil, fmt.Errorf("文件过大或上传格式不正确")
 	}
@@ -96,6 +100,12 @@ func (s *Server) previewImport(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, err.Error())
 		return
 	}
+	imageUploaded, imageMatched, imageWarnings, err := s.attachImportImages(r, result)
+	if err != nil {
+		response.BadRequest(w, err.Error())
+		return
+	}
+	result.Warnings = append(result.Warnings, imageWarnings...)
 	hashes, err := s.store.QuestionHashes(bankID)
 	if err != nil {
 		response.Internal(w, err)
@@ -157,23 +167,105 @@ func (s *Server) previewImport(w http.ResponseWriter, r *http.Request) {
 	s.importsMu.Unlock()
 
 	response.OK(w, map[string]any{
-		"token":     token,
-		"fileName":  fileName,
-		"format":    result.Format,
-		"sheet":     result.Sheet,
-		"sheets":    result.Sheets,
-		"headerRow": result.HeaderRow,
-		"headers":   result.Headers,
-		"mapping":   result.Mapping,
-		"columns":   result.Columns,
-		"total":     len(result.Rows),
-		"valid":     valid,
-		"duplicate": duplicate,
-		"invalid":   invalid,
-		"sample":    sample,
-		"errors":    errorsOut,
-		"warnings":  result.Warnings,
+		"token":         token,
+		"fileName":      fileName,
+		"format":        result.Format,
+		"sheet":         result.Sheet,
+		"sheets":        result.Sheets,
+		"headerRow":     result.HeaderRow,
+		"headers":       result.Headers,
+		"mapping":       result.Mapping,
+		"columns":       result.Columns,
+		"total":         len(result.Rows),
+		"valid":         valid,
+		"duplicate":     duplicate,
+		"invalid":       invalid,
+		"sample":        sample,
+		"errors":        errorsOut,
+		"warnings":      result.Warnings,
+		"imageUploaded": imageUploaded,
+		"imageMatched":  imageMatched,
 	})
+}
+
+// attachImportImages 保存随表格一起上传的题图，并按文件名把题干的图片引用替换为存储名。
+func (s *Server) attachImportImages(r *http.Request, result *importer.Result) (uploaded, matched int, warnings []string, err error) {
+	imageMap := map[string]string{}
+	if r.MultipartForm != nil {
+		files := r.MultipartForm.File["images"]
+		if len(files) > maxImportImageCount {
+			return 0, 0, nil, fmt.Errorf("一次最多上传 %d 张题图", maxImportImageCount)
+		}
+		var totalBytes int64
+		for _, fh := range files {
+			if fh.Size > store.MaxImageBytes {
+				return 0, 0, nil, fmt.Errorf("题图 %s 超过 8 MB", fh.Filename)
+			}
+			totalBytes += fh.Size
+			if totalBytes > maxImportImagesBytes {
+				return 0, 0, nil, fmt.Errorf("题图总大小不能超过 100 MB")
+			}
+			file, openErr := fh.Open()
+			if openErr != nil {
+				return 0, 0, nil, fmt.Errorf("读取题图 %s 失败", fh.Filename)
+			}
+			data, readErr := io.ReadAll(io.LimitReader(file, store.MaxImageBytes+1))
+			_ = file.Close()
+			if readErr != nil || len(data) > store.MaxImageBytes {
+				return 0, 0, nil, fmt.Errorf("读取题图 %s 失败", fh.Filename)
+			}
+			img, saveErr := s.store.SaveImage(data, fh.Filename)
+			if saveErr != nil {
+				return 0, 0, nil, fmt.Errorf("题图 %s：%s", fh.Filename, saveErr.Error())
+			}
+			uploaded++
+			key := importImageKey(fh.Filename)
+			if _, exists := imageMap[key]; !exists {
+				imageMap[key] = img.Filename
+			}
+		}
+	}
+
+	missingRows := 0
+	missingNames := []string{}
+	seenMissing := map[string]bool{}
+	localRefRows := 0
+	for i := range result.Rows {
+		ref := strings.TrimSpace(result.Rows[i].Input.StemImage)
+		if ref == "" || strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") {
+			continue
+		}
+		localRefRows++
+		key := importImageKey(ref)
+		if mapped, ok := imageMap[key]; ok {
+			result.Rows[i].Input.StemImage = mapped
+			matched++
+			continue
+		}
+		missingRows++
+		if !seenMissing[key] && len(missingNames) < 5 {
+			seenMissing[key] = true
+			missingNames = append(missingNames, filepath.Base(strings.ReplaceAll(ref, "\\", "/")))
+		}
+	}
+
+	if missingRows > 0 {
+		hint := "请在导入前选择对应的题图文件"
+		if uploaded == 0 {
+			hint = "题干图片列引用了本地文件名，但本次没有选择题图文件"
+		}
+		warnings = append(warnings, fmt.Sprintf(
+			"%d 道题的题图未匹配到文件（如 %s）；%s，导入后再补充上传",
+			missingRows, strings.Join(missingNames, "、"), hint))
+	} else if localRefRows > 0 && matched > 0 {
+		warnings = append(warnings, fmt.Sprintf("已按文件名关联 %d 道题的题图", matched))
+	}
+	return uploaded, matched, warnings, nil
+}
+
+func importImageKey(name string) string {
+	name = strings.ReplaceAll(strings.TrimSpace(name), "\\", "/")
+	return strings.ToLower(filepath.Base(name))
 }
 
 func (s *Server) commitImport(w http.ResponseWriter, r *http.Request) {

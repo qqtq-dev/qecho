@@ -48,6 +48,33 @@
         </ul>
       </div>
     </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h3>标签正确率</h3>
+        <span class="muted">找薄弱知识点 · 练习与考试合计</span>
+      </div>
+      <div class="panel-body bank-body" :class="{ empty: loaded && !tags.length }">
+        <a-empty v-if="loaded && !tags.length" description="暂无标签维度数据，给题目打上标签后即可统计" />
+        <ul v-else class="bank-list">
+          <li v-for="tag in tags" :key="tag.tagId">
+            <div class="bl-top">
+              <span class="bl-name">{{ tag.tagName }}</span>
+              <span class="bl-rate" :class="{ weak: rateOf(tag.correct, tag.answered) < 60 }">
+                {{ rateOf(tag.correct, tag.answered) }}%
+              </span>
+            </div>
+            <div class="bl-bar">
+              <span
+                :class="{ weak: rateOf(tag.correct, tag.answered) < 60 }"
+                :style="{ width: rateOf(tag.correct, tag.answered) + '%' }"
+              />
+            </div>
+            <div class="bl-meta">共 {{ tag.answered }} 题 · 答对 {{ tag.correct }} 题</div>
+          </li>
+        </ul>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -60,7 +87,7 @@ import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/compon
 import { CanvasRenderer } from 'echarts/renderers'
 import PageHeader from '@/components/PageHeader.vue'
 import MetricTile from '@/components/MetricTile.vue'
-import { statsApi, type Stats } from '@/api/stats'
+import { statsApi, type Stats, type StatsTag } from '@/api/stats'
 import { isDark } from '@/theme'
 
 echarts.use([BarChart, LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
@@ -75,6 +102,8 @@ const ranges = [
 const rangeHint = computed(() => ranges.find((r) => r.value === range.value)?.label ?? '')
 
 const stats = ref<Stats | null>(null)
+const tags = ref<StatsTag[]>([])
+const loaded = ref(false)
 const banks = computed(() => stats.value?.banks ?? [])
 const hasData = computed(() => (stats.value?.answeredTotal ?? 0) > 0)
 
@@ -208,7 +237,10 @@ async function renderChart() {
 }
 
 async function load() {
-  stats.value = await statsApi.get(range.value)
+  const [data, tagData] = await Promise.all([statsApi.get(range.value), statsApi.tags(range.value)])
+  stats.value = data
+  tags.value = tagData.items
+  loaded.value = true
 }
 
 function onResize() {
@@ -262,6 +294,7 @@ onBeforeUnmount(() => {
 .bl-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .bl-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bl-rate { font-size: 13px; font-weight: 700; color: var(--primary); flex: none; }
+.bl-rate.weak { color: #d4380d; }
 .bl-bar {
   margin-top: 6px;
   height: 6px;
@@ -270,6 +303,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 .bl-bar span { display: block; height: 100%; border-radius: 3px; background: var(--primary); }
+.bl-bar span.weak { background: #d4380d; }
 .bl-meta { margin-top: 5px; font-size: 11px; color: var(--text2); }
 @media (max-width: 1100px) {
   .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
