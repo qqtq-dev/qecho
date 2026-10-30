@@ -45,19 +45,13 @@ func (s *Server) issueSession(w http.ResponseWriter, user *store.User) {
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Username      string `json:"username"`
-		Password      string `json:"password"`
-		CaptchaID     string `json:"captchaId"`
-		CaptchaAnswer string `json:"captchaAnswer"`
+		Username string `json:"username"`
+		Password string `json:"password"`
 	}
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&in)
 	}
 	in.Username = strings.TrimSpace(in.Username)
-	if !s.checkCaptcha(in.CaptchaID, in.CaptchaAnswer) {
-		response.BadRequest(w, "验证码不正确或已过期")
-		return
-	}
 
 	// 桌面壳的本机静默登录：只在 --desktop 且来源为回环地址时生效，
 	// 避免反向代理部署后被人用 local/空密码绕过。
