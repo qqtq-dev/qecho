@@ -7,6 +7,7 @@ export interface Bank {
   questionCount: number
   answeredCount: number
   correctRate: number
+  lastPracticedAt: string
   ownerId: number | null
   ownerName: string
   isPublic: boolean
@@ -28,6 +29,7 @@ export interface Question {
   stemImage: string
   answer: string[]
   analysis: string
+  source: string
   difficulty: number
   tags: string[]
   options: QuestionOption[]
@@ -41,6 +43,7 @@ export interface QuestionInput {
   stemImage: string
   answer: string[]
   analysis: string
+  source: string
   difficulty: number
   tags: string[]
   options: QuestionOption[]
@@ -183,4 +186,8 @@ export const banksApi = {
     http.post<unknown, { path: string; count: number }>(`/banks/${id}/export-images`, { path }),
   exportImagesFile: (id: number) =>
     http.get<unknown, Blob>(`/banks/${id}/export-images`, { responseType: 'blob' }),
+  importTemplateTo: (path: string) =>
+    http.post<unknown, { path: string }>('/import-template', { path }),
+  importTemplateFile: () =>
+    http.get<unknown, Blob>('/import-template', { responseType: 'blob' }),
 }

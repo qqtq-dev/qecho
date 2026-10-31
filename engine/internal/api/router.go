@@ -91,6 +91,8 @@ func New(st *store.Store, version, dataDir, shutdownToken string, port int, desk
 	mux.HandleFunc("PUT /api/v1/tags/{id}", s.auth(s.renameTag))
 	mux.HandleFunc("POST /api/v1/tags/{id}/merge", s.auth(s.mergeTag))
 	mux.HandleFunc("DELETE /api/v1/tags/{id}", s.auth(s.deleteTag))
+	mux.HandleFunc("GET /api/v1/import-template", s.auth(s.downloadImportTemplate))
+	mux.HandleFunc("POST /api/v1/import-template", s.auth(s.saveImportTemplate))
 	mux.HandleFunc("POST /api/v1/banks/{id}/imports/preview", s.auth(s.previewImport))
 	mux.HandleFunc("POST /api/v1/banks/{id}/imports", s.auth(s.commitImport))
 	mux.HandleFunc("GET /api/v1/banks/{id}/imports", s.auth(s.listImportJobs))

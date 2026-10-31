@@ -75,6 +75,7 @@
                 </template>
                 <template v-else-if="column.key === 'stem'">
                   <div class="stem">{{ record.stem }}</div>
+                  <div v-if="record.source" class="muted">来源：{{ record.source }}</div>
                   <div v-if="hasImage(record)" class="muted">含图片</div>
                 </template>
                 <template v-else-if="column.key === 'answer'">
@@ -370,6 +371,14 @@
             :rows="2"
             :maxlength="1000"
             placeholder="可选，交卷后向参与者展示"
+          />
+        </a-form-item>
+
+        <a-form-item label="来源">
+          <a-input
+            v-model:value="qForm.source"
+            :maxlength="200"
+            placeholder="可选，例如：2026 年安全规程考试真题"
           />
         </a-form-item>
 
@@ -710,6 +719,7 @@ const qForm = reactive({
   stemImage: '',
   answer: [] as string[],
   analysis: '',
+  source: '',
   difficulty: 2,
   tags: [] as string[],
   options: [] as QuestionOption[],
@@ -730,6 +740,7 @@ function resetForm() {
   qForm.stemImage = ''
   qForm.answer = []
   qForm.analysis = ''
+  qForm.source = ''
   qForm.difficulty = 2
   qForm.tags = []
   qForm.options = [
@@ -750,6 +761,7 @@ function openEditQuestion(q: Question) {
   qForm.stem = q.stem
   qForm.stemImage = q.stemImage
   qForm.analysis = q.analysis
+  qForm.source = q.source ?? ''
   qForm.difficulty = q.difficulty >= 1 && q.difficulty <= 5 ? q.difficulty : 3
   qForm.tags = [...(q.tags ?? [])]
   qForm.options = q.options.map((o) => ({ key: o.key, content: o.content, image: o.image }))
@@ -821,6 +833,7 @@ async function saveQuestion() {
       stemImage: qForm.stemImage.trim(),
       answer: qForm.answer,
       analysis: qForm.analysis.trim(),
+      source: qForm.source.trim(),
       difficulty: qForm.difficulty,
       tags: qForm.tags,
       options,
@@ -891,7 +904,7 @@ onMounted(async () => {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
-  padding: 0 0 14px;
+  padding: 14px 16px 12px;
 }
 .import-file {
   max-width: 420px;

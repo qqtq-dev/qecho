@@ -106,12 +106,16 @@ fn set_window_size(app: tauri::AppHandle, width: f64, height: f64, resizable: Op
 
 /// 弹出系统保存对话框，返回用户选择的保存路径（取消时返回 null）。
 #[tauri::command]
-async fn pick_export_path(app: tauri::AppHandle, file_name: String) -> Result<Option<String>, String> {
+async fn pick_export_path(
+    app: tauri::AppHandle,
+    file_name: String,
+    title: Option<String>,
+) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
     let picked = app
         .dialog()
         .file()
-        .set_title("导出题库")
+        .set_title(title.unwrap_or_else(|| "导出题库".into()))
         .set_file_name(&file_name)
         .add_filter("Excel 工作簿", &["xlsx"])
         .blocking_save_file();

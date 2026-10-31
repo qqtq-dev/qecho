@@ -40,6 +40,13 @@
           </template>
         </div>
 
+        <div class="template-row">
+          <a-button size="small" :loading="downloadingTemplate" :disabled="!!busy" @click="downloadTemplate">
+            下载导入模板
+          </a-button>
+          <span class="muted small">不确定表格格式？先下载模板，按列填写后再导入</span>
+        </div>
+
         <div
           class="dropzone"
           :class="{ active: dragActive, busy: busy === 'preview' }"
@@ -59,7 +66,7 @@
         </div>
 
         <div class="hint">
-          按表头识别列：类别/题型、题目/题干、选项（A— 分行，或选项A…选项H 分列）、答案、解析、难度、标签。
+          按表头识别列：类别/题型、题目/题干、选项（A— 分行，或选项A…选项H 分列）、答案、解析、难度、标签、来源。
           判断题自动转为单选；导入前会列出列映射，可手动调整；默认跳过与题库内已有题目重复的行。
         </div>
 
@@ -268,6 +275,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { banksApi, type Bank, type ImportPreview, type ImportResult } from '@/api/banks'
+import { isTauri } from '@/api/request'
 import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps<{
@@ -292,6 +300,7 @@ const file = ref<File | null>(null)
 const preview = ref<ImportPreview | null>(null)
 const result = ref<ImportResult | null>(null)
 const busy = ref<'' | 'preview' | 'commit' | 'revert'>('')
+const downloadingTemplate = ref(false)
 const dragActive = ref(false)
 const targetId = ref<number | undefined>(props.bankId)
 const policy = ref<'skip' | 'keep'>('skip')
@@ -308,6 +317,7 @@ const mappingFields = [
   { key: 'analysis', label: '解析' },
   { key: 'difficulty', label: '难度' },
   { key: 'tags', label: '标签' },
+  { key: 'source', label: '来源' },
   { key: 'stemimage', label: '题干图片' },
   { key: 'option_A', label: '选项 A 列' },
   { key: 'option_B', label: '选项 B 列' },
@@ -446,6 +456,35 @@ function addImages(list: File[]) {
 function clearImages() {
   images.value = []
   if (imageInput.value) imageInput.value.value = ''
+}
+
+async function downloadTemplate() {
+  if (downloadingTemplate.value) return
+  downloadingTemplate.value = true
+  const fileName = 'Qecho-导入模板.xlsx'
+  try {
+    if (isTauri()) {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const path = await invoke<string | null>('pick_export_path', {
+        fileName,
+        title: '保存导入模板',
+      })
+      if (!path) return
+      const res = await banksApi.importTemplateTo(path)
+      message.success(`模板已保存到 ${res.path}`)
+      return
+    }
+    const blob = await banksApi.importTemplateFile()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = fileName
+    link.click()
+    URL.revokeObjectURL(url)
+    message.success('已开始下载模板')
+  } finally {
+    downloadingTemplate.value = false
+  }
 }
 
 function onFileChange(event: Event) {
@@ -599,6 +638,12 @@ function close() {
   align-items: center;
   gap: 10px;
   margin-bottom: 16px;
+}
+.template-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 .dropzone {
   border: 1px dashed #cfd8d3;

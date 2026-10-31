@@ -1,6 +1,6 @@
 <template>
   <div class="page">
-    <PageHeader title="练习" subtitle="按题库、题型与难度组卷，作答即时判分并自动保存进度">
+    <PageHeader title="练习" subtitle="按题库、标签、题型与难度组卷，作答即时判分并自动保存进度">
       <template #actions>
         <a-button v-if="!session" type="primary" :loading="starting" @click="start()">开始练习</a-button>
       </template>
@@ -168,6 +168,18 @@
                 <a-radio-button value="fixed">按题序</a-radio-button>
               </a-radio-group>
             </a-form-item>
+            <a-form-item label="标签">
+              <a-select
+                v-model:value="form.tags"
+                mode="multiple"
+                placeholder="全部标签（可多选，匹配任一标签）"
+                :loading="loadingTags"
+                :options="tagOptions"
+                :max-tag-count="3"
+                allow-clear
+                :disabled="form.bankIds.length === 0"
+              />
+            </a-form-item>
             <a-form-item label="题型">
               <a-radio-group v-model:value="form.type">
                 <a-radio-button value="">全部</a-radio-button>
@@ -256,14 +268,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Flag } from 'lucide-vue-next'
 import { message } from 'ant-design-vue'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/PageHeader.vue'
 import QuestionImage from '@/components/QuestionImage.vue'
-import { banksApi, type Bank } from '@/api/banks'
+import { banksApi, type Bank, type Tag } from '@/api/banks'
 import { settingsApi } from '@/api/settings'
 import {
   practiceApi,
@@ -281,18 +293,64 @@ const router = useRouter()
 const wrongStore = useWrongStore()
 
 const banks = ref<Bank[]>([])
+const availableTags = ref<Tag[]>([])
 const loadingBanks = ref(false)
+const loadingTags = ref(false)
 const starting = ref(false)
 const sessions = ref<PracticeSession[]>([])
+let tagLoadSeq = 0
 
 const form = reactive({
   bankIds: [] as number[],
   order: 'random' as 'random' | 'fixed',
   type: '' as '' | 'single' | 'multiple',
   difficulty: 0,
+  tags: [] as string[],
   count: 20,
   shuffleOptions: false,
 })
+
+const tagOptions = computed(() =>
+  availableTags.value.map((t) => ({
+    label: `${t.name}（${t.questionCount}）`,
+    value: t.name,
+  })),
+)
+
+async function loadFormTags() {
+  const ids = [...form.bankIds]
+  const seq = ++tagLoadSeq
+  if (ids.length === 0) {
+    availableTags.value = []
+    form.tags = []
+    loadingTags.value = false
+    return
+  }
+  loadingTags.value = true
+  try {
+    const results = await Promise.all(ids.map((id) => banksApi.bankTags(id)))
+    if (seq !== tagLoadSeq) return
+    const merged = new Map<string, Tag>()
+    for (const res of results) {
+      for (const tag of res.items) {
+        const prev = merged.get(tag.name)
+        if (prev) prev.questionCount += tag.questionCount
+        else merged.set(tag.name, { ...tag })
+      }
+    }
+    availableTags.value = [...merged.values()].sort(
+      (a, b) => b.questionCount - a.questionCount || a.name.localeCompare(b.name, 'zh'),
+    )
+    const names = new Set(availableTags.value.map((t) => t.name))
+    form.tags = form.tags.filter((t) => names.has(t))
+  } catch {
+    if (seq === tagLoadSeq) availableTags.value = []
+  } finally {
+    if (seq === tagLoadSeq) loadingTags.value = false
+  }
+}
+
+watch(() => form.bankIds.join(','), loadFormTags)
 
 const countOptions = computed(() => {
   const options = [
@@ -441,6 +499,7 @@ async function start(source: 'bank' | 'wrong' = 'bank', bankIdsOverride?: number
       source,
       questionType: form.type || undefined,
       difficulty: form.difficulty || undefined,
+      tags: form.tags.length ? form.tags : undefined,
       shuffleOptions: form.shuffleOptions,
     })
     applySession({

@@ -96,6 +96,7 @@ export interface PracticeStartInput {
   source?: 'bank' | 'wrong'
   questionType?: 'single' | 'multiple'
   difficulty?: number
+  tags?: string[]
   shuffleOptions?: boolean
 }
 

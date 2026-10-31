@@ -10,17 +10,18 @@ import (
 )
 
 type Bank struct {
-	ID            int64   `json:"id"`
-	Name          string  `json:"name"`
-	Description   string  `json:"description"`
-	QuestionCount int     `json:"questionCount"`
-	AnsweredCount int     `json:"answeredCount"`
-	CorrectRate   float64 `json:"correctRate"`
-	OwnerID       *int64  `json:"ownerId"`
-	OwnerName     string  `json:"ownerName"`
-	IsPublic      bool    `json:"isPublic"`
-	CreatedAt     string  `json:"createdAt"`
-	UpdatedAt     string  `json:"updatedAt"`
+	ID              int64   `json:"id"`
+	Name            string  `json:"name"`
+	Description     string  `json:"description"`
+	QuestionCount   int     `json:"questionCount"`
+	AnsweredCount   int     `json:"answeredCount"`
+	CorrectRate     float64 `json:"correctRate"`
+	LastPracticedAt string  `json:"lastPracticedAt"`
+	OwnerID         *int64  `json:"ownerId"`
+	OwnerName       string  `json:"ownerName"`
+	IsPublic        bool    `json:"isPublic"`
+	CreatedAt       string  `json:"createdAt"`
+	UpdatedAt       string  `json:"updatedAt"`
 }
 
 const bankColumns = `b.id, b.name, b.description,
@@ -33,18 +34,26 @@ const bankColumns = `b.id, b.name, b.description,
 	   JOIN practice_sessions ps ON ps.id = pa.session_id
 	   JOIN questions q ON q.id = pa.question_id
 	  WHERE q.bank_id = b.id AND ps.status = 'finished'),
-	b.owner_id, COALESCE(u.username,''), b.created_at, b.updated_at`
+	b.owner_id, COALESCE(u.username,''), b.created_at, b.updated_at,
+	(SELECT MAX(pa.answered_at) FROM practice_answers pa
+	   JOIN questions q ON q.id = pa.question_id
+	  WHERE q.bank_id = b.id)`
 
 func scanBank(row interface{ Scan(...any) error }) (*Bank, error) {
 	var b Bank
 	var owner sql.NullInt64
 	var correct int
+	var lastPracticed sql.NullString
 	if err := row.Scan(&b.ID, &b.Name, &b.Description, &b.QuestionCount,
-		&b.AnsweredCount, &correct, &owner, &b.OwnerName, &b.CreatedAt, &b.UpdatedAt); err != nil {
+		&b.AnsweredCount, &correct, &owner, &b.OwnerName, &b.CreatedAt, &b.UpdatedAt,
+		&lastPracticed); err != nil {
 		return nil, err
 	}
 	if b.AnsweredCount > 0 {
 		b.CorrectRate = float64(correct) / float64(b.AnsweredCount)
+	}
+	if lastPracticed.Valid {
+		b.LastPracticedAt = lastPracticed.String
 	}
 	if owner.Valid {
 		id := owner.Int64
@@ -68,6 +77,7 @@ type Question struct {
 	StemImage  string           `json:"stemImage"`
 	Answer     []string         `json:"answer"`
 	Analysis   string           `json:"analysis"`
+	Source     string           `json:"source"`
 	Difficulty int              `json:"difficulty"`
 	Tags       []string         `json:"tags"`
 	Options    []QuestionOption `json:"options"`
@@ -81,6 +91,7 @@ type QuestionInput struct {
 	StemImage  string           `json:"stemImage"`
 	Answer     []string         `json:"answer"`
 	Analysis   string           `json:"analysis"`
+	Source     string           `json:"source"`
 	Difficulty int              `json:"difficulty"`
 	Tags       []string         `json:"tags"`
 	Options    []QuestionOption `json:"options"`
@@ -233,7 +244,7 @@ func (s *Store) ListQuestions(bankID int64, filter QuestionFilter) ([]Question, 
 	}
 	rows, err := s.DB.Query(`
 		SELECT q.id, q.bank_id, q.type, q.stem, COALESCE(q.stem_image,''), q.answer, q.analysis,
-		       q.difficulty, q.created_at, q.updated_at
+		       q.source, q.difficulty, q.created_at, q.updated_at
 		FROM questions q WHERE `+whereSQL+`
 		ORDER BY q.sort_order, q.id LIMIT ? OFFSET ?`,
 		append(args, size, (page-1)*size)...,
@@ -247,7 +258,7 @@ func (s *Store) ListQuestions(bankID int64, filter QuestionFilter) ([]Question, 
 		var q Question
 		var answer string
 		if err := rows.Scan(&q.ID, &q.BankID, &q.Type, &q.Stem, &q.StemImage, &answer,
-			&q.Analysis, &q.Difficulty, &q.CreatedAt, &q.UpdatedAt); err != nil {
+			&q.Analysis, &q.Source, &q.Difficulty, &q.CreatedAt, &q.UpdatedAt); err != nil {
 			return nil, 0, err
 		}
 		q.Answer = parseKeys(answer)
@@ -287,10 +298,10 @@ func (s *Store) GetQuestion(id int64) (*Question, error) {
 	var answer string
 	err := s.DB.QueryRow(`
 		SELECT id, bank_id, type, stem, COALESCE(stem_image,''), answer, analysis,
-		       difficulty, created_at, updated_at
+		       source, difficulty, created_at, updated_at
 		FROM questions WHERE id = ? AND is_deleted = 0`, id,
 	).Scan(&q.ID, &q.BankID, &q.Type, &q.Stem, &q.StemImage, &answer,
-		&q.Analysis, &q.Difficulty, &q.CreatedAt, &q.UpdatedAt)
+		&q.Analysis, &q.Source, &q.Difficulty, &q.CreatedAt, &q.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -377,6 +388,7 @@ func validateQuestionInput(in *QuestionInput) error {
 	}
 	in.Tags = normalizeTags(in.Tags)
 	in.Analysis = strings.TrimSpace(in.Analysis)
+	in.Source = strings.TrimSpace(in.Source)
 	image, err := NormalizeImageRef(in.StemImage)
 	if err != nil {
 		return err
@@ -427,11 +439,11 @@ func (s *Store) CreateQuestion(bankID int64, in QuestionInput) (*Question, error
 	_ = tx.QueryRow("SELECT COALESCE(MAX(sort_order),0)+1 FROM questions WHERE bank_id = ?", bankID).Scan(&sortOrder)
 	answer, _ := json.Marshal(in.Answer)
 	res, err := tx.Exec(`
-		INSERT INTO questions(bank_id, type, stem, stem_image, answer, analysis, difficulty,
-		                      sort_order, content_hash, created_at, updated_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO questions(bank_id, type, stem, stem_image, answer, analysis, source,
+		                      difficulty, sort_order, content_hash, created_at, updated_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		bankID, in.Type, in.Stem, nullable(in.StemImage), string(answer), in.Analysis,
-		in.Difficulty, sortOrder, questionHash(&in), now, now,
+		in.Source, in.Difficulty, sortOrder, questionHash(&in), now, now,
 	)
 	if err != nil {
 		return nil, err
@@ -467,10 +479,10 @@ func (s *Store) UpdateQuestion(id int64, in QuestionInput) (*Question, error) {
 	defer tx.Rollback()
 	res, err := tx.Exec(`
 		UPDATE questions SET type = ?, stem = ?, stem_image = ?, answer = ?, analysis = ?,
-		       difficulty = ?, content_hash = ?, updated_at = ?
+		       source = ?, difficulty = ?, content_hash = ?, updated_at = ?
 		WHERE id = ? AND is_deleted = 0`,
 		in.Type, in.Stem, nullable(in.StemImage), string(answer), in.Analysis,
-		in.Difficulty, questionHash(&in), now, id,
+		in.Source, in.Difficulty, questionHash(&in), now, id,
 	)
 	if err != nil {
 		return nil, err

@@ -40,6 +40,9 @@
                 </template>
                 <span v-else class="muted">—</span>
               </template>
+              <template v-else-if="column.key === 'lastPracticedAt'">
+                <span class="muted">{{ formatTime(record.lastPracticedAt) }}</span>
+              </template>
               <template v-else-if="column.key === 'owner'">
                 <a-tag v-if="record.isPublic" color="blue">公共</a-tag>
                 <a-tag v-else color="default">{{ record.ownerName || '我的' }}</a-tag>
@@ -134,6 +137,7 @@ const columns = [
   { title: '题库', key: 'name', dataIndex: 'name' },
   { title: '题目数', key: 'questionCount', dataIndex: 'questionCount', width: 100 },
   { title: '练习正确率', key: 'practice', width: 130 },
+  { title: '最近练习', key: 'lastPracticedAt', width: 150 },
   { title: '归属', key: 'owner', width: 110 },
   { title: '更新时间', key: 'updatedAt', dataIndex: 'updatedAt', width: 165 },
   { title: '操作', key: 'actions', width: 190 },

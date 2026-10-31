@@ -122,7 +122,7 @@ func (s *Store) ImportQuestions(bankID int64, sourceName, format string, items [
 			                      source, sort_order, content_hash, import_job_id, created_at, updated_at)
 			VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			bankID, in.Type, in.Stem, nullable(in.StemImage), string(answer), in.Analysis,
-			in.Difficulty, "", sortOrder, hash, jobID, now, now,
+			in.Difficulty, in.Source, sortOrder, hash, jobID, now, now,
 		)
 		if err != nil {
 			return out, err

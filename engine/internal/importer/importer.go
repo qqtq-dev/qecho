@@ -485,6 +485,7 @@ func parseRow(rec []string, header *headerInfo, number int) Row {
 		StemImage:  image,
 		Answer:     keys,
 		Analysis:   cleanBlock(get("analysis")),
+		Source:     cleanText(get("source")),
 		Difficulty: difficulty,
 		Tags:       splitTags(get("tags")),
 		Options:    options,

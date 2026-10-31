@@ -48,6 +48,7 @@ type PracticeInput struct {
 	Source         string
 	QuestionType   string
 	Difficulty     int
+	Tags           []string
 	ShuffleOptions bool
 	Admin          bool
 }
@@ -189,6 +190,7 @@ func (s *Store) CreatePracticeSession(userID int64, in PracticeInput) (*Practice
 	if in.Difficulty < 0 || in.Difficulty > 5 {
 		in.Difficulty = 0
 	}
+	in.Tags = normalizeTags(in.Tags)
 	if in.Count < 0 {
 		in.Count = 0
 	}
@@ -235,6 +237,15 @@ func (s *Store) CreatePracticeSession(userID int64, in PracticeInput) (*Practice
 		where += " AND q.difficulty = ?"
 		args = append(args, in.Difficulty)
 	}
+	if len(in.Tags) > 0 {
+		marks := strings.TrimSuffix(strings.Repeat("?,", len(in.Tags)), ",")
+		where += ` AND EXISTS (
+			SELECT 1 FROM question_tags qt JOIN tags t ON t.id = qt.tag_id
+			WHERE qt.question_id = q.id AND t.name IN (` + marks + `))`
+		for _, tag := range in.Tags {
+			args = append(args, tag)
+		}
+	}
 	orderBy := " ORDER BY q.sort_order, q.id"
 	if in.Order == "random" {
 		orderBy = " ORDER BY RANDOM()"
@@ -276,7 +287,7 @@ func (s *Store) CreatePracticeSession(userID int64, in PracticeInput) (*Practice
 		if in.Source == "wrong" {
 			return nil, nil, false, fmt.Errorf("错题本里还没有待复习的题目")
 		}
-		if in.QuestionType != "" || in.Difficulty > 0 || len(in.BankIDs) > 1 {
+		if in.QuestionType != "" || in.Difficulty > 0 || len(in.Tags) > 0 || len(in.BankIDs) > 1 {
 			return nil, nil, false, fmt.Errorf("没有符合筛选条件的题目")
 		}
 		return nil, nil, false, fmt.Errorf("这个题库还没有题目")
@@ -311,6 +322,7 @@ func (s *Store) CreatePracticeSession(userID int64, in PracticeInput) (*Practice
 		"questionIds":      in.QuestionIDs,
 		"questionType":     in.QuestionType,
 		"difficulty":       in.Difficulty,
+		"tags":             in.Tags,
 		"count":            in.Count,
 		"shuffleQuestions": in.Order == "random",
 		"shuffleOptions":   in.ShuffleOptions,

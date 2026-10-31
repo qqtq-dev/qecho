@@ -12,15 +12,16 @@ import (
 
 func (s *Server) createPractice(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		BankID         int64   `json:"bankId"`
-		BankIDs        []int64 `json:"bankIds"`
-		Count          int     `json:"count"`
-		Order          string  `json:"order"`
-		Source         string  `json:"source"`
-		QuestionType   string  `json:"questionType"`
-		Difficulty     int     `json:"difficulty"`
-		ShuffleOptions bool    `json:"shuffleOptions"`
-		QuestionIDs    []int64 `json:"questionIds"`
+		BankID         int64    `json:"bankId"`
+		BankIDs        []int64  `json:"bankIds"`
+		Count          int      `json:"count"`
+		Order          string   `json:"order"`
+		Source         string   `json:"source"`
+		QuestionType   string   `json:"questionType"`
+		Difficulty     int      `json:"difficulty"`
+		Tags           []string `json:"tags"`
+		ShuffleOptions bool     `json:"shuffleOptions"`
+		QuestionIDs    []int64  `json:"questionIds"`
 	}
 	if err := decodeJSON(r, &in); err != nil {
 		response.BadRequest(w, "请求格式不正确")
@@ -59,6 +60,7 @@ func (s *Server) createPractice(w http.ResponseWriter, r *http.Request) {
 		Source:         in.Source,
 		QuestionType:   in.QuestionType,
 		Difficulty:     in.Difficulty,
+		Tags:           in.Tags,
 		ShuffleOptions: in.ShuffleOptions,
 		Admin:          user.Role == "admin",
 	})
