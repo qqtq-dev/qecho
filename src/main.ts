@@ -22,6 +22,7 @@ async function showWindow() {
 }
 
 function renderBootError(err: unknown) {
+  document.getElementById('boot-splash')?.remove()
   const root = document.getElementById('app')
   if (!root) return
   root.innerHTML = ''
@@ -65,6 +66,7 @@ async function bootstrap() {
   app.use(router)
   app.use(Antd)
   app.mount('#app')
+  document.getElementById('boot-splash')?.remove()
 
   if (isTauri()) {
     try {

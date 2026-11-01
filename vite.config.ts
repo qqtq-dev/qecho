@@ -32,5 +32,20 @@ export default defineConfig({
     target: 'chrome105',
     outDir: 'dist',
     emptyOutDir: true,
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        // 拆出大依赖：首屏可并行下载，二次访问时这些 chunk 命中长缓存
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          if (id.includes('ant-design-vue') || id.includes('@ant-design')) return 'vendor-antd'
+          if (id.includes('/echarts/') || id.includes('zrender')) return 'vendor-echarts'
+          if (id.includes('/vue/') || id.includes('vue-router') || id.includes('/pinia/')) return 'vendor-vue'
+          if (id.includes('marked') || id.includes('dompurify')) return 'vendor-markdown'
+          if (id.includes('lucide-vue-next')) return 'vendor-icons'
+          return 'vendor'
+        },
+      },
+    },
   },
 })

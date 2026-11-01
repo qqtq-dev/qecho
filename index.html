@@ -4,9 +4,56 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Qecho</title>
+    <style>
+      /* 首包下载/执行期间先给个占位，避免白屏；应用挂载后由 main.ts 移除 */
+      #boot-splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: #f4f6f7;
+        font-family: 'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif;
+      }
+      #boot-splash .splash-ring {
+        width: 26px;
+        height: 26px;
+        border: 2px solid #d8e2dc;
+        border-top-color: #24945f;
+        border-radius: 50%;
+        animation: splash-spin 0.9s linear infinite;
+      }
+      #boot-splash .splash-text {
+        font-size: 13px;
+        color: #6f7680;
+      }
+      @keyframes splash-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @media (prefers-color-scheme: dark) {
+        #boot-splash {
+          background: #0f1216;
+        }
+        #boot-splash .splash-ring {
+          border-color: #2a313b;
+          border-top-color: #35b07a;
+        }
+        #boot-splash .splash-text {
+          color: #98a1ac;
+        }
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>
+    <div id="boot-splash">
+      <div class="splash-ring"></div>
+      <div class="splash-text">Qecho 正在加载…</div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
