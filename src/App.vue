@@ -30,6 +30,22 @@ dayjs.locale('zh-cn')
   --primary: #24945f;
   --primary-soft: #e8f4ee;
   --zebra: #fafcfb;
+  /* 次级表面与语义色：深色模式统一在此覆盖，组件内不再写死浅色 */
+  --surface-2: #fafcfb;
+  --surface-3: #f6f8f7;
+  --border-strong: #e2e6e4;
+  --chip-bg: #eef2f0;
+  --chip-text: #4b5563;
+  --ok-soft: #e8f5ee;
+  --ok-border: #cfe8da;
+  --ok-text: #1b7a4d;
+  --bad-soft: #fdece8;
+  --bad-border: #f5d6cc;
+  --bad-text: #b8340f;
+  --warn-soft: #fff8e6;
+  --warn-text: #8a6100;
+  --code-bg: #f1f3f2;
+  --auth-bg: radial-gradient(circle at 18% 12%, #e6f2ec 0, #eef2f0 42%, #e9eeeb 100%);
 }
 html.dark {
   --bg: #0f1216;
@@ -41,6 +57,21 @@ html.dark {
   --primary: #35b07a;
   --primary-soft: #173326;
   --zebra: #1a2029;
+  --surface-2: #1a2029;
+  --surface-3: #1e242d;
+  --border-strong: #39424f;
+  --chip-bg: #242b34;
+  --chip-text: #a3acb8;
+  --ok-soft: #173325;
+  --ok-border: #2f6b4c;
+  --ok-text: #63c894;
+  --bad-soft: #33201c;
+  --bad-border: #6d382b;
+  --bad-text: #f08a72;
+  --warn-soft: #2e2612;
+  --warn-text: #e3b558;
+  --code-bg: #232b35;
+  --auth-bg: radial-gradient(circle at 18% 12%, #16241d 0, #12171c 42%, #0f1216 100%);
 }
 html, body, #app { height: 100%; margin: 0; }
 html { color-scheme: light; }

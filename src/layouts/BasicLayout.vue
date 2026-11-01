@@ -192,8 +192,8 @@ async function resizeMain() {
   font-size: 12px; user-select: none;
 }
 .engine-tag .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
-.engine-tag.off { background: #fdeaea; color: #c0392b; }
-.engine-tag.off .dot { background: #c0392b; }
+.engine-tag.off { background: var(--bad-soft); color: var(--bad-text); }
+.engine-tag.off .dot { background: var(--bad-text); }
 
 .body { flex: 1; display: flex; min-height: 0; }
 

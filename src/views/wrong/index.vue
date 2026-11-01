@@ -244,13 +244,13 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible
 .detail-opt { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
 .opt-key {
   flex: none; width: 22px; height: 22px; border-radius: 50%;
-  background: #f0f2f1; color: #6b7570; font-size: 12px; font-weight: 600;
+  background: var(--chip-bg); color: var(--chip-text); font-size: 12px; font-weight: 600;
   display: flex; align-items: center; justify-content: center;
 }
 .opt-key.right { background: #24945f; color: #fff; }
 .analysis {
-  margin-top: 8px; padding: 8px 10px; background: #f7f9f8;
-  border-radius: 6px; font-size: 13px; color: #3b4440; white-space: pre-wrap;
+  margin-top: 8px; padding: 8px 10px; background: var(--surface-3);
+  border-radius: 6px; font-size: 13px; color: var(--text); white-space: pre-wrap;
 }
 .pager { display: flex; justify-content: flex-end; margin-top: 12px; }
 .panel-body :deep(.ant-spin-nested-loading) { min-height: 40px; }

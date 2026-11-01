@@ -366,28 +366,28 @@ watch(
   height: 20px;
   padding: 0 6px;
   border-radius: 4px;
-  background: #eef2f0;
-  color: #4b5563;
+  background: var(--chip-bg);
+  color: var(--chip-text);
   font-size: 11.5px;
   line-height: 20px;
 }
-.ai-role-bot { background: #e8f5ee; color: #1b7a4d; }
+.ai-role-bot { background: var(--ok-soft); color: var(--ok-text); }
 .ai-q-text { white-space: pre-wrap; max-height: 88px; overflow: auto; }
 .ai-a { margin-top: 8px; }
 .ai-a-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
 .ai-mini { font-size: 12px; }
 .ai-wait { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text2); padding: 6px 0; }
-.ai-caret { color: #24945f; font-size: 13px; line-height: 1; }
+.ai-caret { color: var(--primary); font-size: 13px; line-height: 1; }
 .ai-alert { margin-top: 8px; }
 
 .ai-think {
   margin: 4px 0 10px;
   padding: 8px 10px;
-  border-left: 2px solid #e3e8e5;
-  background: #fafbfa;
+  border-left: 2px solid var(--border-strong);
+  background: var(--surface-2);
   border-radius: 0 6px 6px 0;
 }
-.ai-think.is-open { border-left-color: #cfe8da; }
+.ai-think.is-open { border-left-color: var(--ok-border); }
 .ai-think-head {
   display: flex;
   align-items: center;
@@ -403,7 +403,7 @@ watch(
 }
 .ai-think-title { font-weight: 500; }
 .ai-think-meta { font-size: 11.5px; }
-.ai-think-toggle { margin-left: auto; font-size: 11.5px; color: #24945f; }
+.ai-think-toggle { margin-left: auto; font-size: 11.5px; color: var(--primary); }
 .ai-think-body {
   max-height: 44px;
   overflow: hidden;
@@ -441,14 +441,14 @@ watch(
 .ai-md :deep(code) {
   padding: 1px 4px;
   border-radius: 3px;
-  background: #f1f3f2;
+  background: var(--code-bg);
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 12.5px;
 }
 .ai-md :deep(pre) {
   padding: 10px 12px;
   border-radius: 8px;
-  background: #f6f8f7;
+  background: var(--surface-3);
   border: 1px solid var(--border);
   overflow: auto;
   margin: 8px 0;
@@ -462,11 +462,11 @@ watch(
 }
 .ai-md :deep(th),
 .ai-md :deep(td) { border: 1px solid var(--border); padding: 5px 8px; text-align: left; }
-.ai-md :deep(th) { background: #f6f8f7; font-weight: 600; }
+.ai-md :deep(th) { background: var(--surface-3); font-weight: 600; }
 .ai-md :deep(blockquote) {
   margin: 8px 0;
   padding: 2px 10px;
-  border-left: 3px solid #cfe8da;
+  border-left: 3px solid var(--ok-border);
   color: var(--text2);
 }
 .ai-input {

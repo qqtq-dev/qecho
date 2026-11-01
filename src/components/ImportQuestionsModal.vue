@@ -646,18 +646,18 @@ function close() {
   margin-bottom: 12px;
 }
 .dropzone {
-  border: 1px dashed #cfd8d3;
+  border: 1px dashed var(--border-strong);
   border-radius: 10px;
   padding: 26px 20px;
   text-align: center;
   cursor: pointer;
-  background: #fafcfb;
+  background: var(--surface-2);
   transition: border-color 0.2s, background 0.2s;
 }
 .dropzone:hover,
 .dropzone.active {
-  border-color: #24945f;
-  background: #f2faf6;
+  border-color: var(--primary);
+  background: var(--ok-soft);
 }
 .dropzone.busy { pointer-events: none; opacity: 0.7; }
 .dz-mark {
@@ -665,8 +665,8 @@ function close() {
   height: 38px;
   margin: 0 auto 8px;
   border-radius: 50%;
-  background: #e8f5ee;
-  color: #1c7a4e;
+  background: var(--ok-soft);
+  color: var(--ok-text);
   font-size: 20px;
   line-height: 38px;
 }
@@ -674,7 +674,7 @@ function close() {
 .small { font-size: 12px; }
 .hint {
   margin-top: 14px;
-  color: #6b7a73;
+  color: var(--text2);
   font-size: 12px;
   line-height: 1.7;
 }
@@ -685,9 +685,9 @@ function close() {
   flex-wrap: wrap;
   margin-top: 12px;
   padding: 10px 12px;
-  border: 1px solid #e2e6e4;
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
-  background: #fbfdfc;
+  background: var(--surface-2);
 }
 .image-names {
   max-width: 320px;
@@ -716,15 +716,15 @@ function close() {
   font-size: 12px;
   padding: 2px 8px;
   border-radius: 4px;
-  background: #eef7f2;
-  color: #1c7a4e;
+  background: var(--ok-soft);
+  color: var(--ok-text);
 }
 .warn { margin-bottom: 8px; }
 .mapping-editor { margin: -6px 0 8px; }
-.mapping-editor :deep(.ant-collapse-header) { padding-left: 0; font-size: 12px; color: #4a5a52; }
+.mapping-editor :deep(.ant-collapse-header) { padding-left: 0; font-size: 12px; color: var(--text2); }
 .map-form { display: flex; flex-direction: column; gap: 8px; }
 .map-line { display: flex; align-items: center; gap: 10px; }
-.map-line label { width: 110px; font-size: 12px; color: #4a5a52; }
+.map-line label { width: 110px; font-size: 12px; color: var(--text2); }
 .map-gap { width: auto !important; margin-left: 10px; }
 .map-actions { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
 .policy { margin-left: auto; }
@@ -737,7 +737,7 @@ function close() {
 }
 .opt-line {
   font-size: 12px;
-  color: #4a5a52;
+  color: var(--text2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -749,8 +749,8 @@ function close() {
   overflow: auto;
   font-size: 12px;
   line-height: 1.8;
-  color: #b04a3f;
-  background: #fdf6f5;
+  color: var(--bad-text);
+  background: var(--bad-soft);
   border-radius: 6px;
   padding: 8px 10px;
 }

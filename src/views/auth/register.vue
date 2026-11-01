@@ -124,12 +124,12 @@ onMounted(loadCaptcha)
 .form :deep(.ant-form-item-label > label) {
   height: auto;
   font-size: 13px;
-  color: rgba(0, 0, 0, 0.65);
+  color: var(--text);
 }
 .form :deep(.ant-input-affix-wrapper) {
   height: 40px;
   padding: 0 12px;
-  border-color: #d9d9d9;
+  border-color: var(--border-strong);
   border-radius: 8px;
 }
 .form :deep(.ant-input-affix-wrapper:focus-within) {
@@ -138,7 +138,7 @@ onMounted(loadCaptcha)
 }
 .form :deep(.ant-input-affix-wrapper .anticon),
 .form :deep(.ant-input-prefix) {
-  color: rgba(0, 0, 0, 0.35);
+  color: var(--text2);
   margin-right: 8px;
 }
 .captcha-row { display: flex; align-items: center; gap: 10px; }
@@ -146,18 +146,18 @@ onMounted(loadCaptcha)
   flex: 0 0 auto;
   height: 40px;
   padding: 0 4px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
-  background: #f6faf8;
+  background: var(--surface-2);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
 }
-.captcha-box:hover { border-color: #24945f; }
+.captcha-box:hover { border-color: var(--primary); }
 .captcha-box img { height: 100%; width: auto; display: block; }
-.captcha-loading { font-size: 12px; color: #9aa5a0; padding: 0 8px; }
+.captcha-loading { font-size: 12px; color: var(--text2); padding: 0 8px; }
 .actions {
   display: flex;
   gap: 10px;

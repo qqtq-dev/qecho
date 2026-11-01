@@ -64,14 +64,14 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: radial-gradient(circle at 18% 12%, #e6f2ec 0, #eef2f0 42%, #e9eeeb 100%);
+  background: var(--auth-bg);
 }
 .auth-shell {
   width: 100%;
   max-width: 800px;
   height: min(500px, calc(100vh - 48px));
   display: flex;
-  background: #fff;
+  background: var(--surface);
   border-radius: 20px;
   overflow: hidden;
   box-shadow: 0 22px 60px rgba(15, 40, 30, 0.16);
@@ -162,20 +162,20 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   padding: 28px 40px;
-  background: #fff;
+  background: var(--surface);
 }
 .win-controls {
   position: absolute;
   top: 12px;
   right: 14px;
-  color: #5b6661;
+  color: var(--text2);
 }
-.win-controls :deep(.wc:hover) { background: rgba(15, 40, 30, 0.06); }
+.win-controls :deep(.wc:hover) { background: var(--hover); }
 .win-controls :deep(.wc.close:hover) { background: #dc2626; color: #fff; }
 .main-inner { width: 100%; max-width: 340px; }
 .head { margin-bottom: 0; }
-.head h1 { margin: 0 0 6px; font-size: 20px; font-weight: 600; color: rgba(0, 0, 0, 0.88); letter-spacing: 0; }
-.head .sub { margin: 0 0 24px; font-size: 13px; color: rgba(0, 0, 0, 0.45); line-height: 1.6; }
+.head h1 { margin: 0 0 6px; font-size: 20px; font-weight: 600; color: var(--text); letter-spacing: 0; }
+.head .sub { margin: 0 0 24px; font-size: 13px; color: var(--text2); line-height: 1.6; }
 .main-inner :deep(.ant-form-item) { margin-bottom: 14px; }
 .main-inner :deep(.ant-form-item-label) { padding: 0 0 2px; }
 .main-inner :deep(.ant-form-item-label > label) { font-size: 12.5px; height: 22px; }
@@ -183,15 +183,15 @@ onMounted(async () => {
   margin-top: 14px;
   text-align: center;
   font-size: 12px;
-  color: #6b7570;
+  color: var(--text2);
 }
-.foot :deep(a) { color: #24945f; font-weight: 600; margin-left: 4px; }
+.foot :deep(a) { color: var(--primary); font-weight: 600; margin-left: 4px; }
 .main-foot {
   display: none;
   margin: 24px 0 0;
   text-align: center;
   font-size: 11.5px;
-  color: #a3ada8;
+  color: var(--text2);
 }
 
 @media (max-width: 760px) {

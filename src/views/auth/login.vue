@@ -92,12 +92,12 @@ async function submit() {
 .form :deep(.ant-form-item-label > label) {
   height: auto;
   font-size: 13px;
-  color: rgba(0, 0, 0, 0.65);
+  color: var(--text);
 }
 .form :deep(.ant-input-affix-wrapper) {
   height: 40px;
   padding: 0 12px;
-  border-color: #d9d9d9;
+  border-color: var(--border-strong);
   border-radius: 8px;
 }
 .form :deep(.ant-input-affix-wrapper:focus-within) {
@@ -106,7 +106,7 @@ async function submit() {
 }
 .form :deep(.ant-input-affix-wrapper .anticon),
 .form :deep(.ant-input-prefix) {
-  color: rgba(0, 0, 0, 0.35);
+  color: var(--text2);
   margin-right: 8px;
 }
 .form :deep(.submit) {
@@ -129,13 +129,13 @@ async function submit() {
   padding: 8px 12px;
   font-size: 12.5px;
   line-height: 1.7;
-  color: rgba(0, 0, 0, 0.45);
-  border: 1px solid #cbe3d6;
-  background: #f3faf6;
+  color: var(--text2);
+  border: 1px solid var(--ok-border);
+  background: var(--ok-soft);
   border-radius: 6px;
 }
 .tip a {
-  color: #24945f;
+  color: var(--primary);
   font-weight: 600;
 }
 </style>

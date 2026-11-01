@@ -917,8 +917,8 @@ onUnmounted(() => {
 .side-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 10px 0; font-size: 11.5px; color: var(--text2); }
 .side-legend span { display: inline-flex; align-items: center; gap: 4px; }
 .dot { width: 8px; height: 8px; border-radius: 2px; border: 1px solid var(--border); background: var(--surface); }
-.dot.ok { background: #e8f5ee; border-color: #24945f; }
-.dot.bad { background: #fdece8; border-color: #d4380d; }
+.dot.ok { background: var(--ok-soft); border-color: #24945f; }
+.dot.bad { background: var(--bad-soft); border-color: #d4380d; }
 .dot.mark { background: #fa8c16; border-color: #fa8c16; }
 .q-grid {
   flex: 1; min-height: 0; overflow: auto;
@@ -937,12 +937,12 @@ onUnmounted(() => {
   width: 5px; height: 5px; border-radius: 50%; background: #fa8c16;
 }
 .q-cell:hover { border-color: #24945f; color: #24945f; }
-.q-cell.ok { background: #e8f5ee; border-color: #cfe8da; color: #1b7a4d; }
-.q-cell.bad { background: #fdece8; border-color: #f5d6cc; color: #b8340f; }
-.q-cell.current { border-color: #24945f; box-shadow: 0 0 0 1px #24945f inset; color: #1b7a4d; font-weight: 600; }
-.q-cell.bad.current { border-color: #d4380d; box-shadow: 0 0 0 1px #d4380d inset; color: #b8340f; }
+.q-cell.ok { background: var(--ok-soft); border-color: var(--ok-border); color: var(--ok-text); }
+.q-cell.bad { background: var(--bad-soft); border-color: var(--bad-border); color: var(--bad-text); }
+.q-cell.current { border-color: #24945f; box-shadow: 0 0 0 1px #24945f inset; color: var(--ok-text); font-weight: 600; }
+.q-cell.bad.current { border-color: #d4380d; box-shadow: 0 0 0 1px #d4380d inset; color: var(--bad-text); }
 .side-foot { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); text-align: right; }
-.q-type { margin-top: 18px; font-size: 12.5px; color: #6b7570; }
+.q-type { margin-top: 18px; font-size: 12.5px; color: var(--text2); }
 .q-stem { margin-top: 6px; font-size: 16px; line-height: 1.6; white-space: pre-wrap; }
 .q-img { display: block; margin-top: 10px; }
 .opt-thumb { flex: none; }
@@ -950,16 +950,17 @@ onUnmounted(() => {
 .multi-submit { display: flex; justify-content: flex-end; margin-top: 10px; }
 .opt {
   display: flex; align-items: flex-start; gap: 10px;
-  padding: 11px 12px; border: 1px solid #e2e6e4; border-radius: 8px;
-  background: #fff; cursor: pointer; transition: border-color .12s, background .12s;
+  padding: 11px 12px; border: 1px solid var(--border-strong); border-radius: 8px;
+  background: var(--surface-2); color: var(--text); cursor: pointer;
+  transition: border-color .12s, background .12s;
 }
-.opt:hover { background: #f7faf8; }
-.opt.selected { border-color: #24945f; background: #e8f5ee; }
-.opt.correct { border-color: #24945f; background: #e8f5ee; }
-.opt.wrong { border-color: #d4380d; background: #fdece8; }
+.opt:hover { background: var(--hover); }
+.opt.selected { border-color: #24945f; background: var(--ok-soft); }
+.opt.correct { border-color: #24945f; background: var(--ok-soft); }
+.opt.wrong { border-color: #d4380d; background: var(--bad-soft); }
 .opt-key {
   flex: none; width: 24px; height: 24px; border-radius: 50%;
-  border: 1.5px solid #c6cfca; color: #6b7570;
+  border: 1.5px solid var(--border-strong); color: var(--text2);
   font-size: 12.5px; font-weight: 600;
   display: flex; align-items: center; justify-content: center;
 }
@@ -967,8 +968,8 @@ onUnmounted(() => {
 .opt.wrong .opt-key { background: #d4380d; border-color: #d4380d; color: #fff; }
 .opt-text { flex: 1; white-space: pre-wrap; }
 .feedback { margin-top: 14px; padding: 12px; border-radius: 8px; font-size: 13.5px; }
-.feedback.ok { background: #eef7f2; border: 1px solid #cfe8da; }
-.feedback.bad { background: #fdf2ef; border: 1px solid #f5d6cc; }
+.feedback.ok { background: var(--ok-soft); border: 1px solid var(--ok-border); }
+.feedback.bad { background: var(--bad-soft); border: 1px solid var(--bad-border); }
 .feedback-line { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
 .analysis-box {
   flex: 1; min-height: 96px; margin-top: 14px;

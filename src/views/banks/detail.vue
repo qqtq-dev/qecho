@@ -891,8 +891,8 @@ onMounted(async () => {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: #eef7f2;
-  color: #1c7a4e;
+  background: var(--ok-soft);
+  color: var(--ok-text);
   font-weight: 600;
   font-size: 13px;
   display: flex;
@@ -913,7 +913,7 @@ onMounted(async () => {
   white-space: nowrap;
 }
 .small { font-size: 12px; }
-.danger { color: #c0392b; }
+.danger { color: var(--bad-text); }
 .tag-chip { margin-inline-end: 0; }
 .tag-hint { margin-top: 4px; font-size: 12px; }
 .merge-tip { margin: 0 0 12px; }
