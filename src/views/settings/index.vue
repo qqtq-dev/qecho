@@ -173,34 +173,36 @@
             接入后练习作答完可在题目旁直接追问知识点。每个账号使用自己的凭据，互不影响；
             未启用时不会发起任何外部请求。
           </p>
-          <div class="setting-row ai-provider-row">
+          <div class="setting-row">
             <div>
-              <div class="row-title">接入方式</div>
+              <div class="row-title">启用</div>
+              <div class="muted">关闭后练习页不显示答疑入口</div>
+            </div>
+            <a-switch v-model:checked="ai.enabled" />
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="row-title">BIC-QA 官方</div>
               <div class="muted">
-                两套凭据可以分别保存；打开其中一个会自动关闭另一个，已保存的凭据都保留。
-                两个都关闭即停用答疑入口。
+                {{ ai.hasKey ? '已配置 API Key' : '未配置 API Key' }} · 打开后 ima 网页版自动关闭
               </div>
             </div>
-            <div class="ai-provider-list">
-              <div class="ai-provider-item" :class="{ on: isProviderOn('bicqa') }">
-                <span class="ai-pi-name">BIC-QA 官方</span>
-                <span class="ai-pi-state">{{ ai.hasKey ? '已配置' : '未配置' }}</span>
-                <a-switch
-                  size="small"
-                  :checked="isProviderOn('bicqa')"
-                  @change="(c: boolean) => toggleProvider('bicqa', c)"
-                />
-              </div>
-              <div class="ai-provider-item" :class="{ on: isProviderOn('imaweb') }">
-                <span class="ai-pi-name">ima 网页版</span>
-                <span class="ai-pi-state">{{ ai.hasCookie ? '已配置' : '未配置' }}</span>
-                <a-switch
-                  size="small"
-                  :checked="isProviderOn('imaweb')"
-                  @change="(c: boolean) => toggleProvider('imaweb', c)"
-                />
+            <a-switch
+              :checked="isProviderOn('bicqa')"
+              @change="(c: boolean) => toggleProvider('bicqa', c)"
+            />
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="row-title">ima 网页版</div>
+              <div class="muted">
+                {{ ai.hasCookie ? '已配置鉴权串' : '未配置鉴权串' }} · 打开后 BIC-QA 官方自动关闭
               </div>
             </div>
+            <a-switch
+              :checked="isProviderOn('imaweb')"
+              @change="(c: boolean) => toggleProvider('imaweb', c)"
+            />
           </div>
 
           <template v-if="ai.provider === 'bicqa'">
@@ -1051,22 +1053,6 @@ onMounted(() => {
 .stack { display: grid; gap: 12px; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 0; border-bottom: 1px solid var(--border); }
-/* 接入方式：每套一个开关，打开一个另一个自动关（凭据都保留） */
-.ai-provider-row { align-items: flex-start; }
-.ai-provider-list { display: flex; flex-direction: column; gap: 6px; flex: none; width: 264px; }
-.ai-provider-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface-2);
-}
-.ai-provider-item.on { border-color: var(--primary); background: var(--primary-soft); }
-.ai-pi-name { font-size: 13px; color: var(--text); }
-.ai-provider-item.on .ai-pi-name { color: var(--primary); font-weight: 600; }
-.ai-pi-state { flex: 1; text-align: right; font-size: 11.5px; color: var(--text2); }
 .ai-intro { margin: 0 0 8px; }
 .ai-key-row { align-items: flex-start; }
 .ai-key-input { width: 300px; flex: none; }

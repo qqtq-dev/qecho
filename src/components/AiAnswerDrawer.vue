@@ -18,7 +18,9 @@
 
     <div ref="scrollRef" class="ai-scroll">
       <div class="ai-source">
-        <div class="ai-source-label muted">已发送的题干</div>
+        <div class="ai-source-label muted">
+          已发送的题干 · {{ type === 'multiple' ? '多选题' : '单选题' }}
+        </div>
         <div class="ai-source-stem">{{ stem }}</div>
       </div>
 
@@ -132,6 +134,8 @@ const props = defineProps<{
   questionId: number
   stem: string
   options: string[]
+  /** 题型：单选只有一个正确答案，多选可能不止一个，必须告诉 AI，否则容易按多选答。 */
+  type: 'single' | 'multiple'
 }>()
 
 const emit = defineEmits<{ (e: 'update:open', value: boolean): void }>()
@@ -237,7 +241,10 @@ function onKbChange() {
 }
 
 function buildInitialQuestion() {
+  const single = props.type !== 'multiple'
   const lines = ['请分析这道题：正确答案是哪几个选项？', '']
+  // 题型必须显式给出：不说单选，模型常按多选作答，给出多个答案。
+  lines.push(single ? '题型：单选题（只有一个正确答案）' : '题型：多选题（正确答案可能不止一个）')
   lines.push(`题干：${props.stem}`)
   if (props.options.length) {
     lines.push('选项：')

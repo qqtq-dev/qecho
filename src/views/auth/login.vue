@@ -59,7 +59,12 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 
-const isDesktop = isTauri()
+// 桌面壳之外，开发时用浏览器直连本机引擎（vite dev server 代理到 127.0.0.1:54310）
+// 也是本机账号：引擎以 --desktop 启动时同样允许 local 空密码登录，这里放宽提交校验。
+// 构建产物中 import.meta.env.DEV 恒为 false，线上行为不变（且后端仍会拒绝非回环请求）。
+const isDesktop =
+  isTauri() ||
+  (import.meta.env.DEV && ['127.0.0.1', 'localhost'].includes(window.location.hostname))
 const username = ref(isDesktop ? 'local' : '')
 const password = ref('')
 const loading = ref(false)

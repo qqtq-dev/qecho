@@ -314,6 +314,7 @@
       :question-id="current?.id ?? 0"
       :stem="current?.stem ?? ''"
       :options="aiOptions"
+      :type="current?.type ?? 'single'"
     />
   </div>
 </template>
