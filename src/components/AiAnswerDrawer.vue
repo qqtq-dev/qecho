@@ -31,7 +31,7 @@
         </div>
         <div class="ai-a">
           <div class="ai-a-head">
-            <span class="ai-role ai-role-bot" :class="{ 'is-ima': usedProvider === 'imaweb' }">{{ providerBadge }}</span>
+            <span class="ai-role ai-role-bot">AI</span>
             <a-space :size="8">
               <a v-if="turn.answer" class="ai-mini" @click="copy(turn.answer)">复制</a>
               <a
@@ -79,21 +79,6 @@
         @press-enter.exact.prevent="ask"
       />
       <div class="ai-input-foot">
-        <a-select
-          v-if="kbVisible"
-          v-model:value="kbId"
-          size="small"
-          class="ai-kb-select"
-          show-search
-          option-filter-prop="label"
-          :dropdown-match-select-width="260"
-          @change="onKbChange"
-        >
-          <a-select-option value="">不限定知识库</a-select-option>
-          <a-select-option v-for="kb in kbOptions" :key="kb.id" :value="kb.id" :label="kb.name">
-            {{ kb.name }}
-          </a-select-option>
-        </a-select>
         <a-radio-group v-model:value="mode" size="small">
           <a-radio-button value="brief">简答</a-radio-button>
           <a-radio-button value="full">详答</a-radio-button>
@@ -114,7 +99,7 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
-import { aiApi, type AiProvider, type KnowledgeBase } from '@/api/ai'
+import { aiApi } from '@/api/ai'
 
 interface Turn {
   question: string
@@ -150,19 +135,6 @@ const mode = ref<'brief' | 'full'>(
   localStorage.getItem(MODE_KEY) === 'full' ? 'full' : 'brief',
 )
 const scrollRef = ref<HTMLElement | null>(null)
-// 本次答疑实际走的接入方式：打开时取配置，提问后以引擎 meta 帧为准（两者不一致说明分派有变）。
-const usedProvider = ref<AiProvider | ''>('')
-// 回答者头像上的字：按本次实际接入方式显示 bic / ima，未加载到配置前退回 AI。
-const providerBadge = computed(() => {
-  if (usedProvider.value === 'imaweb') return 'ima'
-  if (usedProvider.value === 'bicqa') return 'bic'
-  return 'AI'
-})
-// 知识库：只有 ima 网页版才可选，选定后本次答疑会先在该库里检索。
-const kbVisible = ref(false)
-const kbOptions = ref<KnowledgeBase[]>([])
-const kbId = ref('')
-const kbLoaded = ref(false)
 let controller: AbortController | null = null
 let lastBump = 0
 const version = ref(0)
@@ -218,28 +190,6 @@ function stopTimer() {
   }
 }
 
-/** 打开抽屉时读一次配置：当前接入方式、是不是 ima 网页版、默认选的是哪个知识库。 */
-async function loadKbContext() {
-  try {
-    const cfg = await aiApi.config()
-    // 每次打开都刷新，避免在设置页切换接入方式后这里仍显示旧值。
-    usedProvider.value = cfg.provider
-    kbVisible.value = cfg.provider === 'imaweb' && cfg.hasCookie
-    if (!kbVisible.value || kbLoaded.value) return
-    kbId.value = cfg.kbId || ''
-    const res = await aiApi.knowledgeBases()
-    kbOptions.value = res.items ?? []
-    kbLoaded.value = true
-  } catch {
-    /* 引擎未就绪或未配置时静默，入口不显示即可 */
-  }
-}
-
-/** 换知识库要开新会话：会话是建库时就绑定了机器人的。 */
-function onKbChange() {
-  conversationId.value = ''
-}
-
 function buildInitialQuestion() {
   const single = props.type !== 'multiple'
   const lines = ['请分析这道题：正确答案是哪几个选项？', '']
@@ -291,13 +241,10 @@ async function send(question: string) {
         conversationId: conversationId.value || undefined,
         title: `题鸣答疑 · ${props.stem.slice(0, 20)}`,
         mode: mode.value,
-        // 只在 ima 网页版下传：空串表示这次走通用问答，覆盖设置里的知识库。
-        ...(kbVisible.value ? { kbId: kbId.value } : {}),
       },
       {
-        onMeta: (id, provider) => {
+        onMeta: (id) => {
           conversationId.value = id
-          usedProvider.value = provider
         },
         onThinking: (chunk) => {
           turn.thinking += chunk
@@ -383,14 +330,6 @@ watch(mode, (value) => {
 watch(
   () => props.open,
   (open) => {
-    if (open) void loadKbContext()
-  },
-  { immediate: true },
-)
-
-watch(
-  () => props.open,
-  (open) => {
     if (open) {
       if (turns.value.length === 0) void send(buildInitialQuestion())
     } else {
@@ -440,8 +379,6 @@ watch(
   line-height: 20px;
 }
 .ai-role-bot { background: var(--ok-soft); color: var(--ok-text); }
-/* ima 网页版用蓝色，和 BIC-QA 的绿色一眼区分 */
-.ai-role-bot.is-ima { background: var(--info-soft); color: var(--info-text); }
 .ai-q-text { white-space: pre-wrap; max-height: 88px; overflow: auto; }
 .ai-a { margin-top: 8px; }
 .ai-a-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
@@ -545,7 +482,6 @@ watch(
   border-top: 1px solid var(--border);
   background: var(--surface);
 }
-.ai-kb-select { width: 150px; }
 .ai-input-foot { display: flex; align-items: center; margin-top: 8px; gap: 10px; }
 .ai-hint { font-size: 11.5px; flex: 1; }
 </style>

@@ -1,67 +1,9 @@
 package api
 
 import (
-	"context"
-	"encoding/json"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"quizbox/engine/internal/aistream"
-	"quizbox/engine/internal/bicqa"
 )
-
-func TestNormalizeCookie(t *testing.T) {
-	cases := []struct {
-		name string
-		in   string
-		want string
-	}{
-		{"空值", "   ", ""},
-		{"纯 Cookie 串", "IMA-TOKEN=abc; uid=1", "IMA-TOKEN=abc; uid=1"},
-		{"带 Cookie 前缀", "Cookie: IMA-TOKEN=abc", "IMA-TOKEN=abc"},
-		{"前缀大小写不敏感", "cookie:IMA-TOKEN=abc", "IMA-TOKEN=abc"},
-		{"含换行", "IMA-TOKEN=abc;\r\nuid=1", "IMA-TOKEN=abc; uid=1"},
-		{"多余空格", "IMA-TOKEN=abc;   uid=1", "IMA-TOKEN=abc; uid=1"},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			if got := normalizeCookie(c.in); got != c.want {
-				t.Fatalf("normalizeCookie(%q) = %q, want %q", c.in, got, c.want)
-			}
-		})
-	}
-}
-
-func TestProviderSwitchKeepsCustomBaseURL(t *testing.T) {
-	// 默认地址在切换接入方式时应跟着换，自定义地址（例如走代理）必须保留。
-	if providerDefaultBaseURL(bicqa.ProviderImaWeb) != bicqa.ImaWebDefaultBaseURL {
-		t.Fatal("ima 默认地址不一致")
-	}
-	if providerDefaultBaseURL(bicqa.ProviderBICQA) != bicqa.DefaultBaseURL {
-		t.Fatal("BIC-QA 默认地址不一致")
-	}
-}
-
-func TestAISessionDispatch(t *testing.T) {
-	imaCfg := bicqa.Config{Provider: bicqa.ProviderImaWeb, Cookie: "IMA-TOKEN=x", TimeoutSec: 300}
-	sess := aiSessionOf(imaCfg)
-	if sess.provider != bicqa.ProviderImaWeb || sess.label != "ima 网页版" {
-		t.Fatalf("ima dispatch = %+v", sess)
-	}
-	if sess.open == nil || sess.ask == nil {
-		t.Fatal("ima session 缺少回调")
-	}
-
-	// 旧配置文件没有 provider 字段，必须继续走 BIC-QA。
-	legacy := bicqa.Config{APIKey: "sk-x", TimeoutSec: 300}
-	sess = aiSessionOf(legacy)
-	if sess.provider != bicqa.ProviderBICQA {
-		t.Fatalf("legacy dispatch = %+v", sess)
-	}
-}
 
 func TestWithAnswerMode(t *testing.T) {
 	const q = "题干：OceanBase 的副本类型有哪几种？"
@@ -94,43 +36,5 @@ func TestWithAnswerMode(t *testing.T) {
 	}
 	if !strings.Contains(answerHintBrief, "200 字") {
 		t.Fatal("简答提示词应包含字数限制")
-	}
-}
-
-// TestImaSessionPassesQuestionAndSessionInOrder 守住一个真实踩过的坑：
-// aiSession.ask 的签名是 (question, sessionID)，与 imaweb.Client.Ask 的参数顺序
-// 必须一致。曾经两者顺序相反，导致 question 与 session_id 互换，
-// ima 直接返回 code 1402「当前会话已失效」。
-func TestImaSessionPassesQuestionAndSessionInOrder(t *testing.T) {
-	var gotBody map[string]any
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		raw, _ := io.ReadAll(r.Body)
-		_ = json.Unmarshal(raw, &gotBody)
-		w.Header().Set("Content-Type", "text/event-stream")
-		io.WriteString(w, "event: CLOSE\ndata: [DONE]\n\n")
-	}))
-	defer srv.Close()
-
-	sess := aiSessionOf(bicqa.Config{
-		Provider: bicqa.ProviderImaWeb,
-		BaseURL:  srv.URL,
-		Cookie:   "IMA-TOKEN=x",
-	})
-	emitted := 0
-	err := sess.ask(context.Background(), "题干内容", "sess-123", func(aistream.Event) error {
-		emitted++
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("ask: %v", err)
-	}
-	if gotBody["question"] != "题干内容" {
-		t.Fatalf("question = %v", gotBody["question"])
-	}
-	if gotBody["session_id"] != "sess-123" {
-		t.Fatalf("session_id = %v", gotBody["session_id"])
-	}
-	if emitted == 0 {
-		t.Fatal("未收到 done 事件")
 	}
 }

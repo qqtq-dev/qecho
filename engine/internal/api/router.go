@@ -129,7 +129,6 @@ func New(st *store.Store, version, dataDir, shutdownToken string, port int, desk
 	mux.HandleFunc("PUT /api/v1/ai/config", s.auth(s.updateAIConfig))
 	mux.HandleFunc("POST /api/v1/ai/test", s.auth(s.aiTest))
 	mux.HandleFunc("GET /api/v1/ai/usage", s.auth(s.aiUsage))
-	mux.HandleFunc("GET /api/v1/ai/knowledge-bases", s.auth(s.aiKnowledgeBases))
 	mux.HandleFunc("POST /api/v1/ai/chat", s.auth(s.aiChat))
 
 	mux.HandleFunc("GET /api/public/exams/{token}", s.publicExamInfo)

@@ -27,10 +27,7 @@ import (
 const (
 	// DefaultBaseURL 是 BIC-QA Open API 的默认地址（不含 /open-api/v1 前缀）。
 	DefaultBaseURL = "https://api.bic-qa.com"
-	// ImaWebDefaultBaseURL 是 ima 网页版的默认地址。imaweb 包内有一份同值常量，
-	// 两处都改才能生效，这里保留是为了让配置归一化不依赖 imaweb 包。
-	ImaWebDefaultBaseURL = "https://ima.qq.com"
-	configDirName        = "bicqa"
+	configDirName  = "bicqa"
 
 	// MaxQuestionRunes 限制单次提问长度，避免把整份题图或超长文本误发出去。
 	MaxQuestionRunes = 4000
@@ -39,39 +36,13 @@ const (
 // ErrNotConfigured 表示尚未启用或缺少 API Key。
 var ErrNotConfigured = errors.New("未配置 BIC-QA API Key")
 
-// 支持的接入方式。BIC-QA 是官方的 Open API，走 API Key；
-// ima 网页版是私有接口，走浏览器登录态（Cookie）。两者并存，由用户自选。
-const (
-	ProviderBICQA  = "bicqa"
-	ProviderImaWeb = "imaweb"
-)
-
-// Config 是 AI 问答的本地配置。密钥类字段只保存在数据目录内，不随备份打包。
-//
-// 一个结构承载两种接入方式，是为了让旧配置文件在没有 provider 字段时
-// 仍被当作 BIC-QA 读取——升级程序不会让已填好的 Key 失效。
+// Config 是 AI 问答的本地配置。密钥只保存在数据目录内，不随备份打包。
 type Config struct {
-	Provider string `json:"provider,omitempty"`
-	Enabled  bool   `json:"enabled"`
-	BaseURL  string `json:"baseUrl"`
-	APIKey   string `json:"apiKey"`
-	Cookie   string `json:"cookie,omitempty"`
-	// KBID / KBName 是 ima 网页版选定的知识库。为空表示不限定知识库（通用问答）；
-	// KBName 只用于界面回显，避免每次打开设置页都要重新拉一次列表。
-	KBID       string `json:"kbId,omitempty"`
-	KBName     string `json:"kbName,omitempty"`
+	Enabled    bool   `json:"enabled"`
+	BaseURL    string `json:"baseUrl"`
+	APIKey     string `json:"apiKey"`
 	Model      string `json:"model"`
 	TimeoutSec int    `json:"timeoutSec"`
-}
-
-// ProviderName 返回归一化后的接入方式，无法识别时按 BIC-QA 处理。
-func (c Config) ProviderName() string {
-	switch strings.ToLower(strings.TrimSpace(c.Provider)) {
-	case ProviderImaWeb, "ima", "ima-web":
-		return ProviderImaWeb
-	default:
-		return ProviderBICQA
-	}
 }
 
 // Normalized 返回补齐默认值后的副本。读取配置和回显配置前都要过一遍，
@@ -81,23 +52,12 @@ func (c Config) Normalized() Config {
 }
 
 func (c Config) normalized() Config {
-	c.Provider = c.ProviderName()
 	c.BaseURL = strings.TrimSpace(c.BaseURL)
 	if c.BaseURL == "" {
-		if c.Provider == ProviderImaWeb {
-			c.BaseURL = ImaWebDefaultBaseURL
-		} else {
-			c.BaseURL = DefaultBaseURL
-		}
+		c.BaseURL = DefaultBaseURL
 	}
 	c.BaseURL = strings.TrimRight(c.BaseURL, "/")
 	c.APIKey = strings.TrimSpace(c.APIKey)
-	c.KBID = strings.TrimSpace(c.KBID)
-	c.KBName = strings.TrimSpace(c.KBName)
-	if c.KBID == "" {
-		c.KBName = ""
-	}
-	c.Cookie = strings.TrimSpace(c.Cookie)
 	c.Model = strings.TrimSpace(c.Model)
 	if c.TimeoutSec < 30 || c.TimeoutSec > 900 {
 		c.TimeoutSec = 300
@@ -105,25 +65,9 @@ func (c Config) normalized() Config {
 	return c
 }
 
-// Ready 表示当前接入方式所需的最小凭据已具备。
+// Ready 表示已启用且填了 API Key。
 func (c Config) Ready() bool {
-	if !c.Enabled {
-		return false
-	}
-	if c.ProviderName() == ProviderImaWeb {
-		return c.Cookie != ""
-	}
-	return c.APIKey != ""
-}
-
-// MaskedCookie 只回显登录态的长度，不泄露任何 Cookie 片段。
-// Cookie 里往往直接含账号令牌，比 API Key 更敏感，因此不做首尾留字。
-func (c Config) MaskedCookie() string {
-	n := len([]rune(strings.TrimSpace(c.Cookie)))
-	if n == 0 {
-		return ""
-	}
-	return fmt.Sprintf("已保存 %d 字符", n)
+	return c.Enabled && c.APIKey != ""
 }
 
 // MaskedKey 返回脱敏后的 Key，仅用于前端展示，绝不回传明文。

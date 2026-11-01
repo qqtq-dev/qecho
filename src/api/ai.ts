@@ -1,18 +1,9 @@
 import { http, getApiBase, getToken } from './request'
 
-/** 接入方式：bicqa = 官方 Open API（API Key）；imaweb = ima 网页版（登录 Cookie）。 */
-export type AiProvider = 'bicqa' | 'imaweb'
-
 export interface AiConfig {
-  provider: AiProvider
   enabled: boolean
   hasKey: boolean
   keyMask: string
-  hasCookie: boolean
-  cookieMask: string
-  /** ima 网页版选定的知识库；空表示不限定（通用问答）。 */
-  kbId: string
-  kbName: string
   baseUrl: string
   model: string
   timeoutSec: number
@@ -21,49 +12,21 @@ export interface AiConfig {
 
 export interface AiTestResult {
   ok: boolean
-  provider: AiProvider
   conversationId: string
   baseUrl: string
 }
 
 export interface AiConfigInput {
-  provider?: AiProvider
   enabled?: boolean
   baseUrl?: string
   apiKey?: string
   model?: string
   timeoutSec?: number
-  /** ima 网页版鉴权串；留空表示沿用已保存的值。 */
-  cookie?: string
-  /** ima 网页版要检索的知识库 id / 名称（名称仅用于回显）。 */
-  kbId?: string
-  kbName?: string
   clearKey?: boolean
-  clearCookie?: boolean
-  clearKb?: boolean
-}
-
-/** ima 个人知识库列表项。 */
-export interface KnowledgeBase {
-  id: string
-  name: string
-  docCount: string
-  updated: string
-}
-
-export interface KnowledgeBaseList {
-  items: KnowledgeBase[]
-  selected: string
-}
-
-/** 后端在 meta 帧里回吐的接入方式；未知值一律视为 BIC-QA（与引擎缺省一致）。 */
-function parseProvider(raw: unknown): AiProvider {
-  return typeof raw === 'string' && raw.trim().toLowerCase() === 'imaweb' ? 'imaweb' : 'bicqa'
 }
 
 export interface ChatHandlers {
-  /** provider 是引擎本次实际使用的接入方式，用于界面标识。 */
-  onMeta?: (conversationId: string, provider: AiProvider) => void
+  onMeta?: (conversationId: string) => void
   onThinking?: (text: string) => void
   onDelta?: (text: string) => void
   onError?: (message: string) => void
@@ -97,10 +60,9 @@ function dispatchFrame(frame: string, handlers: ChatHandlers) {
   const message = typeof payload.message === 'string' ? payload.message : ''
   switch (event) {
     case 'meta': {
-      // 引擎在首帧同时给出会话 id 与本次实际使用的接入方式。
-      // id 为空时不回调，避免把已有的多轮会话误清空。
+      // 首帧只用来绑定会话；id 为空时不回调，避免把已有的多轮会话误清空。
       const id = payload.conversationId
-      if (typeof id === 'string' && id) handlers.onMeta?.(id, parseProvider(payload.provider))
+      if (typeof id === 'string' && id) handlers.onMeta?.(id)
       break
     }
     case 'thinking':
@@ -183,6 +145,5 @@ export const aiApi = {
   saveConfig: (data: AiConfigInput) => http.put<unknown, AiConfig>('/ai/config', data),
   test: () => http.post<unknown, AiTestResult>('/ai/test', {}),
   usage: () => http.get<unknown, Record<string, unknown>>('/ai/usage'),
-  knowledgeBases: () => http.get<unknown, KnowledgeBaseList>('/ai/knowledge-bases'),
   streamChat,
 }
