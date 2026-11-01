@@ -219,20 +219,68 @@
           <template v-else>
             <div class="setting-row ai-key-row">
               <div>
-                <div class="row-title">登录 Cookie</div>
+                <div class="row-title">鉴权串（x-ima-cookie）</div>
                 <div class="muted">
                   <template v-if="ai.hasCookie">已保存（{{ ai.cookieMask }}），留空表示不修改</template>
-                  <template v-else>在浏览器登录 ima.qq.com 后，从开发者工具复制请求头里的 Cookie</template>
+                  <template v-else>网页版不发 Cookie 头，鉴权信息放在请求头 x-ima-cookie 里</template>
                 </div>
               </div>
               <a-textarea
                 v-model:value="ai.cookie"
                 class="ai-key-input"
                 :rows="3"
-                :placeholder="ai.hasCookie ? '留空表示不修改' : 'IMA-TOKEN=...; 其他 cookie'"
+                :placeholder="ai.hasCookie ? '留空表示不修改' : 'PLATFORM=H5; IMA-UID=...; IMA-TOKEN=...'"
                 autocomplete="off"
               />
             </div>
+            <div class="setting-row">
+              <div>
+                <div class="row-title">知识库</div>
+                <div class="muted">
+                  选定后提问会先在该库里检索，再结合检索结果作答；不选则走通用问答
+                </div>
+              </div>
+              <div class="ai-kb-picker">
+                <a-select
+                  v-model:value="ai.kbId"
+                  class="ai-key-input"
+                  :loading="kbLoading"
+                  :disabled="!ai.hasCookie"
+                  show-search
+                  option-filter-prop="label"
+                  :placeholder="ai.hasCookie ? '不限定（通用问答）' : '请先填写鉴权串'"
+                  @change="onKbChange"
+                >
+                  <a-select-option value="">不限定（通用问答）</a-select-option>
+                  <a-select-option v-for="kb in kbList" :key="kb.id" :value="kb.id" :label="kb.name">
+                    {{ kb.name }}<span v-if="kb.docCount" class="ai-kb-count"> · {{ kb.docCount }} 篇</span>
+                  </a-select-option>
+                </a-select>
+                <a-button size="small" :loading="kbLoading" :disabled="!ai.hasCookie" @click="loadKnowledgeBases">
+                  刷新列表
+                </a-button>
+              </div>
+            </div>
+            <p v-if="kbError" class="note ai-error">{{ kbError }}</p>
+            <details class="ai-howto">
+              <summary>怎么拿到这串鉴权信息（约 1 分钟）</summary>
+              <ol>
+                <li>浏览器打开 <code>https://ima.qq.com</code>，确认右上角是自己的头像（已登录）。</li>
+                <li>
+                  按 <code>F12</code> 打开开发者工具 → <b>Network / 网络</b> → 筛选框输入
+                  <code>ima.qq.com</code> → 按 <code>F5</code> 刷新一次页面，让请求列表有内容。
+                </li>
+                <li>
+                  点开任意一条请求 → <b>Headers / 标头</b> → 在 <b>Request Headers / 请求标头</b> 里找到
+                  <code>x-ima-cookie</code> 这一行，复制冒号后面那一整串（通常 700 多字符）。
+                </li>
+                <li>
+                  嫌找起来麻烦就换一种：右键该请求 → <b>Copy → Copy as cURL (bash)</b>，
+                  把整条命令直接粘到上面输入框，引擎会自动截取其中的鉴权串。
+                </li>
+                <li>粘贴后点「保存」，再点「测试连接」；提示连接正常就说明鉴权有效。</li>
+              </ol>
+            </details>
             <div class="setting-row">
               <div>
                 <div class="row-title">服务地址</div>
@@ -241,8 +289,9 @@
               <a-input v-model:value="ai.baseUrl" class="ai-key-input" placeholder="https://ima.qq.com" />
             </div>
             <p class="note ai-warn">
-              ima 网页版走的是前端私有接口，不是官方开放平台：接口随时可能调整，Cookie 过期后需要重新复制。
-              Cookie 等同于账号登录凭证，仅保存在本机数据目录，请勿分享给他人。若追求稳定，建议改用 BIC-QA 官方接口。
+              ima 网页版走的是前端私有接口，不是官方开放平台：接口随时可能调整，鉴权过期后需要重新复制一次
+              （界面会提示「登录已失效」）。这串信息等同于你的账号登录凭证，只保存在本机数据目录，请勿分享。
+              若追求长期稳定，建议改用 BIC-QA 官方接口。
             </p>
           </template>
 
@@ -258,7 +307,7 @@
               清除已保存的 Key
             </a-button>
             <a-button v-if="ai.hasCookie && ai.provider === 'imaweb'" danger size="small" @click="clearAiCookie">
-              清除已保存的 Cookie
+              清除已保存的鉴权串
             </a-button>
             <span v-if="aiState" class="muted ai-state">{{ aiState }}</span>
           </div>
@@ -422,7 +471,7 @@ import { usersApi, type UserItem } from '@/api/users'
 import { engineApi, type EngineStatus, type SystemLogs } from '@/api/engine'
 import { backupsApi, type BackupItem, type BackupOverview } from '@/api/backups'
 import { settingsApi, type Settings } from '@/api/settings'
-import { aiApi, type AiConfig, type AiProvider } from '@/api/ai'
+import { aiApi, type AiConfig, type AiProvider, type KnowledgeBase } from '@/api/ai'
 import { getApiBase, isTauri } from '@/api/request'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
@@ -464,10 +513,15 @@ const ai = reactive({
   timeoutSec: 300,
   apiKey: '',
   cookie: '',
+  kbId: '',
+  kbName: '',
 })
 const aiSaving = ref(false)
 const aiTesting = ref(false)
 const aiState = ref('')
+const kbList = ref<KnowledgeBase[]>([])
+const kbLoading = ref(false)
+const kbError = ref('')
 
 /** 当前接入方式所需的最小凭据是否已具备（决定「测试连接」能否点）。 */
 const aiReady = computed(() => (ai.provider === 'imaweb' ? ai.hasCookie : ai.hasKey))
@@ -482,8 +536,34 @@ function applyAiConfig(cfg: AiConfig) {
   ai.cookieMask = cfg.cookieMask
   ai.baseUrl = cfg.baseUrl
   ai.timeoutSec = cfg.timeoutSec
+  ai.kbId = cfg.kbId ?? ''
+  ai.kbName = cfg.kbName ?? ''
   ai.apiKey = ''
   ai.cookie = ''
+}
+
+/** 拉取 ima 个人知识库列表；只有选了具体库，提问才会带检索参数。 */
+async function loadKnowledgeBases() {
+  if (!ai.hasCookie) {
+    kbError.value = '请先保存鉴权串，再刷新知识库列表'
+    return
+  }
+  kbLoading.value = true
+  kbError.value = ''
+  try {
+    const res = await aiApi.knowledgeBases()
+    kbList.value = res.items ?? []
+    if (!res.items?.length) kbError.value = '这个账号下没有可用的知识库'
+  } catch (err) {
+    kbError.value = err instanceof Error ? err.message : '知识库列表加载失败'
+  } finally {
+    kbLoading.value = false
+  }
+}
+
+function onKbChange(value: string) {
+  const hit = kbList.value.find((kb) => kb.id === value)
+  ai.kbName = hit?.name ?? ''
 }
 
 /** 切换接入方式时同步默认服务地址，避免把 BIC-QA 的地址发给 ima。 */
@@ -495,11 +575,15 @@ function onProviderChange() {
   ai.apiKey = ''
   ai.cookie = ''
   aiState.value = ''
+  if (ai.provider === 'imaweb' && ai.hasCookie && kbList.value.length === 0) {
+    void loadKnowledgeBases()
+  }
 }
 
 async function loadAiConfig() {
   try {
     applyAiConfig(await aiApi.config())
+    if (ai.provider === 'imaweb' && ai.hasCookie) void loadKnowledgeBases()
   } catch {
     /* 引擎未就绪时忽略，进入页面后可重试 */
   }
@@ -515,11 +599,17 @@ async function saveAi() {
       baseUrl: ai.baseUrl,
       apiKey: ai.apiKey.trim() || undefined,
       cookie: ai.cookie.trim() || undefined,
+      kbId: ai.kbId || undefined,
+      kbName: ai.kbId ? ai.kbName : undefined,
+      clearKb: !ai.kbId,
       timeoutSec: ai.timeoutSec,
     })
     applyAiConfig(cfg)
     aiState.value = ai.enabled ? '已保存，可点「测试连接」验证' : '已保存（当前为关闭状态）'
     message.success(`${aiProviderLabel.value} 设置已保存`)
+    if (ai.provider === 'imaweb' && ai.hasCookie && kbList.value.length === 0) {
+      void loadKnowledgeBases()
+    }
   } catch {
     /* 请求层已提示 */
   } finally {
@@ -558,8 +648,8 @@ async function clearAiCookie() {
   aiSaving.value = true
   try {
     applyAiConfig(await aiApi.saveConfig({ clearCookie: true, enabled: false }))
-    aiState.value = '已清除 Cookie，功能已关闭'
-    message.success('已清除 Cookie')
+    aiState.value = '已清除鉴权串，功能已关闭'
+    message.success('已清除鉴权串')
   } catch {
     /* 请求层已提示 */
   } finally {
@@ -926,6 +1016,9 @@ onMounted(() => {
 .ai-key-input { width: 300px; flex: none; }
 .ai-actions { display: flex; align-items: center; gap: 12px; padding: 10px 0 2px; }
 .ai-state { font-size: 12.5px; }
+.ai-kb-picker { display: flex; align-items: center; gap: 8px; }
+.ai-kb-count { color: var(--muted); font-size: 12px; }
+.ai-error { color: var(--bad-text); }
 .ai-warn {
   margin: 8px 0;
   padding: 8px 10px;

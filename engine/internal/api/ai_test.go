@@ -1,9 +1,15 @@
 package api
 
 import (
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"quizbox/engine/internal/aistream"
 	"quizbox/engine/internal/bicqa"
 )
 
@@ -45,7 +51,7 @@ func TestAISessionDispatch(t *testing.T) {
 	if sess.provider != bicqa.ProviderImaWeb || sess.label != "ima 网页版" {
 		t.Fatalf("ima dispatch = %+v", sess)
 	}
-	if sess.open == nil || sess.stream == nil || sess.parse == nil {
+	if sess.open == nil || sess.ask == nil {
 		t.Fatal("ima session 缺少回调")
 	}
 
@@ -88,5 +94,43 @@ func TestWithAnswerMode(t *testing.T) {
 	}
 	if !strings.Contains(answerHintBrief, "200 字") {
 		t.Fatal("简答提示词应包含字数限制")
+	}
+}
+
+// TestImaSessionPassesQuestionAndSessionInOrder 守住一个真实踩过的坑：
+// aiSession.ask 的签名是 (question, sessionID)，与 imaweb.Client.Ask 的参数顺序
+// 必须一致。曾经两者顺序相反，导致 question 与 session_id 互换，
+// ima 直接返回 code 1402「当前会话已失效」。
+func TestImaSessionPassesQuestionAndSessionInOrder(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &gotBody)
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "event: CLOSE\ndata: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	sess := aiSessionOf(bicqa.Config{
+		Provider: bicqa.ProviderImaWeb,
+		BaseURL:  srv.URL,
+		Cookie:   "IMA-TOKEN=x",
+	})
+	emitted := 0
+	err := sess.ask(context.Background(), "题干内容", "sess-123", func(aistream.Event) error {
+		emitted++
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("ask: %v", err)
+	}
+	if gotBody["question"] != "题干内容" {
+		t.Fatalf("question = %v", gotBody["question"])
+	}
+	if gotBody["session_id"] != "sess-123" {
+		t.Fatalf("session_id = %v", gotBody["session_id"])
+	}
+	if emitted == 0 {
+		t.Fatal("未收到 done 事件")
 	}
 }

@@ -51,11 +51,15 @@ const (
 // 一个结构承载两种接入方式，是为了让旧配置文件在没有 provider 字段时
 // 仍被当作 BIC-QA 读取——升级程序不会让已填好的 Key 失效。
 type Config struct {
-	Provider   string `json:"provider,omitempty"`
-	Enabled    bool   `json:"enabled"`
-	BaseURL    string `json:"baseUrl"`
-	APIKey     string `json:"apiKey"`
-	Cookie     string `json:"cookie,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	Enabled  bool   `json:"enabled"`
+	BaseURL  string `json:"baseUrl"`
+	APIKey   string `json:"apiKey"`
+	Cookie   string `json:"cookie,omitempty"`
+	// KBID / KBName 是 ima 网页版选定的知识库。为空表示不限定知识库（通用问答）；
+	// KBName 只用于界面回显，避免每次打开设置页都要重新拉一次列表。
+	KBID       string `json:"kbId,omitempty"`
+	KBName     string `json:"kbName,omitempty"`
 	Model      string `json:"model"`
 	TimeoutSec int    `json:"timeoutSec"`
 }
@@ -88,6 +92,11 @@ func (c Config) normalized() Config {
 	}
 	c.BaseURL = strings.TrimRight(c.BaseURL, "/")
 	c.APIKey = strings.TrimSpace(c.APIKey)
+	c.KBID = strings.TrimSpace(c.KBID)
+	c.KBName = strings.TrimSpace(c.KBName)
+	if c.KBID == "" {
+		c.KBName = ""
+	}
 	c.Cookie = strings.TrimSpace(c.Cookie)
 	c.Model = strings.TrimSpace(c.Model)
 	if c.TimeoutSec < 30 || c.TimeoutSec > 900 {

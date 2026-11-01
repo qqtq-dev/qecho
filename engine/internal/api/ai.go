@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
 
+	"quizbox/engine/internal/aistream"
 	"quizbox/engine/internal/bicqa"
 	"quizbox/engine/internal/imaweb"
 	"quizbox/engine/internal/response"
@@ -55,6 +55,8 @@ func aiConfigView(cfg bicqa.Config) map[string]any {
 		"keyMask":    cfg.MaskedKey(),
 		"hasCookie":  strings.TrimSpace(cfg.Cookie) != "",
 		"cookieMask": cfg.MaskedCookie(),
+		"kbId":       cfg.KBID,
+		"kbName":     cfg.KBName,
 		"baseUrl":    cfg.BaseURL,
 		"model":      cfg.Model,
 		"timeoutSec": cfg.TimeoutSec,
@@ -75,8 +77,11 @@ func (s *Server) updateAIConfig(w http.ResponseWriter, r *http.Request) {
 		Model       string `json:"model"`
 		TimeoutSec  int    `json:"timeoutSec"`
 		Cookie      string `json:"cookie"`
+		KBID        string `json:"kbId"`
+		KBName      string `json:"kbName"`
 		ClearKey    bool   `json:"clearKey"`
 		ClearCookie bool   `json:"clearCookie"`
+		ClearKB     bool   `json:"clearKb"`
 	}
 	if err := decodeJSON(r, &in); err != nil {
 		response.BadRequest(w, "请求格式不正确")
@@ -124,6 +129,13 @@ func (s *Server) updateAIConfig(w http.ResponseWriter, r *http.Request) {
 	} else if ck := normalizeCookie(in.Cookie); ck != "" {
 		cfg.Cookie = ck
 	}
+	// 知识库只对 ima 网页版有意义；清空用 clearKb，传空字符串表示沿用。
+	if in.ClearKB {
+		cfg.KBID, cfg.KBName = "", ""
+	} else if id := strings.TrimSpace(in.KBID); id != "" {
+		cfg.KBID = id
+		cfg.KBName = strings.TrimSpace(in.KBName)
+	}
 	cfg.Model = strings.TrimSpace(in.Model)
 	if in.TimeoutSec > 0 {
 		cfg.TimeoutSec = in.TimeoutSec
@@ -136,22 +148,10 @@ func (s *Server) updateAIConfig(w http.ResponseWriter, r *http.Request) {
 	response.OK(w, aiConfigView(cfg.Normalized()))
 }
 
-// normalizeCookie 清洗从浏览器复制来的 Cookie 请求头：
-// 去掉可能带上的 "Cookie:" 前缀、换行和多余空格，否则会原样发给服务端导致鉴权失败。
+// normalizeCookie 清洗用户粘贴的 ima 鉴权串：
+// 去掉可能带上的 "x-ima-cookie:" / "Cookie:" 前缀与换行，否则会原样发给服务端导致鉴权失败。
 func normalizeCookie(raw string) string {
-	s := strings.TrimSpace(raw)
-	if s == "" {
-		return ""
-	}
-	if len(s) > 7 && strings.EqualFold(s[:7], "cookie:") {
-		s = strings.TrimSpace(s[7:])
-	}
-	s = strings.ReplaceAll(s, "\r", " ")
-	s = strings.ReplaceAll(s, "\n", " ")
-	for strings.Contains(s, "  ") {
-		s = strings.ReplaceAll(s, "  ", " ")
-	}
-	return strings.TrimSpace(s)
+	return imaweb.NormalizeCookie(raw)
 }
 
 func providerDefaultBaseURL(provider string) string {
@@ -161,27 +161,25 @@ func providerDefaultBaseURL(provider string) string {
 	return bicqa.DefaultBaseURL
 }
 
-// aiSession 把两种接入方式的差异收敛成三个函数：建会话、发起流式问答、
-// 解析流。这样限流、SSE 转发、错误兜底这些上层逻辑只写一份，
+// aiSession 把两种接入方式的差异收敛成两个函数：建会话、边问边吐。
+// 这样限流、SSE 转发、错误兜底这些上层逻辑只写一份，
 // 将来再加第三种接入方式也只需补一个构造函数分支。
 type aiSession struct {
 	provider string
 	label    string
 	open     func(ctx context.Context, title string) (string, error)
-	stream   func(ctx context.Context, question, sessionID string) (io.ReadCloser, error)
-	parse    func(body io.Reader, emit func(bicqa.Event) error) error
+	ask      func(ctx context.Context, question, sessionID string, emit func(aistream.Event) error) error
 }
 
 func aiSessionOf(cfg bicqa.Config) aiSession {
 	if cfg.ProviderName() == bicqa.ProviderImaWeb {
-		client := imaweb.NewClient(cfg.BaseURL, cfg.Cookie)
+		client := imaweb.NewClient(cfg.BaseURL, cfg.Cookie).WithKnowledgeBase(cfg.KBID)
 		return aiSession{
 			provider: bicqa.ProviderImaWeb,
 			label:    "ima 网页版",
 			// ima 的会话标题由服务端决定，这里忽略 title。
-			open:   func(ctx context.Context, _ string) (string, error) { return client.CreateSession(ctx) },
-			stream: client.ChatStream,
-			parse:  imaweb.ParseStream,
+			open: func(ctx context.Context, _ string) (string, error) { return client.CreateSession(ctx) },
+			ask:  client.Ask,
 		}
 	}
 	client := bicqa.NewClient(cfg)
@@ -189,8 +187,14 @@ func aiSessionOf(cfg bicqa.Config) aiSession {
 		provider: bicqa.ProviderBICQA,
 		label:    "BIC-QA",
 		open:     client.CreateSession,
-		stream:   client.ChatStream,
-		parse:    bicqa.ParseStream,
+		ask: func(ctx context.Context, question, sessionID string, emit func(aistream.Event) error) error {
+			body, err := client.ChatStream(ctx, question, sessionID)
+			if err != nil {
+				return err
+			}
+			defer body.Close()
+			return bicqa.ParseStream(body, emit)
+		},
 	}
 }
 
@@ -200,7 +204,7 @@ func (s *Server) aiTest(w http.ResponseWriter, r *http.Request) {
 	sess := aiSessionOf(cfg)
 	if !cfg.Ready() {
 		if sess.provider == bicqa.ProviderImaWeb {
-			response.BadRequest(w, "请先填写 ima 网页版 Cookie 并打开开关")
+			response.BadRequest(w, "请先填写 ima 网页版鉴权串并打开开关")
 		} else {
 			response.BadRequest(w, "请先填写 BIC-QA API Key")
 		}
@@ -219,6 +223,28 @@ func (s *Server) aiTest(w http.ResponseWriter, r *http.Request) {
 		"conversationId": id,
 		"baseUrl":        cfg.BaseURL,
 	})
+}
+
+// aiKnowledgeBases 列出 ima 账号下的个人知识库，供设置页选择。
+// 只有选了具体知识库，提问才会带上该库的检索参数。
+func (s *Server) aiKnowledgeBases(w http.ResponseWriter, r *http.Request) {
+	cfg := s.aiConfigOf(userFrom(r).ID)
+	if cfg.ProviderName() != bicqa.ProviderImaWeb {
+		response.BadRequest(w, "知识库选择只适用于 ima 网页版")
+		return
+	}
+	if strings.TrimSpace(cfg.Cookie) == "" {
+		response.BadRequest(w, "请先填写 ima 鉴权串")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	list, err := imaweb.NewClient(cfg.BaseURL, cfg.Cookie).ListKnowledgeBases(ctx)
+	if err != nil {
+		response.BadRequest(w, err.Error())
+		return
+	}
+	response.OK(w, map[string]any{"items": list, "selected": cfg.KBID})
 }
 
 func (s *Server) aiUsage(w http.ResponseWriter, r *http.Request) {
@@ -263,6 +289,9 @@ func (s *Server) aiChat(w http.ResponseWriter, r *http.Request) {
 		ConversationID string `json:"conversationId"`
 		Title          string `json:"title"`
 		Mode           string `json:"mode"`
+		// kbId 允许单次提问覆盖设置里的知识库：前端传 "" 表示这次走通用问答，
+		// 不传（nil）表示沿用设置。用指针区分这两者。
+		KBID *string `json:"kbId"`
 	}
 	if err := decodeJSON(r, &in); err != nil {
 		response.BadRequest(w, "请求格式不正确")
@@ -279,10 +308,13 @@ func (s *Server) aiChat(w http.ResponseWriter, r *http.Request) {
 	question = withAnswerMode(question, in.Mode)
 
 	cfg := s.aiConfigOf(userFrom(r).ID)
+	if in.KBID != nil && cfg.ProviderName() == bicqa.ProviderImaWeb {
+		cfg.KBID = strings.TrimSpace(*in.KBID)
+	}
 	sess := aiSessionOf(cfg)
 	if !cfg.Ready() {
 		if sess.provider == bicqa.ProviderImaWeb {
-			response.BadRequest(w, "尚未启用 ima 网页版：请在设置页填入 Cookie 并打开开关")
+			response.BadRequest(w, "尚未启用 ima 网页版：请在设置页填入鉴权串并打开开关")
 		} else {
 			response.BadRequest(w, "尚未启用 BIC-QA：请在设置页填写 API Key 并打开开关")
 		}
@@ -323,14 +355,6 @@ func (s *Server) aiChat(w http.ResponseWriter, r *http.Request) {
 	}
 	writeSSE(w, flusher, "meta", map[string]string{"conversationId": convID, "provider": sess.provider})
 
-	body, err := client.stream(ctx, question, convID)
-	if err != nil {
-		writeSSE(w, flusher, "error", map[string]string{"message": err.Error()})
-		writeSSE(w, flusher, "done", map[string]any{})
-		return
-	}
-	defer body.Close()
-
 	sentDone := false
 	finish := func(message string) {
 		if message != "" {
@@ -339,7 +363,7 @@ func (s *Server) aiChat(w http.ResponseWriter, r *http.Request) {
 		writeSSE(w, flusher, "done", map[string]any{})
 		sentDone = true
 	}
-	streamErr := sess.parse(body, func(ev bicqa.Event) error {
+	streamErr := client.ask(ctx, question, convID, func(ev aistream.Event) error {
 		switch ev.Kind {
 		case "delta":
 			writeSSE(w, flusher, "delta", map[string]string{"text": ev.Text})

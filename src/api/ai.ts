@@ -10,6 +10,9 @@ export interface AiConfig {
   keyMask: string
   hasCookie: boolean
   cookieMask: string
+  /** ima 网页版选定的知识库；空表示不限定（通用问答）。 */
+  kbId: string
+  kbName: string
   baseUrl: string
   model: string
   timeoutSec: number
@@ -30,10 +33,27 @@ export interface AiConfigInput {
   apiKey?: string
   model?: string
   timeoutSec?: number
-  /** ima 网页版登录态；留空表示沿用已保存的 Cookie。 */
+  /** ima 网页版鉴权串；留空表示沿用已保存的值。 */
   cookie?: string
+  /** ima 网页版要检索的知识库 id / 名称（名称仅用于回显）。 */
+  kbId?: string
+  kbName?: string
   clearKey?: boolean
   clearCookie?: boolean
+  clearKb?: boolean
+}
+
+/** ima 个人知识库列表项。 */
+export interface KnowledgeBase {
+  id: string
+  name: string
+  docCount: string
+  updated: string
+}
+
+export interface KnowledgeBaseList {
+  items: KnowledgeBase[]
+  selected: string
 }
 
 export interface ChatHandlers {
@@ -155,5 +175,6 @@ export const aiApi = {
   saveConfig: (data: AiConfigInput) => http.put<unknown, AiConfig>('/ai/config', data),
   test: () => http.post<unknown, AiTestResult>('/ai/test', {}),
   usage: () => http.get<unknown, Record<string, unknown>>('/ai/usage'),
+  knowledgeBases: () => http.get<unknown, KnowledgeBaseList>('/ai/knowledge-bases'),
   streamChat,
 }
