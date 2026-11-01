@@ -23,7 +23,7 @@
 - 数据备份：设置页可手动备份、列出与删除；每日首次启动、题库导入前、数据库升级前、恢复前自动备份（每日保留 7 份、导入前 5 份、升级/恢复前各 3 份，自动备份合计超过 2 GB 清理最旧）。备份为含数据库与题图的 zip，恢复前先校验完整性与版本，重启应用后替换生效，失败自动回退到原数据库。
 - 题图：题干与选项图片直接上传，按 SHA-256 内容去重存于数据目录 `images/`，单张 ≤ 8 MB（PNG / JPEG / WebP / GIF）；练习、错题本与外联答题页支持缩略图与点击放大，文件缺失时显示占位卡片。题库详情页可把题图整体导出为 ZIP；Excel 导入导出以题干图片文件名表示题图，导入时选择题图文件即可按文件名自动关联，导出 ZIP 可直接作为下次导入的随包图片。
 - BIC-QA 智能助手（可选）：设置页可绑定自己的 BIC-QA API Key，练习作答后在解析区点「问 BIC-QA」即可对该题发起数据库知识问答。由引擎代理 `api.bic-qa.com` 的 Open API v1 并用 SSE 流式回传（`meta` / `thinking` / `delta` / `error` / `done`），支持多轮追问、Markdown 渲染与停止生成；提问只携带题干与选项，不含答案与解析。**Key 按账号隔离**，每人一份存于数据目录 `bicqa/user-<id>.json`，不写数据库、不进备份、不回传界面；未配置或关闭时不会发起任何外部请求。BIC-QA 是推理型模型，耗时几乎全在思考阶段（复杂题可达 70 秒），因此默认走「简答」模式（约 200 字，实测同一道复杂题 86 秒降到 12 秒），可切「详答」；等待期间实时显示推理文字与计时，正文开始后自动收起。
-- 网页版部署：同一引擎加 `--host/--port/--web-dir` 即可托管网页版，支持 systemd 与 Nginx HTTPS，详见 [docs/服务端部署.md](docs/服务端部署.md)。
+- 网页版部署：同一引擎加 `--host/--port/--web-dir` 即可托管网页版，自带 gzip 压缩、哈希资源长缓存、`ETag`/304 与 `206` 断点续传，首屏传输量由 1.63 MB 降到约 600 KB；支持 systemd 与 Nginx HTTPS，详见 [docs/服务端部署.md](docs/服务端部署.md) 与下文「静态资源托管」。
 
 ## 开发运行
 
@@ -53,6 +53,22 @@ pnpm tauri dev
 
 `build.ps1` 依次执行 `build-engine.ps1`（Go 引擎 → `src-tauri/binaries/`）、`pnpm install --frozen-lockfile`、`pnpm tauri build`。安装包输出到 `src-tauri/target/release/bundle/nsis/`。
 
+## 静态资源托管（网页版）
+
+`--web-dir` 指向 `dist/`，由引擎自行托管（`engine/internal/api/web.go`，不走 `http.FileServer`）：
+
+| 资源 | 压缩 | 缓存头 | 说明 |
+| --- | --- | --- | --- |
+| `index.html` 与 SPA 回退 | gzip | `no-cache` + `ETag` → 304 | 保证刷新即拿到新版本 |
+| `assets/*`（文件名含内容哈希） | gzip | `public, max-age=31536000, immutable` | 换版本不必清缓存 |
+| 图片 / 字体 / ico | 原样 | 同上 | 本身已压缩，不做二次压缩 |
+
+- 客户端带 `Accept-Encoding: gzip` 时现场压缩（`gzip.BestSpeed` + `sync.Pool` 复用 writer），无论文件大小都不额外占内存。
+- 非压缩分支交给 `http.ServeContent`，保留 `206` 断点续传、`If-Range`、`If-Modified-Since`；压缩分支是流式编码、无法按字节偏移续传，因此显式返回 `Accept-Ranges: none`，避免浏览器反复重试。
+- 路径未命中时：不带扩展名回退 `index.html`（hash 路由），带扩展名直接 `404`，不会把 `nope.js` 当成页面返回。
+- 构建侧按 `manualChunks` 把 vendor-antd / vendor-vue / vendor-echarts / markdown / icons 拆成独立 chunk，首屏 4 个 JS 并行下载；`index.html` 内含 `#boot-splash` 占位（转圈 + 「Qecho 正在加载…」），挂载或启动报错时由 `src/main.ts` 移除。
+- 前置 Nginx 时无需再开 gzip（上游响应已带 `Content-Encoding`，Nginx 不会重复压缩）；如需由 Nginx 统一压缩，也可让引擎直出未压缩内容，但要保留 `Cache-Control` 与 `ETag` 透传。
+
 ## 数据目录
 
 - 打包运行：`%APPDATA%\com.quizbox.desktop`（由 Tauri 传入引擎）
@@ -71,7 +87,7 @@ pnpm tauri dev
 ├── src-tauri/           # Tauri 2 壳（sidecar 管理、托盘、窗口）
 ├── engine/              # Go 引擎（stdlib net/http + modernc.org/sqlite）
 │   ├── cmd/engine/
-│   └── internal/        #   api / authx / response / store
+│   └── internal/        #   api / authx / bicqa / exporter / importer / response / store
 ├── docs/                # 设计文档
 └── BASELINE.md          # 前端复用基线与依赖差异
 ```
