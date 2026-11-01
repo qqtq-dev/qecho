@@ -44,6 +44,10 @@ dayjs.locale('zh-cn')
   --bad-text: #b8340f;
   --warn-soft: #fff8e6;
   --warn-text: #8a6100;
+  /* 蓝色强调：用于区分 ima 接入方式的回答者标识 */
+  --info-soft: #e8f0fe;
+  --info-border: #cddffb;
+  --info-text: #1a56c4;
   --code-bg: #f1f3f2;
   --auth-bg: radial-gradient(circle at 18% 12%, #e6f2ec 0, #eef2f0 42%, #e9eeeb 100%);
 }
@@ -70,6 +74,9 @@ html.dark {
   --bad-text: #f08a72;
   --warn-soft: #2e2612;
   --warn-text: #e3b558;
+  --info-soft: #16233a;
+  --info-border: #2a3f60;
+  --info-text: #7aa7f0;
   --code-bg: #232b35;
   --auth-bg: radial-gradient(circle at 18% 12%, #16241d 0, #12171c 42%, #0f1216 100%);
 }

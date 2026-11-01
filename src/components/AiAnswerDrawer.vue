@@ -29,7 +29,7 @@
         </div>
         <div class="ai-a">
           <div class="ai-a-head">
-            <span class="ai-role ai-role-bot">AI</span>
+            <span class="ai-role ai-role-bot" :class="{ 'is-ima': usedProvider === 'imaweb' }">{{ providerBadge }}</span>
             <a-space :size="8">
               <a v-if="turn.answer" class="ai-mini" @click="copy(turn.answer)">复制</a>
               <a
@@ -112,7 +112,7 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
-import { aiApi, type KnowledgeBase } from '@/api/ai'
+import { aiApi, type AiProvider, type KnowledgeBase } from '@/api/ai'
 
 interface Turn {
   question: string
@@ -146,6 +146,14 @@ const mode = ref<'brief' | 'full'>(
   localStorage.getItem(MODE_KEY) === 'full' ? 'full' : 'brief',
 )
 const scrollRef = ref<HTMLElement | null>(null)
+// 本次答疑实际走的接入方式：打开时取配置，提问后以引擎 meta 帧为准（两者不一致说明分派有变）。
+const usedProvider = ref<AiProvider | ''>('')
+// 回答者头像上的字：按本次实际接入方式显示 bic / ima，未加载到配置前退回 AI。
+const providerBadge = computed(() => {
+  if (usedProvider.value === 'imaweb') return 'ima'
+  if (usedProvider.value === 'bicqa') return 'bic'
+  return 'AI'
+})
 // 知识库：只有 ima 网页版才可选，选定后本次答疑会先在该库里检索。
 const kbVisible = ref(false)
 const kbOptions = ref<KnowledgeBase[]>([])
@@ -206,13 +214,14 @@ function stopTimer() {
   }
 }
 
-/** 打开抽屉时读一次配置：是不是 ima 网页版、默认选的是哪个知识库。 */
+/** 打开抽屉时读一次配置：当前接入方式、是不是 ima 网页版、默认选的是哪个知识库。 */
 async function loadKbContext() {
-  if (kbLoaded.value) return
   try {
     const cfg = await aiApi.config()
+    // 每次打开都刷新，避免在设置页切换接入方式后这里仍显示旧值。
+    usedProvider.value = cfg.provider
     kbVisible.value = cfg.provider === 'imaweb' && cfg.hasCookie
-    if (!kbVisible.value) return
+    if (!kbVisible.value || kbLoaded.value) return
     kbId.value = cfg.kbId || ''
     const res = await aiApi.knowledgeBases()
     kbOptions.value = res.items ?? []
@@ -279,8 +288,9 @@ async function send(question: string) {
         ...(kbVisible.value ? { kbId: kbId.value } : {}),
       },
       {
-        onMeta: (id) => {
+        onMeta: (id, provider) => {
           conversationId.value = id
+          usedProvider.value = provider
         },
         onThinking: (chunk) => {
           turn.thinking += chunk
@@ -423,6 +433,8 @@ watch(
   line-height: 20px;
 }
 .ai-role-bot { background: var(--ok-soft); color: var(--ok-text); }
+/* ima 网页版用蓝色，和 BIC-QA 的绿色一眼区分 */
+.ai-role-bot.is-ima { background: var(--info-soft); color: var(--info-text); }
 .ai-q-text { white-space: pre-wrap; max-height: 88px; overflow: auto; }
 .ai-a { margin-top: 8px; }
 .ai-a-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }

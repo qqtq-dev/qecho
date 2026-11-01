@@ -56,8 +56,14 @@ export interface KnowledgeBaseList {
   selected: string
 }
 
+/** 后端在 meta 帧里回吐的接入方式；未知值一律视为 BIC-QA（与引擎缺省一致）。 */
+function parseProvider(raw: unknown): AiProvider {
+  return typeof raw === 'string' && raw.trim().toLowerCase() === 'imaweb' ? 'imaweb' : 'bicqa'
+}
+
 export interface ChatHandlers {
-  onMeta?: (conversationId: string) => void
+  /** provider 是引擎本次实际使用的接入方式，用于界面标识。 */
+  onMeta?: (conversationId: string, provider: AiProvider) => void
   onThinking?: (text: string) => void
   onDelta?: (text: string) => void
   onError?: (message: string) => void
@@ -91,8 +97,10 @@ function dispatchFrame(frame: string, handlers: ChatHandlers) {
   const message = typeof payload.message === 'string' ? payload.message : ''
   switch (event) {
     case 'meta': {
+      // 引擎在首帧同时给出会话 id 与本次实际使用的接入方式。
+      // id 为空时不回调，避免把已有的多轮会话误清空。
       const id = payload.conversationId
-      if (typeof id === 'string' && id) handlers.onMeta?.(id)
+      if (typeof id === 'string' && id) handlers.onMeta?.(id, parseProvider(payload.provider))
       break
     }
     case 'thinking':
