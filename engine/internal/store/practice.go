@@ -1100,13 +1100,19 @@ func (s *Store) ListPracticeSessions(userID int64) ([]PracticeSession, error) {
 	return out, rows.Err()
 }
 
+// wrongVisibleFrom 是错题统计与错题列表共用的数据来源：只取当前用户的记录，
+// 并排除已软删除的题目。两处必须共用，否则会出现「待复习 N」与列表条数对不上。
+const wrongVisibleFrom = `FROM wrong_book w
+		JOIN questions q ON q.id = w.question_id AND q.is_deleted = 0`
+
 func (s *Store) WrongStatsOf(userID int64) (WrongStats, error) {
 	var stats WrongStats
 	err := s.DB.QueryRow(`
-		SELECT COALESCE(SUM(CASE WHEN mastered = 0 THEN 1 ELSE 0 END), 0),
-		       COALESCE(SUM(CASE WHEN mastered = 1 THEN 1 ELSE 0 END), 0),
+		SELECT COALESCE(SUM(CASE WHEN w.mastered = 0 THEN 1 ELSE 0 END), 0),
+		       COALESCE(SUM(CASE WHEN w.mastered = 1 THEN 1 ELSE 0 END), 0),
 		       COUNT(*)
-		FROM wrong_book WHERE user_id = ?`, userID,
+		`+wrongVisibleFrom+`
+		WHERE w.user_id = ?`, userID,
 	).Scan(&stats.Pending, &stats.Mastered, &stats.Total)
 	return stats, err
 }
@@ -1127,15 +1133,14 @@ func (s *Store) ListWrong(userID int64, status string, page, size int) ([]WrongI
 		where += " AND w.mastered = 0"
 	}
 	var total int
-	if err := s.DB.QueryRow("SELECT COUNT(*) FROM wrong_book w"+where, args...).Scan(&total); err != nil {
+	if err := s.DB.QueryRow("SELECT COUNT(*) "+wrongVisibleFrom+where, args...).Scan(&total); err != nil {
 		return nil, 0, WrongStats{}, err
 	}
 	rows, err := s.DB.Query(`
 		SELECT w.question_id, w.wrong_count, w.correct_streak, w.mastered, w.last_wrong_at, w.updated_at,
 		       q.bank_id, COALESCE(b.name, '题库已删除'), q.type, q.stem, COALESCE(q.stem_image, ''),
 		       q.answer, q.analysis, q.difficulty
-		FROM wrong_book w
-		JOIN questions q ON q.id = w.question_id AND q.is_deleted = 0
+		`+wrongVisibleFrom+`
 		LEFT JOIN banks b ON b.id = q.bank_id
 		`+where+` ORDER BY w.updated_at DESC, w.question_id DESC LIMIT ? OFFSET ?`,
 		append(args, size, (page-1)*size)...)

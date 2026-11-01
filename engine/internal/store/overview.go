@@ -104,9 +104,10 @@ func (s *Store) Overview(user *User) (*Overview, error) {
 	out.CorrectTotal = correct + examCorrect
 
 	if err := s.DB.QueryRow(`
-		SELECT COALESCE(SUM(CASE WHEN mastered = 0 THEN 1 ELSE 0 END), 0),
-		       COALESCE(SUM(CASE WHEN mastered = 1 THEN 1 ELSE 0 END), 0)
-		FROM wrong_book WHERE user_id = ?`, user.ID,
+		SELECT COALESCE(SUM(CASE WHEN w.mastered = 0 THEN 1 ELSE 0 END), 0),
+		       COALESCE(SUM(CASE WHEN w.mastered = 1 THEN 1 ELSE 0 END), 0)
+		`+wrongVisibleFrom+`
+		WHERE w.user_id = ?`, user.ID,
 	).Scan(&out.WrongPending, &out.WrongMastered); err != nil {
 		return nil, err
 	}

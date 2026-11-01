@@ -376,3 +376,67 @@ func TestPracticeRangeSkipsLeadingQuestions(t *testing.T) {
 		t.Fatalf("random range should be cleared: %+v", random)
 	}
 }
+
+func TestWrongBookExcludesDeletedQuestions(t *testing.T) {
+	st, user, bank1, _, questions := practiceTestStore(t)
+	q1, q2 := questions["q1"], questions["q2"]
+
+	session, _, _, err := st.CreatePracticeSession(user.ID, PracticeInput{
+		BankIDs: []int64{bank1}, Count: 0, Order: "fixed",
+	})
+	if err != nil {
+		t.Fatalf("create practice: %v", err)
+	}
+	// 两题都答错：q1 正确答案 B，q2 正确答案 A+C
+	if _, err := st.AnswerPractice(user.ID, session.ID, q1.ID, []string{"A"}, 1000); err != nil {
+		t.Fatalf("answer q1: %v", err)
+	}
+	if _, err := st.AnswerPractice(user.ID, session.ID, q2.ID, []string{"B"}, 1000); err != nil {
+		t.Fatalf("answer q2: %v", err)
+	}
+
+	stats, err := st.WrongStatsOf(user.ID)
+	if err != nil {
+		t.Fatalf("stats: %v", err)
+	}
+	items, total, listStats, err := st.ListWrong(user.ID, "pending", 1, 20)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if stats.Pending != 2 || stats.Total != 2 || total != 2 || len(items) != 2 {
+		t.Fatalf("初始应全部可见：stats=%+v total=%d items=%d", stats, total, len(items))
+	}
+	if stats != listStats {
+		t.Fatalf("stats 与列表不一致：%+v vs %+v", stats, listStats)
+	}
+
+	// 软删除其中一道题后，统计与列表都必须同步排除它
+	if err := st.DeleteQuestion(q1.ID); err != nil {
+		t.Fatalf("delete question: %v", err)
+	}
+	stats, err = st.WrongStatsOf(user.ID)
+	if err != nil {
+		t.Fatalf("stats after delete: %v", err)
+	}
+	items, total, listStats, err = st.ListWrong(user.ID, "pending", 1, 20)
+	if err != nil {
+		t.Fatalf("list after delete: %v", err)
+	}
+	if stats.Pending != 1 || stats.Total != 1 {
+		t.Fatalf("统计应排除已删题目：%+v", stats)
+	}
+	if total != 1 || len(items) != 1 || items[0].QuestionID != q2.ID {
+		t.Fatalf("列表应只剩 q2：total=%d items=%+v", total, items)
+	}
+	if stats != listStats {
+		t.Fatalf("stats 与列表不一致：%+v vs %+v", stats, listStats)
+	}
+
+	ov, err := st.Overview(user)
+	if err != nil {
+		t.Fatalf("overview: %v", err)
+	}
+	if ov.WrongPending != 1 {
+		t.Fatalf("概览待复习 = %d, want 1", ov.WrongPending)
+	}
+}
