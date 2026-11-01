@@ -120,3 +120,25 @@ func TestSpaHandlerHeadGzipNoBody(t *testing.T) {
 		t.Fatalf("HEAD 不应返回响应体，实际 %d 字节", len(body))
 	}
 }
+
+func TestSpaHandlerRangeStillSupported(t *testing.T) {
+	h := spaHandler(newStaticFixture(t))
+
+	res := do(t, h, http.MethodGet, "/assets/app-abc123.js", map[string]string{"Range": "bytes=0-9"})
+	if res.StatusCode != http.StatusPartialContent {
+		t.Fatalf("Range status = %d, want 206", res.StatusCode)
+	}
+	if got := res.Header.Get("Content-Range"); !strings.HasPrefix(got, "bytes 0-9/") {
+		t.Fatalf("Content-Range = %q", got)
+	}
+	body, _ := io.ReadAll(res.Body)
+	if len(body) != 10 {
+		t.Fatalf("分片长度 = %d, want 10", len(body))
+	}
+
+	// 压缩响应无法按字节续传，应显式声明
+	gz := do(t, h, http.MethodGet, "/assets/app-abc123.js", map[string]string{"Accept-Encoding": "gzip"})
+	if got := gz.Header.Get("Accept-Ranges"); got != "none" {
+		t.Fatalf("gzip 响应 Accept-Ranges = %q, want none", got)
+	}
+}

@@ -108,15 +108,13 @@ func serveStatic(w http.ResponseWriter, r *http.Request, path string, immutable 
 		strings.Contains(r.Header.Get("Accept-Encoding"), "gzip")
 
 	if !useGzip {
-		h.Set("Content-Length", strconv.FormatInt(info.Size(), 10))
-		w.WriteHeader(http.StatusOK)
-		if r.Method == http.MethodHead {
-			return
-		}
-		io.Copy(w, f)
+		// 交给标准库处理 Range / If-Range / If-Modified-Since，保留断点续传能力
+		http.ServeContent(w, r, filepath.Base(path), info.ModTime(), f)
 		return
 	}
 
+	// gzip 是流式编码，无法按字节偏移续传，明确告知客户端不要尝试 Range
+	h.Set("Accept-Ranges", "none")
 	h.Set("Content-Encoding", "gzip")
 	h.Del("Content-Length")
 	w.WriteHeader(http.StatusOK)
