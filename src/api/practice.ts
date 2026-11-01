@@ -35,6 +35,8 @@ export interface PracticeSession {
   lastSeq: number
   durationSec: number
   shuffleOptions: boolean
+  rangeStart: number
+  rangeEnd: number
   createdAt: string
   updatedAt: string
 }
@@ -93,6 +95,8 @@ export interface PracticeStartInput {
   questionIds?: number[]
   count: number
   order: 'random' | 'fixed'
+  startSeq?: number
+  endSeq?: number
   source?: 'bank' | 'wrong'
   questionType?: 'single' | 'multiple'
   difficulty?: number
@@ -100,7 +104,20 @@ export interface PracticeStartInput {
   shuffleOptions?: boolean
 }
 
+export interface PracticePreviewInput {
+  bankIds?: number[]
+  questionType?: 'single' | 'multiple'
+  difficulty?: number
+  tags?: string[]
+}
+
+export interface PracticePreview {
+  candidates: number
+}
+
 export const practiceApi = {
+  preview: (data: PracticePreviewInput) =>
+    http.post<unknown, PracticePreview>('/practice/preview', data),
   start: (data: PracticeStartInput) =>
     http.post<unknown, PracticeStart>('/practice/sessions', data),
   sessions: () => http.get<unknown, { items: PracticeSession[] }>('/practice/sessions'),

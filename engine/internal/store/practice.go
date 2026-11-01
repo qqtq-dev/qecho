@@ -36,15 +36,24 @@ type PracticeSession struct {
 	LastSeq        int    `json:"lastSeq"`
 	DurationSec    int    `json:"durationSec"`
 	ShuffleOptions bool   `json:"shuffleOptions"`
-	CreatedAt      string `json:"createdAt"`
-	UpdatedAt      string `json:"updatedAt"`
+	// RangeStart / RangeEnd 为本次练习在筛选结果有序列表中的题序范围（1 基，含两端）。
+	// RangeEnd 为 0 表示不限结束位置；两者均为 0 表示不适用（随机顺序或错题复习）。
+	RangeStart int    `json:"rangeStart"`
+	RangeEnd   int    `json:"rangeEnd"`
+	CreatedAt  string `json:"createdAt"`
+	UpdatedAt  string `json:"updatedAt"`
 }
 
 type PracticeInput struct {
-	BankIDs        []int64
-	QuestionIDs    []int64
-	Count          int
-	Order          string
+	BankIDs     []int64
+	QuestionIDs []int64
+	Count       int
+	Order       string
+	// StartSeq / EndSeq 仅在“按题序”的题库练习下生效，表示在筛选结果有序列表中的
+	// 第 StartSeq 到第 EndSeq 道（1 基、含两端）。StartSeq 传 0 或 1 表示从头开始；
+	// EndSeq 传 0 表示不限制结束位置（由 Count 或单次上限决定）。
+	StartSeq       int
+	EndSeq         int
 	Source         string
 	QuestionType   string
 	Difficulty     int
@@ -141,6 +150,7 @@ type practiceSessionRow struct {
 	idsRaw          string
 	markedRaw       string
 	optionOrdersRaw string
+	scopeRaw        string
 }
 
 const practiceSessionSelect = `
@@ -151,7 +161,7 @@ const practiceSessionSelect = `
 	       (SELECT COUNT(*) FROM practice_answers a WHERE a.session_id = s.id),
 	       (SELECT COALESCE(SUM(a.is_correct), 0) FROM practice_answers a WHERE a.session_id = s.id),
 	       s.status, s.last_seq, s.duration_sec, s.shuffle_options,
-	       s.question_ids_json, s.marked_json, s.option_orders_json
+	       s.question_ids_json, s.marked_json, s.option_orders_json, s.scope_json
 	FROM practice_sessions s LEFT JOIN banks b ON b.id = s.bank_id`
 
 func scanPracticeSession(row interface{ Scan(...any) error }) (*practiceSessionRow, error) {
@@ -160,10 +170,19 @@ func scanPracticeSession(row interface{ Scan(...any) error }) (*practiceSessionR
 	if err := row.Scan(&r.ID, &r.UserID, &r.BankID, &r.BankName, &r.Source, &r.TotalCount,
 		&r.OrderMode, &r.CreatedAt, &r.UpdatedAt, &r.Answered, &r.Correct,
 		&r.Status, &r.LastSeq, &r.DurationSec, &shuffle,
-		&r.idsRaw, &r.markedRaw, &r.optionOrdersRaw); err != nil {
+		&r.idsRaw, &r.markedRaw, &r.optionOrdersRaw, &r.scopeRaw); err != nil {
 		return nil, err
 	}
 	r.ShuffleOptions = shuffle == 1
+	var scope struct {
+		StartSeq int `json:"startSeq"`
+		EndSeq   int `json:"endSeq"`
+	}
+	if r.scopeRaw != "" {
+		_ = json.Unmarshal([]byte(r.scopeRaw), &scope)
+	}
+	r.RangeStart = scope.StartSeq
+	r.RangeEnd = scope.EndSeq
 	return &r, nil
 }
 
@@ -175,7 +194,7 @@ func (s *Store) loadPracticeRow(sessionID int64) (*practiceSessionRow, error) {
 	return row, err
 }
 
-func (s *Store) CreatePracticeSession(userID int64, in PracticeInput) (*PracticeSession, []PracticeItem, bool, error) {
+func normalizePracticeInput(in *PracticeInput) {
 	in.BankIDs = normalizeIDList(in.BankIDs)
 	in.QuestionIDs = normalizeIDList(in.QuestionIDs)
 	if in.Order != "fixed" {
@@ -194,17 +213,38 @@ func (s *Store) CreatePracticeSession(userID int64, in PracticeInput) (*Practice
 	if in.Count < 0 {
 		in.Count = 0
 	}
-	limit := in.Count
-	if limit == 0 || limit > practiceMaxQuestions {
-		limit = practiceMaxQuestions
+	// 题序范围只对“按题序”的题库练习有意义：随机顺序、错题复习、精确指定题目都不适用。
+	if in.StartSeq < 0 {
+		in.StartSeq = 0
 	}
-	if len(in.QuestionIDs) > 0 {
-		limit = len(in.QuestionIDs)
+	if in.EndSeq < 0 {
+		in.EndSeq = 0
 	}
-	if in.Source == "bank" && len(in.BankIDs) == 0 && len(in.QuestionIDs) == 0 {
-		return nil, nil, false, fmt.Errorf("请选择题库")
+	if in.Order != "fixed" || in.Source != "bank" || len(in.QuestionIDs) > 0 ||
+		len(in.BankIDs) == 0 {
+		in.StartSeq, in.EndSeq = 0, 0
+	} else if in.StartSeq < 1 {
+		in.StartSeq = 1
 	}
+}
 
+// practiceRange 把 1 基的起止题号换算成 SQL 的 OFFSET 与本次取题跨度。
+// span 为 0 表示结束位置不限，由 Count 或单次上限决定。
+func practiceRange(in *PracticeInput) (offset, span int) {
+	if in.StartSeq <= 1 {
+		if in.EndSeq <= 0 {
+			return 0, 0
+		}
+		return 0, in.EndSeq
+	}
+	if in.EndSeq >= in.StartSeq {
+		span = in.EndSeq - in.StartSeq + 1
+	}
+	return in.StartSeq - 1, span
+}
+
+// practiceScope 构造候选题目查询的 FROM / WHERE / 参数，创建练习与统计候选数共用。
+func (s *Store) practiceScope(userID int64, in PracticeInput) (string, string, []any) {
 	from := "questions q"
 	where := "q.is_deleted = 0"
 	args := []any{}
@@ -246,18 +286,64 @@ func (s *Store) CreatePracticeSession(userID int64, in PracticeInput) (*Practice
 			args = append(args, tag)
 		}
 	}
+	return from, where, args
+}
+
+func (s *Store) countPracticeScope(from, where string, args []any) (int, error) {
+	var total int
+	err := s.DB.QueryRow("SELECT COUNT(*) FROM "+from+" WHERE "+where, args...).Scan(&total)
+	return total, err
+}
+
+// CountPracticeCandidates 返回当前筛选条件（题库/题型/难度/标签）下的可练习题数，
+// 供前端提示“共 N 道”，帮助用户填写题序范围。
+func (s *Store) CountPracticeCandidates(userID int64, in PracticeInput) (int, error) {
+	normalizePracticeInput(&in)
+	if in.Source == "bank" && len(in.BankIDs) == 0 && len(in.QuestionIDs) == 0 {
+		return 0, nil
+	}
+	from, where, args := s.practiceScope(userID, in)
+	return s.countPracticeScope(from, where, args)
+}
+
+func (s *Store) CreatePracticeSession(userID int64, in PracticeInput) (*PracticeSession, []PracticeItem, bool, error) {
+	normalizePracticeInput(&in)
+	if in.Source == "bank" && len(in.BankIDs) == 0 && len(in.QuestionIDs) == 0 {
+		return nil, nil, false, fmt.Errorf("请选择题库")
+	}
+	offset, span := practiceRange(&in)
+	if in.EndSeq > 0 && in.EndSeq < in.StartSeq && in.Order == "fixed" {
+		return nil, nil, false, fmt.Errorf("结束题号不能小于起始题号")
+	}
+
+	from, where, args := s.practiceScope(userID, in)
+
+	limit := in.Count
+	if limit == 0 || limit > practiceMaxQuestions {
+		limit = practiceMaxQuestions
+	}
+	if len(in.QuestionIDs) > 0 {
+		limit = len(in.QuestionIDs)
+	}
+	if span > 0 && span < limit {
+		limit = span
+	}
+
 	orderBy := " ORDER BY q.sort_order, q.id"
 	if in.Order == "random" {
 		orderBy = " ORDER BY RANDOM()"
 	}
-	fetchLimit := practiceMaxQuestions + 1
-	if in.Count > 0 && in.Count < practiceMaxQuestions {
-		fetchLimit = in.Count
+	fetchLimit := limit
+	if limit >= practiceMaxQuestions {
+		fetchLimit = practiceMaxQuestions + 1
 	}
-	rows, err := s.DB.Query(
-		"SELECT q.id FROM "+from+" WHERE "+where+orderBy+" LIMIT ?",
-		append(args, fetchLimit)...,
-	)
+	query := "SELECT q.id FROM " + from + " WHERE " + where + orderBy + " LIMIT ?"
+	queryArgs := append(append([]any{}, args...), fetchLimit)
+	if offset > 0 {
+		query += " OFFSET ?"
+		queryArgs = append(queryArgs, offset)
+	}
+	rows, err := s.DB.Query(query, queryArgs...)
 	if err != nil {
 		return nil, nil, false, err
 	}
@@ -281,6 +367,12 @@ func (s *Store) CreatePracticeSession(userID int64, in PracticeInput) (*Practice
 		ids = ids[:limit]
 	}
 	if len(ids) == 0 {
+		if offset > 0 {
+			total, countErr := s.countPracticeScope(from, where, args)
+			if countErr == nil {
+				return nil, nil, false, fmt.Errorf("起始题号 %d 超出范围（当前筛选共 %d 道）", offset+1, total)
+			}
+		}
 		if len(in.QuestionIDs) > 0 {
 			return nil, nil, false, fmt.Errorf("题目不可用或已被删除")
 		}
@@ -324,6 +416,8 @@ func (s *Store) CreatePracticeSession(userID int64, in PracticeInput) (*Practice
 		"difficulty":       in.Difficulty,
 		"tags":             in.Tags,
 		"count":            in.Count,
+		"startSeq":         in.StartSeq,
+		"endSeq":           in.EndSeq,
 		"shuffleQuestions": in.Order == "random",
 		"shuffleOptions":   in.ShuffleOptions,
 	}
@@ -348,7 +442,8 @@ func (s *Store) CreatePracticeSession(userID int64, in PracticeInput) (*Practice
 	session := &PracticeSession{
 		ID: id, UserID: userID, BankID: bankID, BankName: bankName, Source: in.Source,
 		TotalCount: len(ids), OrderMode: in.Order, Status: "ongoing", LastSeq: 1,
-		ShuffleOptions: in.ShuffleOptions, CreatedAt: now, UpdatedAt: now,
+		ShuffleOptions: in.ShuffleOptions, RangeStart: in.StartSeq, RangeEnd: in.EndSeq,
+		CreatedAt: now, UpdatedAt: now,
 	}
 	items, err := s.buildPracticeItems(ids, orders)
 	if err != nil {

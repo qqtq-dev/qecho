@@ -285,3 +285,94 @@ func TestAnswerTimeIsClamped(t *testing.T) {
 		t.Fatalf("time not clamped: %+v", result)
 	}
 }
+
+func TestPracticeRangeSkipsLeadingQuestions(t *testing.T) {
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+	user, err := st.CreateUser("range-user", "pw", "admin")
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	bank, err := st.CreateBank("范围题库", "", nil)
+	if err != nil {
+		t.Fatalf("create bank: %v", err)
+	}
+	ids := make([]int64, 0, 10)
+	for i := 1; i <= 10; i++ {
+		q, err := st.CreateQuestion(bank.ID, QuestionInput{
+			Type: "single", Stem: "题" + string(rune('0'+i%10)), Answer: []string{"A"},
+			Options: []QuestionOption{{Key: "A", Content: "甲"}, {Key: "B", Content: "乙"}},
+		})
+		if err != nil {
+			t.Fatalf("create question %d: %v", i, err)
+		}
+		ids = append(ids, q.ID)
+	}
+
+	cases := []struct {
+		name       string
+		start, end int
+		wantFirst  int64
+		wantTotal  int
+	}{
+		{"从头开始", 0, 0, ids[0], 10},
+		{"第3到第5", 3, 5, ids[2], 3},
+		{"只给起始", 8, 0, ids[7], 3},
+		{"范围超过末尾", 8, 99, ids[7], 3},
+		{"整段覆盖", 1, 10, ids[0], 10},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			session, items, _, err := st.CreatePracticeSession(user.ID, PracticeInput{
+				BankIDs: []int64{bank.ID}, Order: "fixed", StartSeq: c.start, EndSeq: c.end,
+			})
+			if err != nil {
+				t.Fatalf("create: %v", err)
+			}
+			if session.TotalCount != c.wantTotal || len(items) != c.wantTotal {
+				t.Fatalf("total=%d items=%d, want %d", session.TotalCount, len(items), c.wantTotal)
+			}
+			if items[0].ID != c.wantFirst {
+				t.Fatalf("first question = %d, want %d", items[0].ID, c.wantFirst)
+			}
+			if wantStart := c.start; wantStart >= 1 && session.RangeStart != wantStart {
+				t.Fatalf("rangeStart = %d, want %d", session.RangeStart, wantStart)
+			}
+			if c.end >= 1 && session.RangeEnd != c.end {
+				t.Fatalf("rangeEnd = %d, want %d", session.RangeEnd, c.end)
+			}
+		})
+	}
+
+	if _, _, _, err := st.CreatePracticeSession(user.ID, PracticeInput{
+		BankIDs: []int64{bank.ID}, Order: "fixed", StartSeq: 50, EndSeq: 60,
+	}); err == nil {
+		t.Fatal("expected out-of-range start to fail")
+	}
+	if _, _, _, err := st.CreatePracticeSession(user.ID, PracticeInput{
+		BankIDs: []int64{bank.ID}, Order: "fixed", StartSeq: 5, EndSeq: 3,
+	}); err == nil {
+		t.Fatal("expected inverted range to fail")
+	}
+
+	total, err := st.CountPracticeCandidates(user.ID, PracticeInput{BankIDs: []int64{bank.ID}})
+	if err != nil || total != 10 {
+		t.Fatalf("candidates = %d, err = %v, want 10", total, err)
+	}
+
+	random, items2, _, err := st.CreatePracticeSession(user.ID, PracticeInput{
+		BankIDs: []int64{bank.ID}, Order: "random", Count: 4, StartSeq: 5, EndSeq: 6,
+	})
+	if err != nil {
+		t.Fatalf("random create: %v", err)
+	}
+	if random.TotalCount != 4 || len(items2) != 4 {
+		t.Fatalf("random total=%d, want 4 (range must be ignored)", random.TotalCount)
+	}
+	if random.RangeStart != 0 || random.RangeEnd != 0 {
+		t.Fatalf("random range should be cleared: %+v", random)
+	}
+}

@@ -29,6 +29,7 @@ type Server struct {
 	captchas       map[string]captchaEntry
 	rateMu         sync.Mutex
 	rates          map[string]*rateBucket
+	aiMu           sync.Mutex
 }
 
 func New(st *store.Store, version, dataDir, shutdownToken string, port int, desktop bool, webDir string, onShutdown func()) http.Handler {
@@ -113,6 +114,7 @@ func New(st *store.Store, version, dataDir, shutdownToken string, port int, desk
 	mux.HandleFunc("PUT /api/v1/share", s.auth(s.updateShareSettings))
 
 	mux.HandleFunc("GET /api/v1/practice/sessions", s.auth(s.listPracticeSessions))
+	mux.HandleFunc("POST /api/v1/practice/preview", s.auth(s.previewPractice))
 	mux.HandleFunc("POST /api/v1/practice/sessions", s.auth(s.createPractice))
 	mux.HandleFunc("GET /api/v1/practice/sessions/{id}", s.auth(s.getPracticeSession))
 	mux.HandleFunc("DELETE /api/v1/practice/sessions/{id}", s.auth(s.deletePracticeSession))
@@ -122,6 +124,12 @@ func New(st *store.Store, version, dataDir, shutdownToken string, port int, desk
 	mux.HandleFunc("GET /api/v1/wrong", s.auth(s.listWrong))
 	mux.HandleFunc("GET /api/v1/wrong/stats", s.auth(s.wrongStats))
 	mux.HandleFunc("DELETE /api/v1/wrong/{id}", s.auth(s.removeWrong))
+
+	mux.HandleFunc("GET /api/v1/ai/config", s.auth(s.aiConfig))
+	mux.HandleFunc("PUT /api/v1/ai/config", s.auth(s.updateAIConfig))
+	mux.HandleFunc("POST /api/v1/ai/test", s.auth(s.aiTest))
+	mux.HandleFunc("GET /api/v1/ai/usage", s.auth(s.aiUsage))
+	mux.HandleFunc("POST /api/v1/ai/chat", s.auth(s.aiChat))
 
 	mux.HandleFunc("GET /api/public/exams/{token}", s.publicExamInfo)
 	mux.HandleFunc("POST /api/public/exams/{token}/start", s.publicStart)
@@ -242,6 +250,13 @@ type statusWriter struct {
 func (w *statusWriter) WriteHeader(status int) {
 	w.status = status
 	w.ResponseWriter.WriteHeader(status)
+}
+
+// Flush 透传给底层 ResponseWriter，SSE 流式响应依赖它把数据实时推给前端。
+func (w *statusWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 func withLogging(next http.Handler) http.Handler {

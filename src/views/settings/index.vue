@@ -160,6 +160,67 @@
         </div>
       </section>
 
+      <section class="panel">
+        <div class="panel-head">
+          <h3>BIC-QA 智能助手</h3>
+          <a-space>
+            <a-button :loading="aiTesting" :disabled="!ai.hasKey" @click="testAi">测试连接</a-button>
+            <a-button type="primary" :loading="aiSaving" @click="saveAi">保存</a-button>
+          </a-space>
+        </div>
+        <div class="panel-body">
+          <p class="note ai-intro">
+            接入 BIC-QA 数据库知识库后，练习作答完可在题目旁直接追问知识点。
+            每个账号使用自己的 Key，互不影响；未启用时不会发起任何外部请求。
+            <a href="https://www.bic-qa.com" target="_blank" rel="noreferrer">申请 API Key</a>
+          </p>
+          <div class="setting-row">
+            <div>
+              <div class="row-title">启用</div>
+              <div class="muted">关闭后练习页不显示答疑入口</div>
+            </div>
+            <a-switch v-model:checked="ai.enabled" />
+          </div>
+          <div class="setting-row ai-key-row">
+            <div>
+              <div class="row-title">API Key</div>
+              <div class="muted">
+                <template v-if="ai.hasKey">已保存 {{ ai.keyMask }}，留空表示不修改</template>
+                <template v-else>sk- 开头，在 BIC-QA 个人中心申请</template>
+              </div>
+            </div>
+            <a-input-password
+              v-model:value="ai.apiKey"
+              class="ai-key-input"
+              :placeholder="ai.hasKey ? ai.keyMask : 'sk-...'"
+              autocomplete="off"
+            />
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="row-title">服务地址</div>
+              <div class="muted">默认官方接口，一般无需修改</div>
+            </div>
+            <a-input v-model:value="ai.baseUrl" class="ai-key-input" placeholder="https://api.bic-qa.com" />
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="row-title">回答超时</div>
+              <div class="muted">流式回答的最长等待时间（30–900 秒）</div>
+            </div>
+            <a-input-number v-model:value="ai.timeoutSec" :min="30" :max="900" :step="30" />
+          </div>
+          <div class="ai-actions">
+            <a-button v-if="ai.hasKey" danger size="small" @click="clearAiKey">清除已保存的 Key</a-button>
+            <span v-if="aiState" class="muted ai-state">{{ aiState }}</span>
+          </div>
+          <p class="note">
+            你的 API Key 只对本人账号生效，保存在本机数据目录的 bicqa 文件夹，不会写入数据库、不会随备份导出，
+            也不会回传到界面；提问内容只包含题干与选项，不包含答案与解析。
+          </p>
+        </div>
+      </section>
+
       <section v-if="auth.isAdmin" class="panel">
         <div class="panel-head">
           <h3>数据备份</h3>
@@ -313,6 +374,7 @@ import { usersApi, type UserItem } from '@/api/users'
 import { engineApi, type EngineStatus, type SystemLogs } from '@/api/engine'
 import { backupsApi, type BackupItem, type BackupOverview } from '@/api/backups'
 import { settingsApi, type Settings } from '@/api/settings'
+import { aiApi, type AiConfig } from '@/api/ai'
 import { getApiBase, isTauri } from '@/api/request'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
@@ -336,6 +398,84 @@ const retention = computed(() => backupOverview.value?.retention ?? {})
 const backupsDir = computed(() => backupOverview.value?.backupsDir ?? '')
 
 const settingsSaving = ref(false)
+
+// —— BIC-QA 智能助手 ——
+const ai = reactive({
+  enabled: false,
+  hasKey: false,
+  keyMask: '',
+  baseUrl: 'https://api.bic-qa.com',
+  timeoutSec: 300,
+  apiKey: '',
+})
+const aiSaving = ref(false)
+const aiTesting = ref(false)
+const aiState = ref('')
+
+function applyAiConfig(cfg: AiConfig) {
+  ai.enabled = cfg.enabled
+  ai.hasKey = cfg.hasKey
+  ai.keyMask = cfg.keyMask
+  ai.baseUrl = cfg.baseUrl
+  ai.timeoutSec = cfg.timeoutSec
+  ai.apiKey = ''
+}
+
+async function loadAiConfig() {
+  try {
+    applyAiConfig(await aiApi.config())
+  } catch {
+    /* 引擎未就绪时忽略，进入页面后可重试 */
+  }
+}
+
+async function saveAi() {
+  aiSaving.value = true
+  aiState.value = ''
+  try {
+    const cfg = await aiApi.saveConfig({
+      enabled: ai.enabled,
+      baseUrl: ai.baseUrl,
+      apiKey: ai.apiKey.trim() || undefined,
+      timeoutSec: ai.timeoutSec,
+    })
+    applyAiConfig(cfg)
+    aiState.value = ai.enabled ? '已保存，可点「测试连接」验证' : '已保存（当前为关闭状态）'
+    message.success('BIC-QA 设置已保存')
+  } catch {
+    /* 请求层已提示 */
+  } finally {
+    aiSaving.value = false
+  }
+}
+
+async function testAi() {
+  aiTesting.value = true
+  aiState.value = '正在连接 BIC-QA…'
+  try {
+    const res = await aiApi.test()
+    aiState.value = `连接正常 · ${res.baseUrl}`
+    message.success('BIC-QA 连接正常')
+  } catch (err) {
+    aiState.value = err instanceof Error ? `连接失败：${err.message}` : '连接失败'
+  } finally {
+    aiTesting.value = false
+  }
+}
+
+async function clearAiKey() {
+  aiSaving.value = true
+  try {
+    applyAiConfig(await aiApi.saveConfig({ clearKey: true, enabled: false }))
+    aiState.value = '已清除 API Key，功能已关闭'
+    message.success('已清除 API Key')
+  } catch {
+    /* 请求层已提示 */
+  } finally {
+    aiSaving.value = false
+  }
+}
+
 const form = reactive<Settings>({
   practiceCount: 20,
   practiceShuffleQuestions: true,
@@ -677,6 +817,7 @@ async function syncCloseBehavior(behavior: string) {
 onMounted(() => {
   loadStatus()
   loadSettings()
+  loadAiConfig()
   syncCloseBehavior(closeBehavior.value)
   if (auth.isAdmin) {
     loadBackups()
@@ -689,6 +830,11 @@ onMounted(() => {
 .stack { display: grid; gap: 12px; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.ai-intro { margin: 0 0 8px; }
+.ai-key-row { align-items: flex-start; }
+.ai-key-input { width: 300px; flex: none; }
+.ai-actions { display: flex; align-items: center; gap: 12px; padding: 10px 0 2px; }
+.ai-state { font-size: 12.5px; }
 .setting-row:last-child { border-bottom: 0; padding-bottom: 0; }
 .setting-row:first-child { padding-top: 0; }
 .retention-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 12px; margin-bottom: 10px; }

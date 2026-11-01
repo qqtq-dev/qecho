@@ -70,7 +70,18 @@
             </div>
 
             <div class="analysis-box">
-              <div class="analysis-title">解析</div>
+              <div class="analysis-head">
+                <div class="analysis-title">解析</div>
+                <a-button
+                  v-if="aiReady && currentAnswer"
+                  size="small"
+                  class="ai-ask-btn"
+                  @click="aiOpen = true"
+                >
+                  <template #icon><Sparkles :size="12" /></template>
+                  问 BIC-QA
+                </a-button>
+              </div>
               <template v-if="currentAnswer">
                 <div v-if="currentAnswer.result.analysis" class="analysis-text">{{ currentAnswer.result.analysis }}</div>
                 <div v-else class="muted">本题暂无解析</div>
@@ -168,6 +179,39 @@
                 <a-radio-button value="fixed">按题序</a-radio-button>
               </a-radio-group>
             </a-form-item>
+            <a-form-item v-if="form.order === 'fixed'" label="题序范围">
+              <div class="range-row">
+                <a-input-number
+                  v-model:value="form.startSeq"
+                  :min="1"
+                  :max="candidateTotal || 99999"
+                  :precision="0"
+                  class="range-input"
+                />
+                <span class="range-sep">—</span>
+                <a-input-number
+                  v-model:value="form.endSeq"
+                  :min="form.startSeq || 1"
+                  :max="candidateTotal || 99999"
+                  :precision="0"
+                  placeholder="末题"
+                  class="range-input"
+                />
+                <span class="muted range-unit">题</span>
+              </div>
+              <div class="range-hint muted">
+                <template v-if="loadingCandidates">正在统计题数…</template>
+                <template v-else-if="candidateTotal > 0">
+                  当前筛选共 {{ candidateTotal }} 道 · {{ rangeSummary }}
+                </template>
+                <template v-else>请先选择题库</template>
+              </div>
+              <div v-if="nextRangeStart" class="range-hint">
+                <a-button type="link" size="small" class="range-next" @click="applyNextRange">
+                  上次练到第 {{ nextRangeStart - 1 }} 题，从第 {{ nextRangeStart }} 题接着练
+                </a-button>
+              </div>
+            </a-form-item>
             <a-form-item label="标签">
               <a-select
                 v-model:value="form.tags"
@@ -190,7 +234,7 @@
             <a-form-item label="难度">
               <a-select v-model:value="form.difficulty" :options="difficultyOptions" style="width: 100%" />
             </a-form-item>
-            <a-form-item label="题量">
+            <a-form-item v-if="form.order !== 'fixed'" label="题量">
               <a-select v-model:value="form.count" :options="countOptions" style="width: 100%" />
             </a-form-item>
             <a-form-item label="选项乱序">
@@ -226,7 +270,7 @@
                     </div>
                     <div class="muted">
                       {{ formatTime(item.updatedAt || item.createdAt) }} · {{ item.totalCount }} 道 ·
-                      {{ item.order === 'random' ? '随机' : '按题序' }}
+                      {{ orderLabel(item) }}
                       <template v-if="item.shuffleOptions"> · 选项乱序</template>
                     </div>
                   </div>
@@ -264,17 +308,26 @@
         </div>
       </section>
     </div>
+
+    <AiAnswerDrawer
+      v-model:open="aiOpen"
+      :question-id="current?.id ?? 0"
+      :stem="current?.stem ?? ''"
+      :options="aiOptions"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Flag } from 'lucide-vue-next'
+import { Flag, Sparkles } from 'lucide-vue-next'
 import { message } from 'ant-design-vue'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/PageHeader.vue'
 import QuestionImage from '@/components/QuestionImage.vue'
+import AiAnswerDrawer from '@/components/AiAnswerDrawer.vue'
+import { aiApi } from '@/api/ai'
 import { banksApi, type Bank, type Tag } from '@/api/banks'
 import { settingsApi } from '@/api/settings'
 import {
@@ -307,8 +360,110 @@ const form = reactive({
   difficulty: 0,
   tags: [] as string[],
   count: 20,
+  // 按题序时的题序范围：起始必填，结束留空表示练到末尾
+  startSeq: 1,
+  endSeq: null as number | null,
   shuffleOptions: false,
 })
+
+const candidateTotal = ref(0)
+const loadingCandidates = ref(false)
+let candidateSeq = 0
+
+async function loadCandidates() {
+  const seq = ++candidateSeq
+  if (form.bankIds.length === 0) {
+    candidateTotal.value = 0
+    loadingCandidates.value = false
+    return
+  }
+  loadingCandidates.value = true
+  try {
+    const res = await practiceApi.preview({
+      bankIds: form.bankIds,
+      questionType: form.type || undefined,
+      difficulty: form.difficulty || undefined,
+      tags: form.tags.length ? form.tags : undefined,
+    })
+    if (seq === candidateSeq) candidateTotal.value = res.candidates
+  } catch {
+    if (seq === candidateSeq) candidateTotal.value = 0
+  } finally {
+    if (seq === candidateSeq) loadingCandidates.value = false
+  }
+}
+
+watch(
+  () => [form.bankIds.join(','), form.type, form.difficulty, form.tags.join(',')].join('|'),
+  () => {
+    void loadCandidates()
+  },
+)
+
+// 按题序的默认范围与题量保持一致：起始 1、结束 = 题量（题量为“全部”时留空）
+watch(
+  () => form.order,
+  (order) => {
+    if (order !== 'fixed') return
+    if (form.endSeq === null || form.endSeq <= 0) {
+      form.startSeq = 1
+      form.endSeq = form.count > 0 ? form.count : null
+    }
+  },
+)
+
+watch(
+  () => form.count,
+  (count) => {
+    if (form.order !== 'fixed') return
+    if (form.startSeq === 1 && (form.endSeq === null || form.endSeq > 0)) {
+      form.endSeq = count > 0 ? count : null
+    }
+  },
+)
+
+// 题序范围摘要：显示实际会练到哪几道
+const rangeSummary = computed(() => {
+  const total = candidateTotal.value
+  const start = Math.max(1, form.startSeq || 1)
+  const rawEnd = form.endSeq && form.endSeq > 0 ? form.endSeq : 0
+  const end = total > 0 ? Math.min(rawEnd || total, total) : rawEnd
+  if (end < start) return '结束题号小于起始题号'
+  const span = end - start + 1
+  if (total > 0 && end >= total && rawEnd === 0) {
+    return `第 ${start} 题到末题（共 ${span} 道）`
+  }
+  return `第 ${start}–${end} 题（共 ${span} 道）`
+})
+
+// 上次同题库“按题序”练习的结束位置 + 1，用于一键接着往下练
+const nextRangeStart = computed(() => {
+  if (form.order !== 'fixed' || form.bankIds.length !== 1) return 0
+  const last = sessions.value.find(
+    (s) => s.bankId === form.bankIds[0] && s.order === 'fixed' && s.source === 'bank',
+  )
+  if (!last) return 0
+  const start = last.rangeStart > 0 ? last.rangeStart : 1
+  const end = last.rangeEnd > 0 ? last.rangeEnd : start + last.totalCount - 1
+  const next = end + 1
+  if (candidateTotal.value > 0 && next > candidateTotal.value) return 0
+  if (next <= (form.startSeq || 1) && form.endSeq !== null) return 0
+  return next
+})
+
+function applyNextRange() {
+  const next = nextRangeStart.value
+  if (!next) return
+  form.startSeq = next
+  // 保留上次跨度，方便一段段往下练
+  const last = sessions.value.find(
+    (s) => s.bankId === form.bankIds[0] && s.order === 'fixed' && s.source === 'bank',
+  )
+  const span = last ? last.totalCount : 0
+  const total = candidateTotal.value
+  const end = span > 0 ? next + span - 1 : 0
+  form.endSeq = end > 0 && (total === 0 || end <= total) ? end : null
+}
 
 const tagOptions = computed(() =>
   availableTags.value.map((t) => ({
@@ -406,6 +561,21 @@ const isMarked = computed(() => !!current.value && markedIds.value.includes(curr
 const answeredCount = computed(() => Object.keys(answers).length)
 const correctCount = computed(() => Object.values(answers).filter((a) => a.result.isCorrect).length)
 
+// BIC-QA 答疑：仅在服务端已启用并配置 Key 时显示入口
+const aiReady = ref(false)
+const aiOpen = ref(false)
+const aiOptions = computed(() =>
+  (current.value?.options ?? []).map((o) => `${o.label}. ${o.content}`),
+)
+
+async function loadAiConfig() {
+  try {
+    aiReady.value = (await aiApi.config()).ready
+  } catch {
+    aiReady.value = false
+  }
+}
+
 function formatTime(raw: string) {
   return raw ? dayjs(raw).format('MM-DD HH:mm') : '—'
 }
@@ -415,6 +585,15 @@ function formatDuration(seconds: number) {
   const minutes = Math.floor(sec / 60)
   if (minutes >= 60) return `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分`
   return `${minutes} 分 ${String(sec % 60).padStart(2, '0')} 秒`
+}
+
+function orderLabel(item: PracticeSession) {
+  if (item.order === 'random') return '随机'
+  if (item.rangeStart > 0) {
+    const end = item.rangeEnd > 0 ? item.rangeEnd : item.rangeStart + item.totalCount - 1
+    return `按题序 ${item.rangeStart}–${end}`
+  }
+  return '按题序'
 }
 
 function clearAnswers() {
@@ -480,6 +659,8 @@ async function loadSettings() {
   } catch {
     /* 读取失败时沿用默认值 */
   }
+  form.startSeq = 1
+  form.endSeq = form.count > 0 ? form.count : null
 }
 
 async function removeSession(id: number) {
@@ -490,12 +671,23 @@ async function removeSession(id: number) {
 
 async function start(source: 'bank' | 'wrong' = 'bank', bankIdsOverride?: number[]) {
   if (starting.value) return
+  const useRange = source === 'bank' && form.order === 'fixed'
+  if (useRange) {
+    const start = Math.max(1, form.startSeq || 1)
+    if (form.endSeq && form.endSeq > 0 && form.endSeq < start) {
+      message.warning('结束题号不能小于起始题号')
+      return
+    }
+  }
   starting.value = true
   try {
     const res = await practiceApi.start({
       bankIds: source === 'wrong' ? bankIdsOverride : form.bankIds,
-      count: source === 'wrong' ? 0 : form.count,
+      // 按题序时由题序范围决定题量，不再额外限制数量
+      count: source === 'wrong' || useRange ? 0 : form.count,
       order: form.order,
+      startSeq: useRange ? Math.max(1, form.startSeq || 1) : undefined,
+      endSeq: useRange ? form.endSeq || 0 : undefined,
       source,
       questionType: form.type || undefined,
       difficulty: form.difficulty || undefined,
@@ -682,7 +874,7 @@ function backToSettings() {
 
 onMounted(async () => {
   window.addEventListener('keydown', onKeydown)
-  await Promise.all([loadBanks(), loadSessions(), loadSettings(), wrongStore.refresh()])
+  await Promise.all([loadBanks(), loadSessions(), loadSettings(), wrongStore.refresh(), loadAiConfig()])
   const sessionId = Number(route.query.session ?? 0)
   if (sessionId > 0) {
     await resume(sessionId)
@@ -783,12 +975,20 @@ onUnmounted(() => {
   padding: 12px 14px; border: 1px dashed var(--border); border-radius: 8px;
   background: var(--bg); font-size: 13.5px; line-height: 1.7;
 }
-.analysis-title { margin-bottom: 6px; font-size: 13px; font-weight: 600; }
+.analysis-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.analysis-title { font-size: 13px; font-weight: 600; }
+.ai-ask-btn { height: 24px; padding: 0 8px; font-size: 12px; }
 .analysis-text { color: var(--text); white-space: pre-wrap; }
 .quiz-actions { display: flex; justify-content: space-between; margin-top: auto; padding-top: 18px; flex-wrap: wrap; gap: 10px; }
 .kbd-hint { margin-top: 10px; font-size: 12px; text-align: right; }
 .result { margin-top: 0; }
 .switch-hint { margin-left: 10px; font-size: 12.5px; }
+.range-row { display: flex; align-items: center; gap: 6px; }
+.range-input { width: 88px; flex: none; }
+.range-sep { color: var(--text2); }
+.range-unit { font-size: 12.5px; }
+.range-hint { margin-top: 4px; font-size: 12px; line-height: 1.5; }
+.range-next { padding: 0; height: auto; font-size: 12px; }
 .recent-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
 .recent-main { min-width: 0; }
 .recent-title { font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }

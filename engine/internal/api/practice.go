@@ -16,6 +16,8 @@ func (s *Server) createPractice(w http.ResponseWriter, r *http.Request) {
 		BankIDs        []int64  `json:"bankIds"`
 		Count          int      `json:"count"`
 		Order          string   `json:"order"`
+		StartSeq       int      `json:"startSeq"`
+		EndSeq         int      `json:"endSeq"`
 		Source         string   `json:"source"`
 		QuestionType   string   `json:"questionType"`
 		Difficulty     int      `json:"difficulty"`
@@ -57,6 +59,8 @@ func (s *Server) createPractice(w http.ResponseWriter, r *http.Request) {
 		QuestionIDs:    in.QuestionIDs,
 		Count:          in.Count,
 		Order:          in.Order,
+		StartSeq:       in.StartSeq,
+		EndSeq:         in.EndSeq,
 		Source:         in.Source,
 		QuestionType:   in.QuestionType,
 		Difficulty:     in.Difficulty,
@@ -73,6 +77,51 @@ func (s *Server) createPractice(w http.ResponseWriter, r *http.Request) {
 		"questions": items,
 		"truncated": truncated,
 	})
+}
+
+// previewPractice 返回当前筛选下的可练习题数，供练习设置页提示题序范围上限。
+func (s *Server) previewPractice(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		BankID       int64    `json:"bankId"`
+		BankIDs      []int64  `json:"bankIds"`
+		Source       string   `json:"source"`
+		QuestionType string   `json:"questionType"`
+		Difficulty   int      `json:"difficulty"`
+		Tags         []string `json:"tags"`
+	}
+	if err := decodeJSON(r, &in); err != nil {
+		response.BadRequest(w, "请求格式不正确")
+		return
+	}
+	if in.Source != "wrong" {
+		in.Source = "bank"
+	}
+	if in.Source == "bank" && in.BankID > 0 && len(in.BankIDs) == 0 {
+		in.BankIDs = []int64{in.BankID}
+	}
+	for _, id := range in.BankIDs {
+		if id <= 0 {
+			response.BadRequest(w, "题库编号无效")
+			return
+		}
+		if _, ok := s.bankFor(w, r, id, false); !ok {
+			return
+		}
+	}
+	user := userFrom(r)
+	total, err := s.store.CountPracticeCandidates(user.ID, store.PracticeInput{
+		BankIDs:      in.BankIDs,
+		Source:       in.Source,
+		QuestionType: in.QuestionType,
+		Difficulty:   in.Difficulty,
+		Tags:         in.Tags,
+		Admin:        user.Role == "admin",
+	})
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	response.OK(w, map[string]any{"candidates": total})
 }
 
 func (s *Server) listPracticeSessions(w http.ResponseWriter, r *http.Request) {
