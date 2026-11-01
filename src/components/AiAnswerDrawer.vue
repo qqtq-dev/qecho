@@ -8,7 +8,7 @@
   >
     <template #title>
       <div class="ai-title">
-        <span>BIC-QA 答疑</span>
+        <span>AI 答疑</span>
         <a-tag v-if="active?.state === 'thinking'" color="processing">思考中 {{ elapsedOf(active) }}s</a-tag>
         <a-tag v-else-if="active?.state === 'streaming'" color="processing">回答中</a-tag>
         <a-tag v-else-if="active?.state === 'error'" color="error">出错</a-tag>
@@ -29,7 +29,7 @@
         </div>
         <div class="ai-a">
           <div class="ai-a-head">
-            <span class="ai-role ai-role-bot">BIC-QA</span>
+            <span class="ai-role ai-role-bot">AI</span>
             <a-space :size="8">
               <a v-if="turn.answer" class="ai-mini" @click="copy(turn.answer)">复制</a>
               <a
@@ -42,7 +42,7 @@
 
           <div v-if="turn.state === 'thinking' && !turn.thinking" class="ai-wait">
             <a-spin size="small" />
-            <span>正在连接 BIC-QA…</span>
+            <span>正在连接…</span>
           </div>
 
           <div v-if="turn.thinking" class="ai-think" :class="{ 'is-open': turn.thinkOpen }">
@@ -61,7 +61,7 @@
             v-if="turn.state === 'error'"
             type="error"
             show-icon
-            :message="turn.error || 'BIC-QA 调用失败'"
+            :message="turn.error || 'AI 调用失败'"
             class="ai-alert"
           />
         </div>

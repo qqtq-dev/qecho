@@ -1,9 +1,15 @@
 import { http, getApiBase, getToken } from './request'
 
+/** 接入方式：bicqa = 官方 Open API（API Key）；imaweb = ima 网页版（登录 Cookie）。 */
+export type AiProvider = 'bicqa' | 'imaweb'
+
 export interface AiConfig {
+  provider: AiProvider
   enabled: boolean
   hasKey: boolean
   keyMask: string
+  hasCookie: boolean
+  cookieMask: string
   baseUrl: string
   model: string
   timeoutSec: number
@@ -12,17 +18,22 @@ export interface AiConfig {
 
 export interface AiTestResult {
   ok: boolean
+  provider: AiProvider
   conversationId: string
   baseUrl: string
 }
 
 export interface AiConfigInput {
+  provider?: AiProvider
   enabled?: boolean
   baseUrl?: string
   apiKey?: string
   model?: string
   timeoutSec?: number
+  /** ima 网页版登录态；留空表示沿用已保存的 Cookie。 */
+  cookie?: string
   clearKey?: boolean
+  clearCookie?: boolean
 }
 
 export interface ChatHandlers {
@@ -71,7 +82,7 @@ function dispatchFrame(frame: string, handlers: ChatHandlers) {
       if (text) handlers.onDelta?.(text)
       break
     case 'error':
-      handlers.onError?.(message || 'BIC-QA 返回错误')
+      handlers.onError?.(message || 'AI 返回错误')
       break
     case 'done':
       handlers.onDone?.()

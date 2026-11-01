@@ -79,7 +79,7 @@
                   @click="aiOpen = true"
                 >
                   <template #icon><Sparkles :size="12" /></template>
-                  问 BIC-QA
+                  问 AI
                 </a-button>
               </div>
               <template v-if="currentAnswer">
@@ -561,7 +561,7 @@ const isMarked = computed(() => !!current.value && markedIds.value.includes(curr
 const answeredCount = computed(() => Object.keys(answers).length)
 const correctCount = computed(() => Object.values(answers).filter((a) => a.result.isCorrect).length)
 
-// BIC-QA 答疑：仅在服务端已启用并配置 Key 时显示入口
+// AI 答疑：仅在服务端已启用并配置凭据时显示入口
 const aiReady = ref(false)
 const aiOpen = ref(false)
 const aiOptions = computed(() =>
