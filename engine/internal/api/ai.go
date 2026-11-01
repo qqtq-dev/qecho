@@ -136,9 +136,10 @@ func (s *Server) updateAIConfig(w http.ResponseWriter, r *http.Request) {
 		cfg.KBID = id
 		cfg.KBName = strings.TrimSpace(in.KBName)
 	}
-	// 两种接入方式互斥：同一时刻只保留当前方式的凭据。无条件执行，
-	// 保证任何一次保存之后都不可能出现“两套凭据都在”的状态（老数据保存一次即收敛）。
-	enforceExclusiveCredentials(&cfg)
+	// 知识库依赖 ima 凭据：凭据被清掉后，残留的库选择没有意义。
+	if cfg.Cookie == "" {
+		cfg.KBID, cfg.KBName = "", ""
+	}
 	cfg.Model = strings.TrimSpace(in.Model)
 	if in.TimeoutSec > 0 {
 		cfg.TimeoutSec = in.TimeoutSec
@@ -151,18 +152,8 @@ func (s *Server) updateAIConfig(w http.ResponseWriter, r *http.Request) {
 	response.OK(w, aiConfigView(cfg.Normalized()))
 }
 
-// enforceExclusiveCredentials 落实“两种接入方式不能同时启用”：
-// 只保留当前 provider 的凭据，另一方的凭据清掉；知识库依赖 ima 凭据，凭据没了也一并清。
-func enforceExclusiveCredentials(cfg *bicqa.Config) {
-	if cfg.ProviderName() == bicqa.ProviderImaWeb {
-		cfg.APIKey = ""
-	} else {
-		cfg.Cookie = ""
-	}
-	if cfg.Cookie == "" {
-		cfg.KBID, cfg.KBName = "", ""
-	}
-}
+// 注意：两种接入方式的凭据各自独立保存，允许同时配置；provider 只决定同一时刻
+// 哪一种是“启用”状态，另一套凭据原样保留，切回来即可继续用，不需要重新填写。
 
 // normalizeCookie 清洗用户粘贴的 ima 鉴权串：
 // 去掉可能带上的 "x-ima-cookie:" / "Cookie:" 前缀与换行，否则会原样发给服务端导致鉴权失败。

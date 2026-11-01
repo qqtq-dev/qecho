@@ -175,13 +175,25 @@
           </p>
           <div class="setting-row">
             <div>
-              <div class="row-title">接入方式</div>
-              <div class="muted">二选一，同一时刻只能启用一种；切换并保存后，另一种的凭据会被清除</div>
+              <div class="row-title">启用的接入方式</div>
+              <div class="muted">两套凭据可以分别保存；同一时刻只有选中的一种生效，另一种保留但不启用</div>
             </div>
-            <a-radio-group v-model:value="ai.provider" button-style="solid" @change="onProviderChange">
-              <a-radio-button value="bicqa">BIC-QA 官方</a-radio-button>
-              <a-radio-button value="imaweb">ima 网页版</a-radio-button>
-            </a-radio-group>
+            <div class="ai-provider-pick">
+              <a-radio-group v-model:value="ai.provider" button-style="solid" @change="onProviderChange">
+                <a-radio-button value="bicqa">BIC-QA 官方</a-radio-button>
+                <a-radio-button value="imaweb">ima 网页版</a-radio-button>
+              </a-radio-group>
+              <div class="ai-provider-state">
+                <span class="ai-ps" :class="{ on: ai.provider === 'bicqa' }">
+                  <i class="ai-ps-dot" />BIC-QA 官方 · {{ ai.hasKey ? '已配置' : '未配置'
+                  }}{{ ai.provider === 'bicqa' ? ' · 启用中' : '' }}
+                </span>
+                <span class="ai-ps" :class="{ on: ai.provider === 'imaweb' }">
+                  <i class="ai-ps-dot" />ima 网页版 · {{ ai.hasCookie ? '已配置' : '未配置'
+                  }}{{ ai.provider === 'imaweb' ? ' · 启用中' : '' }}
+                </span>
+              </div>
+            </div>
           </div>
           <div class="setting-row">
             <div>
@@ -519,8 +531,6 @@ const ai = reactive({
 const aiSaving = ref(false)
 const aiTesting = ref(false)
 const aiState = ref('')
-/** 切换前的接入方式：用户取消「会清除另一方凭据」的确认时用它回退。 */
-let prevProvider: AiProvider = 'bicqa'
 const kbList = ref<KnowledgeBase[]>([])
 const kbLoading = ref(false)
 const kbError = ref('')
@@ -531,7 +541,6 @@ const aiProviderLabel = computed(() => (ai.provider === 'imaweb' ? 'ima 网页�
 
 function applyAiConfig(cfg: AiConfig) {
   ai.provider = cfg.provider ?? 'bicqa'
-  prevProvider = ai.provider
   ai.enabled = cfg.enabled
   ai.hasKey = cfg.hasKey
   ai.keyMask = cfg.keyMask
@@ -569,42 +578,18 @@ function onKbChange(value: string) {
   ai.kbName = hit?.name ?? ''
 }
 
-/** 真正执行切换：同步默认服务地址、清掉未保存的输入，避免把上一方的值带过去。 */
-function applyProviderSwitch(target: AiProvider) {
-  prevProvider = target
-  ai.provider = target
-  const other = target === 'imaweb' ? AI_BASE_URL.bicqa : AI_BASE_URL.imaweb
+/** 切换启用哪一种接入方式：两套凭据各自保留，切换不会清掉任何一边已保存的内容。 */
+function onProviderChange() {
+  const other = ai.provider === 'imaweb' ? AI_BASE_URL.bicqa : AI_BASE_URL.imaweb
   if (!ai.baseUrl || ai.baseUrl === other) {
-    ai.baseUrl = AI_BASE_URL[target]
+    ai.baseUrl = AI_BASE_URL[ai.provider]
   }
   ai.apiKey = ''
   ai.cookie = ''
   aiState.value = ''
-  if (target === 'imaweb' && ai.hasCookie && kbList.value.length === 0) {
+  if (ai.provider === 'imaweb' && ai.hasCookie && kbList.value.length === 0) {
     void loadKnowledgeBases()
   }
-}
-
-/** 切换接入方式时同步默认服务地址，避免把 BIC-QA 的地址发给 ima。 */
-function onProviderChange() {
-  const target = ai.provider
-  // 两种接入方式互斥：切过去保存就会清掉另一方的凭据，先讲清楚再切。
-  const otherHasCred = target === 'imaweb' ? ai.hasKey : ai.hasCookie
-  if (otherHasCred) {
-    const otherLabel = target === 'imaweb' ? 'BIC-QA 官方' : 'ima 网页版'
-    Modal.confirm({
-      title: '两种接入方式不能同时启用',
-      content: `保存后，已配置的「${otherLabel}」凭据会被清除，需要时得重新填写。确定切换吗？`,
-      okText: '切换并清除',
-      cancelText: '取消',
-      onOk: () => applyProviderSwitch(target),
-      onCancel: () => {
-        ai.provider = prevProvider
-      },
-    })
-    return
-  }
-  applyProviderSwitch(target)
 }
 
 async function loadAiConfig() {
@@ -626,9 +611,14 @@ async function saveAi() {
       baseUrl: ai.baseUrl,
       apiKey: ai.apiKey.trim() || undefined,
       cookie: ai.cookie.trim() || undefined,
-      kbId: ai.kbId || undefined,
-      kbName: ai.kbId ? ai.kbName : undefined,
-      clearKb: !ai.kbId,
+      // 知识库只属于 ima 一套凭据：在 BIC-QA 下保存时不要动它，否则会误清另一边的选择。
+      ...(ai.provider === 'imaweb'
+        ? {
+            kbId: ai.kbId || undefined,
+            kbName: ai.kbId ? ai.kbName : undefined,
+            clearKb: !ai.kbId,
+          }
+        : {}),
       timeoutSec: ai.timeoutSec,
     })
     applyAiConfig(cfg)
@@ -1038,6 +1028,19 @@ onMounted(() => {
 .stack { display: grid; gap: 12px; }
 .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+/* 接入方式：右侧单选 + 两套凭据的配置/启用状态，一眼看清“配了几套、哪套在跑” */
+.ai-provider-pick { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; }
+.ai-provider-state { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 11.5px; color: var(--text2); }
+.ai-ps { display: inline-flex; align-items: center; gap: 5px; line-height: 16px; }
+.ai-ps-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border-strong);
+  flex: none;
+}
+.ai-ps.on { color: var(--primary); }
+.ai-ps.on .ai-ps-dot { background: var(--primary); }
 .ai-intro { margin: 0 0 8px; }
 .ai-key-row { align-items: flex-start; }
 .ai-key-input { width: 300px; flex: none; }
