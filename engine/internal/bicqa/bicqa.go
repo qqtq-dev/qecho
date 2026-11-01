@@ -31,6 +31,9 @@ const (
 
 	// MaxQuestionRunes 限制单次提问长度，避免把整份题图或超长文本误发出去。
 	MaxQuestionRunes = 4000
+
+	// ImaLegacyBaseURL 是已移除的 ima 网页版地址，仅用于识别并纠正历史配置。
+	ImaLegacyBaseURL = "https://ima.qq.com"
 )
 
 // ErrNotConfigured 表示尚未启用或缺少 API Key。
@@ -53,7 +56,9 @@ func (c Config) Normalized() Config {
 
 func (c Config) normalized() Config {
 	c.BaseURL = strings.TrimSpace(c.BaseURL)
-	if c.BaseURL == "" {
+	// 早期版本支持过 ima 网页版，那条接入方式用的是另一套私有协议与域名。
+	// 它的地址留到 BIC-QA 下必然请求不到，读取时直接纠正为官方默认地址。
+	if c.BaseURL == "" || strings.EqualFold(strings.TrimRight(c.BaseURL, "/"), ImaLegacyBaseURL) {
 		c.BaseURL = DefaultBaseURL
 	}
 	c.BaseURL = strings.TrimRight(c.BaseURL, "/")

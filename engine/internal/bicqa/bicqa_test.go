@@ -220,3 +220,19 @@ func TestParseStreamSeparatesThinking(t *testing.T) {
 		}
 	}
 }
+
+// TestLegacyImaBaseURLIsReset 守住升级兼容：早期配置里可能存着已移除的
+// ima 网页版地址，那条地址在 BIC-QA 下请求不到，读取时必须纠正为默认值。
+func TestLegacyImaBaseURLIsReset(t *testing.T) {
+	for _, in := range []string{"https://ima.qq.com", "https://ima.qq.com/", "HTTPS://IMA.QQ.COM"} {
+		cfg := Config{BaseURL: in, APIKey: "sk-x"}.Normalized()
+		if cfg.BaseURL != DefaultBaseURL {
+			t.Fatalf("baseUrl=%q 应纠正为 %q，实际 %q", in, DefaultBaseURL, cfg.BaseURL)
+		}
+	}
+	// 用户自填的其他地址（例如代理）必须保留。
+	custom := Config{BaseURL: "https://proxy.example.com/api", APIKey: "sk-x"}.Normalized()
+	if custom.BaseURL != "https://proxy.example.com/api" {
+		t.Fatalf("自定义地址不应被改动，实际 %q", custom.BaseURL)
+	}
+}
