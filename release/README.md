@@ -1,10 +1,22 @@
 # Qecho Releases
+![输入图片说明](image.png)
 
 题鸣（Qecho）的版本发布仓库，只放版本清单与安装包，**源码不在这个仓库**。
 
 ## 下载
 
-最新安装包见 [Releases](https://gitee.com/qqtq/qecho-releases/releases)。
+最新安装包见 [Releases](https://gitee.com/qqtq/qecho-releases/releases/latest)。
+
+| 平台 | 安装包 |
+| --- | --- |
+| Windows 安装版 | `Qecho_x.y.z_x64-setup.exe` |
+| Windows 免安装版 | `Qecho-x.y.z-x64-portable.zip` |
+| Debian / Ubuntu | `Qecho_x.y.z_amd64.deb` |
+| RHEL / Kylin / 统信 | `Qecho-x.y.z-1.x86_64.rpm` |
+| 通用 Linux | `Qecho_x.y.z_amd64.AppImage` |
+
+> 发行版页面里的 `Source code (zip)` 与 `Source code (tar.gz)` 是 Gitee 按标签自动生成的压缩包，
+> 里面只有本仓库的 `version.json` 和 `README.md`，**不是客户端源码**，请不要当作安装包下载。
 
 ## 版本清单
 
@@ -25,9 +37,9 @@
 {
   "version": "0.2.0",
   "publishedAt": "2026-11-02",
-  "notes": "练习页解析框支持内部滚动；新增版本更新提醒。",
-  "url": "https://gitee.com/qqtq/qecho-releases",
-  "downloadUrl": "https://gitee.com/qqtq/qecho-releases/releases",
+  "notes": "新增题库共享、用户权限管理与站内通知；答题卡改为四态配色。",
+  "url": "https://gitee.com/qqtq/qecho-releases/releases/tag/v0.2.0",
+  "downloadUrl": "https://gitee.com/qqtq/qecho-releases/releases/tag/v0.2.0",
   "force": false
 }
 ```
