@@ -121,30 +121,72 @@
               <div class="row-title">启用</div>
               <div class="muted">关闭后练习页不显示答疑入口</div>
             </div>
-            <a-switch v-model:checked="ai.enabled" />
+            <a-switch v-model:checked="cur.enabled" />
+          </div>
+
+          <div class="setting-row">
+            <div>
+              <div class="row-title">服务商</div>
+              <div class="muted">两套接口随时可切，已保存的 Key 不会丢</div>
+            </div>
+            <a-select
+              v-model:value="ai.active"
+              class="ai-key-input"
+              :options="providerOptions"
+              @change="onProviderChange"
+            />
+          </div>
+
+          <div v-if="ai.active === 'openai'" class="setting-row">
+            <div>
+              <div class="row-title">快捷填充</div>
+              <div class="muted">选一家自动填好地址与常用模型</div>
+            </div>
+            <a-select
+              v-model:value="aiPreset"
+              class="ai-key-input"
+              :options="presetOptions"
+              placeholder="选择服务商，或直接手动填写下方两项"
+              allow-clear
+              @change="onPresetChange"
+            />
           </div>
 
           <div class="setting-row ai-key-row">
             <div>
               <div class="row-title">API Key</div>
               <div class="muted">
-                <template v-if="ai.hasKey">已保存 {{ ai.keyMask }}，留空表示不修改</template>
-                <template v-else>sk- 开头，在 BIC-QA 个人中心申请</template>
+                <template v-if="cur.hasKey">已保存 {{ cur.keyMask }}，留空表示不修改</template>
+                <template v-else>{{ keyHint }}</template>
               </div>
             </div>
             <a-input-password
               v-model:value="ai.apiKey"
               class="ai-key-input"
-              :placeholder="ai.hasKey ? ai.keyMask : 'sk-...'"
+              :placeholder="cur.hasKey ? cur.keyMask : 'sk-...'"
               autocomplete="off"
             />
           </div>
           <div class="setting-row">
             <div>
               <div class="row-title">服务地址</div>
-              <div class="muted">默认官方接口，一般无需修改</div>
+              <div class="muted">
+                {{
+                  ai.active === 'openai'
+                    ? '填到版本段即可，末尾的 /chat/completions 由程序补'
+                    : '默认官方接口，一般无需修改'
+                }}
+              </div>
             </div>
-            <a-input v-model:value="ai.baseUrl" class="ai-key-input" placeholder="https://api.bic-qa.com" />
+            <a-input v-model:value="cur.baseUrl" class="ai-key-input" :placeholder="baseUrlPlaceholder" />
+          </div>
+
+          <div v-if="ai.active === 'openai'" class="setting-row">
+            <div>
+              <div class="row-title">模型</div>
+              <div class="muted">例如 qwen-plus、deepseek-chat、glm-4-flash</div>
+            </div>
+            <a-input v-model:value="cur.model" class="ai-key-input" placeholder="deepseek-chat" />
           </div>
 
           <div class="setting-row">
@@ -152,16 +194,16 @@
               <div class="row-title">回答超时</div>
               <div class="muted">流式回答的最长等待时间（30–900 秒）</div>
             </div>
-            <a-input-number v-model:value="ai.timeoutSec" :min="30" :max="900" :step="30" />
+            <a-input-number v-model:value="cur.timeoutSec" :min="30" :max="900" :step="30" />
           </div>
           <div class="ai-actions">
-            <a-button v-if="ai.hasKey" danger size="small" @click="clearAiKey">
+            <a-button v-if="cur.hasKey" danger size="small" @click="clearAiKey">
               清除已保存的 Key
             </a-button>
             <span v-if="aiState" class="muted ai-state">{{ aiState }}</span>
           </div>
           <p class="note">
-            你的凭据只对本人账号生效，保存在本机数据目录的 bicqa 文件夹，不会写入数据库、不会随备份导出，
+            你的凭据只对本人账号生效，保存在本机数据目录，不会写入数据库、不会随备份导出，
             也不会回传到界面；提问内容只包含题干与选项，不包含答案与解析。
           </p>
         </div>
@@ -249,7 +291,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import { authApi } from '@/api/auth'
 import { engineApi, type EngineStatus, type SystemLogs } from '@/api/engine'
 import { settingsApi, type Settings } from '@/api/settings'
-import { aiApi, type AiConfig } from '@/api/ai'
+import { aiApi, type AiConfig, type AiProvider } from '@/api/ai'
 import { getApiBase } from '@/api/request'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
@@ -264,31 +306,123 @@ const healthy = computed(() => Boolean(status.value) || appStore.health?.status 
 
 const settingsSaving = ref(false)
 
-// —— 智能助手（BIC-QA 官方 Open API）——
+// —— 智能助手：BIC-QA 与通用大模型两条通道，各自独立保存，同时只生效一条 ——
 const DEFAULT_AI_BASE_URL = 'https://api.bic-qa.com'
 
+/** 服务商下拉。选中的那条就是当前生效通道，另一条只是存着不参与请求。 */
+const providerOptions = [
+  { value: 'bicqa', label: 'BIC-QA（数据库智能问答）' },
+  { value: 'openai', label: '通用大模型（OpenAI 兼容）' },
+]
+
+/**
+ * 通用模型的常用服务商预设。baseUrl 统一填到版本段为止——各家版本段
+ * 并不一致（/v1、/v4、/compatible-mode/v1），末尾的 /chat/completions 由程序补。
+ */
+const AI_PRESETS = [
+  {
+    value: 'dashscope',
+    label: '阿里云百炼 · 通义千问',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    model: 'qwen-plus',
+  },
+  {
+    value: 'deepseek',
+    label: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com/v1',
+    model: 'deepseek-chat',
+  },
+  {
+    value: 'zhipu',
+    label: '智谱 GLM',
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    model: 'glm-4-flash',
+  },
+  {
+    value: 'moonshot',
+    label: '月之暗面 Kimi',
+    baseUrl: 'https://api.moonshot.cn/v1',
+    model: 'moonshot-v1-8k',
+  },
+  {
+    value: 'siliconflow',
+    label: '硅基流动',
+    baseUrl: 'https://api.siliconflow.cn/v1',
+    model: 'Qwen/Qwen2.5-7B-Instruct',
+  },
+  {
+    value: 'openai',
+    label: 'OpenAI',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-4o-mini',
+  },
+]
+const presetOptions = AI_PRESETS.map((p) => ({ value: p.value, label: p.label }))
+
+interface AiChannelForm {
+  enabled: boolean
+  hasKey: boolean
+  keyMask: string
+  baseUrl: string
+  model: string
+  timeoutSec: number
+}
+
+function emptyChannel(baseUrl: string): AiChannelForm {
+  return { enabled: false, hasKey: false, keyMask: '', baseUrl, model: '', timeoutSec: 300 }
+}
+
 const ai = reactive({
-  enabled: false,
-  hasKey: false,
-  keyMask: '',
-  baseUrl: DEFAULT_AI_BASE_URL,
-  timeoutSec: 300,
+  active: 'bicqa' as AiProvider,
+  bicqa: emptyChannel(DEFAULT_AI_BASE_URL),
+  openai: emptyChannel(''),
+  /** 仅当前通道的 Key 输入框。已保存的 Key 从不回填明文。 */
   apiKey: '',
 })
+const aiPreset = ref('')
 const aiSaving = ref(false)
 const aiTesting = ref(false)
 const aiState = ref('')
 
+/** 当前生效通道的表单，模板统一读它。 */
+const cur = computed(() => (ai.active === 'openai' ? ai.openai : ai.bicqa))
+
 /** 填了 Key 才能测连通性；是否真正启用由后端 Ready 再判一次。 */
-const aiReady = computed(() => ai.hasKey)
+const aiReady = computed(() => cur.value.hasKey)
+
+const keyHint = computed(() =>
+  ai.active === 'openai'
+    ? '在服务商控制台创建，通常以 sk- 开头'
+    : 'sk- 开头，在 BIC-QA 个人中心申请',
+)
+
+const baseUrlPlaceholder = computed(() =>
+  ai.active === 'openai' ? 'https://api.deepseek.com/v1' : DEFAULT_AI_BASE_URL,
+)
+
+const providerLabel = computed(() => (ai.active === 'openai' ? '通用大模型' : 'BIC-QA'))
 
 function applyAiConfig(cfg: AiConfig) {
-  ai.enabled = cfg.enabled
-  ai.hasKey = cfg.hasKey
-  ai.keyMask = cfg.keyMask
-  ai.baseUrl = cfg.baseUrl
-  ai.timeoutSec = cfg.timeoutSec
+  ai.active = cfg.active ?? 'bicqa'
+  Object.assign(ai.bicqa, cfg.bicqa)
+  Object.assign(ai.openai, cfg.openai)
   ai.apiKey = ''
+  aiPreset.value = AI_PRESETS.find((p) => p.baseUrl === cur.value.baseUrl)?.value ?? ''
+}
+
+/** 切换生效通道：只换 active，两条通道的配置都原样留着，切回来不用重填。 */
+function onProviderChange(value: string) {
+  ai.active = value === 'openai' ? 'openai' : 'bicqa'
+  ai.apiKey = ''
+  aiState.value = ''
+  aiPreset.value = AI_PRESETS.find((p) => p.baseUrl === cur.value.baseUrl)?.value ?? ''
+}
+
+function onPresetChange(value: string) {
+  const preset = AI_PRESETS.find((p) => p.value === value)
+  if (!preset) return
+  cur.value.baseUrl = preset.baseUrl
+  cur.value.model = preset.model
 }
 
 async function loadAiConfig() {
@@ -302,15 +436,20 @@ async function loadAiConfig() {
 async function saveAi() {
   aiSaving.value = true
   aiState.value = ''
+  const ch = cur.value
   try {
     const cfg = await aiApi.saveConfig({
-      enabled: ai.enabled,
-      baseUrl: ai.baseUrl,
-      apiKey: ai.apiKey.trim() || undefined,
-      timeoutSec: ai.timeoutSec,
+      active: ai.active,
+      channel: {
+        enabled: ch.enabled,
+        baseUrl: ch.baseUrl,
+        apiKey: ai.apiKey.trim() || undefined,
+        model: ch.model,
+        timeoutSec: ch.timeoutSec,
+      },
     })
     applyAiConfig(cfg)
-    aiState.value = ai.enabled ? '已保存，可点「测试连接」验证' : '已保存（当前为关闭状态）'
+    aiState.value = ch.enabled ? '已保存，可点「测试连接」验证' : '已保存（当前为关闭状态）'
     message.success('智能助手设置已保存')
   } catch {
     /* 请求层已提示 */
@@ -321,11 +460,13 @@ async function saveAi() {
 
 async function testAi() {
   aiTesting.value = true
-  aiState.value = '正在连接 BIC-QA…'
+  aiState.value = `正在连接 ${providerLabel.value}…`
   try {
     const res = await aiApi.test()
-    aiState.value = `连接正常 · ${res.baseUrl}`
-    message.success('BIC-QA 连接正常')
+    aiState.value = res.model
+      ? `连接正常 · ${res.model} · ${res.baseUrl}`
+      : `连接正常 · ${res.baseUrl}`
+    message.success(`${providerLabel.value} 连接正常`)
   } catch (err) {
     aiState.value = err instanceof Error ? `连接失败：${err.message}` : '连接失败'
   } finally {
@@ -336,7 +477,7 @@ async function testAi() {
 async function clearAiKey() {
   aiSaving.value = true
   try {
-    applyAiConfig(await aiApi.saveConfig({ clearKey: true, enabled: false }))
+    applyAiConfig(await aiApi.saveConfig({ channel: { clearKey: true, enabled: false } }))
     aiState.value = '已清除 API Key，功能已关闭'
     message.success('已清除 API Key')
   } catch {

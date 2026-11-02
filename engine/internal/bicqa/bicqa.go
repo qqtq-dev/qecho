@@ -29,6 +29,11 @@ const (
 	DefaultBaseURL = "https://api.bic-qa.com"
 	configDirName  = "bicqa"
 
+	// ProviderBicQA 走 BIC-QA 私有协议（服务端存会话、有额度接口）。
+	ProviderBicQA = "bicqa"
+	// ProviderOpenAI 走 OpenAI 兼容协议，覆盖百炼、DeepSeek、智谱、Kimi 等。
+	ProviderOpenAI = "openai"
+
 	// MaxQuestionRunes 限制单次提问长度，避免把整份题图或超长文本误发出去。
 	MaxQuestionRunes = 4000
 
@@ -39,13 +44,80 @@ const (
 // ErrNotConfigured 表示尚未启用或缺少 API Key。
 var ErrNotConfigured = errors.New("未配置 BIC-QA API Key")
 
-// Config 是 AI 问答的本地配置。密钥只保存在数据目录内，不随备份打包。
-type Config struct {
+// Channel 是一条 AI 通道的完整配置。两条通道各自独立保存，
+// 来回切换服务商时不需要重新填 Key、地址和模型。
+type Channel struct {
 	Enabled    bool   `json:"enabled"`
 	BaseURL    string `json:"baseUrl"`
 	APIKey     string `json:"apiKey"`
 	Model      string `json:"model"`
 	TimeoutSec int    `json:"timeoutSec"`
+}
+
+// Config 是一份完整配置。Active 决定哪条通道生效——两条只能同时生效一条，
+// 另一条只是存着，不参与任何请求。
+type Config struct {
+	Active string  `json:"active"`
+	BicQA  Channel `json:"bicqa"`
+	OpenAI Channel `json:"openai"`
+}
+
+// UnmarshalJSON 兼容旧版扁平配置。provider 字段是演进过程中出现过的形态，
+// 早期文件连它都没有，直接是 enabled / baseUrl / apiKey 平铺在顶层。
+// 这类文件一律迁移成「BIC-QA 通道生效」，保证升级后行为不变。
+func (c *Config) UnmarshalJSON(raw []byte) error {
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return err
+	}
+	if _, ok := probe["bicqa"]; ok {
+		type plain Config // 避免递归调用本方法
+		var p plain
+		if err := json.Unmarshal(raw, &p); err != nil {
+			return err
+		}
+		*c = Config(p)
+		return nil
+	}
+
+	var legacy struct {
+		Channel
+		Provider string `json:"provider"`
+	}
+	if err := json.Unmarshal(raw, &legacy); err != nil {
+		return err
+	}
+	// 中途出现过带 provider 的扁平结构，如实迁移到对应通道，别把用户
+	// 选过的通用模型硬拽回 BIC-QA。
+	if strings.EqualFold(strings.TrimSpace(legacy.Provider), ProviderOpenAI) {
+		*c = Config{Active: ProviderOpenAI, OpenAI: legacy.Channel}
+		return nil
+	}
+	*c = Config{Active: ProviderBicQA, BicQA: legacy.Channel}
+	return nil
+}
+
+// Current 返回当前生效的通道。
+func (c Config) Current() Channel {
+	if c.Active == ProviderOpenAI {
+		return c.OpenAI
+	}
+	return c.BicQA
+}
+
+// WithCurrent 把改动写回当前通道，另一条原样保留。
+func (c Config) WithCurrent(ch Channel) Config {
+	if c.Active == ProviderOpenAI {
+		c.OpenAI = ch
+	} else {
+		c.BicQA = ch
+	}
+	return c
+}
+
+// IsOpenAI 表示当前生效的是通用大模型。
+func (c Config) IsOpenAI() bool {
+	return c.Active == ProviderOpenAI
 }
 
 // Normalized 返回补齐默认值后的副本。读取配置和回显配置前都要过一遍，
@@ -55,29 +127,58 @@ func (c Config) Normalized() Config {
 }
 
 func (c Config) normalized() Config {
-	c.BaseURL = strings.TrimSpace(c.BaseURL)
-	// 早期版本支持过 ima 网页版，那条接入方式用的是另一套私有协议与域名。
-	// 它的地址留到 BIC-QA 下必然请求不到，读取时直接纠正为官方默认地址。
-	if c.BaseURL == "" || strings.EqualFold(strings.TrimRight(c.BaseURL, "/"), ImaLegacyBaseURL) {
-		c.BaseURL = DefaultBaseURL
-	}
-	c.BaseURL = strings.TrimRight(c.BaseURL, "/")
-	c.APIKey = strings.TrimSpace(c.APIKey)
-	c.Model = strings.TrimSpace(c.Model)
-	if c.TimeoutSec < 30 || c.TimeoutSec > 900 {
-		c.TimeoutSec = 300
-	}
+	c.Active = normalizeProvider(c.Active)
+	c.BicQA = c.BicQA.normalized(ProviderBicQA)
+	c.OpenAI = c.OpenAI.normalized(ProviderOpenAI)
 	return c
 }
 
-// Ready 表示已启用且填了 API Key。
+// normalized 按通道补齐默认值。BIC-QA 有官方地址可以回落；通用模型各家域名
+// 和版本段都不一样，猜不出来，只能留空交给 Ready 拦下并由前端提示去选预设，
+// 绝不能回落到 BIC-QA 的地址——那会让人以为配好了却一直失败。
+func (ch Channel) normalized(provider string) Channel {
+	ch.BaseURL = strings.TrimRight(strings.TrimSpace(ch.BaseURL), "/")
+	if provider == ProviderBicQA {
+		// 早期版本支持过 ima 网页版，那条接入方式用的是另一套私有协议与域名。
+		// 它的地址留到 BIC-QA 下必然请求不到，读取时直接纠正为官方默认地址。
+		if ch.BaseURL == "" || strings.EqualFold(ch.BaseURL, ImaLegacyBaseURL) {
+			ch.BaseURL = DefaultBaseURL
+		}
+	} else if strings.EqualFold(ch.BaseURL, ImaLegacyBaseURL) {
+		ch.BaseURL = ""
+	}
+	ch.APIKey = strings.TrimSpace(ch.APIKey)
+	ch.Model = strings.TrimSpace(ch.Model)
+	if ch.TimeoutSec < 30 || ch.TimeoutSec > 900 {
+		ch.TimeoutSec = 300
+	}
+	return ch
+}
+
+// normalizeProvider 把未知值一律归到 bicqa，避免手工改配置文件写错时整条功能失效。
+func normalizeProvider(p string) string {
+	if strings.EqualFold(strings.TrimSpace(p), ProviderOpenAI) {
+		return ProviderOpenAI
+	}
+	return ProviderBicQA
+}
+
+// Ready 表示当前生效的那条通道已启用且配置足以发起请求。
+// 通用模型必须同时有服务地址和模型名，少一个请求就会被服务商打回。
 func (c Config) Ready() bool {
-	return c.Enabled && c.APIKey != ""
+	ch := c.Current()
+	if !ch.Enabled || ch.APIKey == "" {
+		return false
+	}
+	if c.IsOpenAI() {
+		return ch.BaseURL != "" && ch.Model != ""
+	}
+	return true
 }
 
 // MaskedKey 返回脱敏后的 Key，仅用于前端展示，绝不回传明文。
-func (c Config) MaskedKey() string {
-	key := strings.TrimSpace(c.APIKey)
+func (ch Channel) MaskedKey() string {
+	key := strings.TrimSpace(ch.APIKey)
 	if key == "" {
 		return ""
 	}
@@ -95,7 +196,9 @@ func configPath(dir string, userID int64) string {
 
 // Load 读取指定用户的配置；文件不存在时返回默认值。
 func Load(dir string, userID int64) Config {
-	cfg := Config{BaseURL: DefaultBaseURL, TimeoutSec: 300}
+	// 通道的默认值统一交给 normalized 补，这里不预置，否则旧结构迁移后
+	// 会被预置值覆盖成 BIC-QA 的地址。
+	cfg := Config{}
 	if userID <= 0 {
 		return cfg.normalized()
 	}
@@ -104,7 +207,7 @@ func Load(dir string, userID int64) Config {
 		return cfg.normalized()
 	}
 	if err := json.Unmarshal(raw, &cfg); err != nil {
-		return Config{BaseURL: DefaultBaseURL, TimeoutSec: 300}.normalized()
+		return Config{}.normalized()
 	}
 	return cfg.normalized()
 }
@@ -134,12 +237,11 @@ type Client struct {
 	http    *http.Client
 }
 
-func NewClient(cfg Config) *Client {
-	cfg = cfg.normalized()
+func NewClient(ch Channel) *Client {
 	return &Client{
-		baseURL: cfg.BaseURL,
-		apiKey:  cfg.APIKey,
-		model:   cfg.Model,
+		baseURL: strings.TrimRight(strings.TrimSpace(ch.BaseURL), "/"),
+		apiKey:  strings.TrimSpace(ch.APIKey),
+		model:   strings.TrimSpace(ch.Model),
 		http: &http.Client{
 			// 流式问答可能持续数分钟，整体时限交给调用方的 context 控制。
 			Timeout: 0,

@@ -1,28 +1,50 @@
 import { http, getApiBase, getToken } from './request'
 
-export interface AiConfig {
+/** 两套接口：bicqa 是 BIC-QA 私有协议，openai 是通用大模型的兼容协议。 */
+export type AiProvider = 'bicqa' | 'openai'
+
+/** 两条通道各自独立的配置。切换服务商时互不覆盖。 */
+export interface AiChannel {
   enabled: boolean
   hasKey: boolean
   keyMask: string
   baseUrl: string
   model: string
   timeoutSec: number
+}
+
+export interface AiConfig {
+  /** 当前生效的通道。两条只能同时生效一条。 */
+  active: AiProvider
   ready: boolean
+  bicqa: AiChannel
+  openai: AiChannel
 }
 
 export interface AiTestResult {
   ok: boolean
-  conversationId: string
+  conversationId?: string
   baseUrl: string
+  model?: string
 }
 
+/** 只提交当前生效通道的改动，另一条由服务端原样保留。 */
 export interface AiConfigInput {
-  enabled?: boolean
-  baseUrl?: string
-  apiKey?: string
-  model?: string
-  timeoutSec?: number
-  clearKey?: boolean
+  active?: AiProvider
+  channel?: {
+    enabled?: boolean
+    baseUrl?: string
+    apiKey?: string
+    model?: string
+    timeoutSec?: number
+    clearKey?: boolean
+  }
+}
+
+/** 一问一答的上下文单元。 */
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
 }
 
 export interface ChatHandlers {
@@ -39,6 +61,11 @@ export interface ChatInput {
   title?: string
   /** 回答长度：brief 简答（默认，思考更快）、full 详答。 */
   mode?: 'brief' | 'full'
+  /**
+   * 多轮上下文。BIC-QA 把历史存在服务端，会忽略该字段；
+   * 通用大模型无状态，靠它维持多轮，不传就变成单轮问答。
+   */
+  history?: ChatMessage[]
 }
 
 function dispatchFrame(frame: string, handlers: ChatHandlers) {

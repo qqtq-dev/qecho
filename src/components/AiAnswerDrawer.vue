@@ -27,7 +27,19 @@
       <div v-for="(turn, idx) in turns" :key="idx" class="ai-turn">
         <div class="ai-q">
           <span class="ai-role">你</span>
-          <span class="ai-q-text">{{ turn.question }}</span>
+          <div class="ai-q-body">
+            <div
+              :ref="(el) => setQRef(el as HTMLElement | null, idx)"
+              class="ai-q-text"
+              :class="{ 'is-clamped': !turn.qOpen }"
+            >{{ turn.question }}</div>
+            <button
+              v-if="turn.qOverflow"
+              class="ai-q-more"
+              type="button"
+              @click="toggleQuestion(turn)"
+            >{{ turn.qOpen ? '收起' : '展开全部' }}</button>
+          </div>
         </div>
         <div class="ai-a">
           <div class="ai-a-head">
@@ -99,7 +111,7 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
-import { aiApi } from '@/api/ai'
+import { aiApi, type ChatMessage } from '@/api/ai'
 
 interface Turn {
   question: string
@@ -108,6 +120,9 @@ interface Turn {
   error: string
   thinking: string
   thinkOpen: boolean
+  /** 长题干默认折叠三行，点「展开全部」才完整显示 */
+  qOpen: boolean
+  qOverflow: boolean
   startedAt: number
   endedAt: number
 }
@@ -165,6 +180,31 @@ function scrollToBottom() {
   })
 }
 
+// 题干是否超过三行：折叠状态下量一次，展开时不重复量，否则全文显示会把「收起」按钮带走
+const qEls = new Map<number, HTMLElement>()
+
+function setQRef(el: HTMLElement | null, idx: number) {
+  if (el) qEls.set(idx, el)
+  else qEls.delete(idx)
+}
+
+function measureQuestions() {
+  nextTick(() => {
+    for (const [idx, el] of qEls) {
+      const turn = turns.value[idx]
+      if (!turn || turn.qOpen) continue
+      const overflow = el.scrollHeight > el.clientHeight + 2
+      if (overflow !== turn.qOverflow) turn.qOverflow = overflow
+    }
+  })
+}
+
+function toggleQuestion(turn: Turn) {
+  turn.qOpen = !turn.qOpen
+  if (turn.qOpen) scrollToBottom()
+  else measureQuestions()
+}
+
 function thinkLen(turn: Turn) {
   void tick.value
   return turn.thinking.length
@@ -208,10 +248,26 @@ function reset() {
   controller = null
   busy.value = false
   turns.value = []
+  qEls.clear()
   conversationId.value = ''
   input.value = ''
   version.value = 0
   stopTimer()
+}
+
+/** 最多带入的已完成轮次。通用模型按 token 计费，太长既贵又挤占回答本身的额度。 */
+const HISTORY_TURNS = 10
+
+/**
+ * 取最近若干轮已完成的问答作为多轮上下文。BIC-QA 把历史存在服务端，收到也会忽略；
+ * 通用大模型是无状态的，不传就退化成单轮，追问「那 B 选项呢」会答不上来。
+ */
+function buildHistory(): ChatMessage[] {
+  const done = turns.value.filter((t) => t.state === 'done' && t.answer.trim())
+  return done.slice(-HISTORY_TURNS).flatMap((t) => [
+    { role: 'user' as const, content: t.question },
+    { role: 'assistant' as const, content: t.answer },
+  ])
 }
 
 async function send(question: string) {
@@ -225,11 +281,17 @@ async function send(question: string) {
     state: 'thinking',
     error: '',
     thinking: '',
-    thinkOpen: true,
+    // 思考过程默认收起：标题行已经能看出在思考和耗时，正文不再挤占版面
+    thinkOpen: false,
+    qOpen: false,
+    qOverflow: false,
     startedAt: Date.now(),
     endedAt: 0,
   })
+  // 历史要在本轮压进 turns 之前取，否则当前这轮的空答案也会被算进去
+  const history = buildHistory()
   turns.value.push(turn)
+  measureQuestions()
   startTimer()
   scrollToBottom()
 
@@ -241,6 +303,7 @@ async function send(question: string) {
         conversationId: conversationId.value || undefined,
         title: `题鸣答疑 · ${props.stem.slice(0, 20)}`,
         mode: mode.value,
+        history,
       },
       {
         onMeta: (id) => {
@@ -379,7 +442,31 @@ watch(
   line-height: 20px;
 }
 .ai-role-bot { background: var(--ok-soft); color: var(--ok-text); }
-.ai-q-text { white-space: pre-wrap; max-height: 88px; overflow: auto; }
+.ai-q-body { flex: 1; min-width: 0; }
+.ai-q-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.6;
+}
+/* 长题干默认折三行，不出现内部滚动条 */
+.ai-q-text.is-clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ai-q-more {
+  margin-top: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--primary);
+  font-size: 11.5px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+.ai-q-more:hover { text-decoration: underline; }
 .ai-a { margin-top: 8px; }
 .ai-a-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
 .ai-mini { font-size: 12px; }
@@ -412,17 +499,15 @@ watch(
 .ai-think-meta { font-size: 11.5px; }
 .ai-think-toggle { margin-left: auto; font-size: 11.5px; color: var(--primary); }
 .ai-think-body {
-  max-height: 44px;
+  max-height: 0;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  margin-top: 6px;
+  margin-top: 0;
+  transition: max-height 0.18s ease, margin-top 0.18s ease;
 }
 .ai-think.is-open .ai-think-body {
   max-height: 300px;
   overflow: auto;
-  justify-content: flex-start;
+  margin-top: 6px;
 }
 .ai-think-text {
   white-space: pre-wrap;

@@ -124,12 +124,51 @@ func ExtractMap(m map[string]any, raw string) (kind, text string) {
 	if errVal, ok := m["error"]; ok && errVal != nil {
 		msg := FirstText(errVal, 0)
 		if msg == "" {
+			// OpenAI 兼容协议把原因放在 error.message 里，FirstText 的候选键不含
+			// message，取不到就只剩一句笼统的「AI 服务返回错误」，用户无从下手。
+			if em, ok := errVal.(map[string]any); ok {
+				msg = Message(em)
+			}
+		}
+		if msg == "" {
 			msg = Message(m)
 		}
 		if msg == "" {
 			msg = "AI 服务返回错误"
 		}
 		return "error", msg
+	}
+
+	// OpenAI 兼容协议（DeepSeek、通义千问、智谱、Kimi 等均遵循这一套）把正文
+	// 放在 choices[0] 里，外面套了一层数组，FirstText 的候选键够不到，必须单独处理。
+	//   {"choices":[{"delta":{"content":"你"},"finish_reason":null}]}
+	//   {"choices":[{"delta":{"reasoning_content":"思考中"},"finish_reason":null}]}
+	//   {"choices":[{"delta":{},"finish_reason":"stop"}]}
+	if choices, ok := m["choices"].([]any); ok && len(choices) > 0 {
+		if first, ok := choices[0].(map[string]any); ok {
+			if d, ok := first["delta"].(map[string]any); ok {
+				// reasoning_content 是 DeepSeek-R1 / QwQ 这类推理模型的思考过程，
+				// 部分网关会简写成 reasoning。
+				for _, k := range []string{"reasoning_content", "reasoning"} {
+					if s, ok := d[k].(string); ok && strings.TrimSpace(s) != "" {
+						return "thinking", s
+					}
+				}
+				if s, ok := d["content"].(string); ok && s != "" {
+					return "delta", s
+				}
+			}
+			// 少数实现不按流式回，直接把完整结果放在 message 里。
+			if msg, ok := first["message"].(map[string]any); ok {
+				if s, ok := msg["content"].(string); ok && s != "" {
+					return "delta", s
+				}
+			}
+			// finish_reason 只在最后一帧出现，此时 delta 通常是空对象。
+			if fr, ok := first["finish_reason"].(string); ok && strings.TrimSpace(fr) != "" {
+				return "done", ""
+			}
+		}
 	}
 
 	if s, ok := m["type"].(string); ok && strings.TrimSpace(s) != "" {
