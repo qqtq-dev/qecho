@@ -174,3 +174,111 @@ export const aiApi = {
   usage: () => http.get<unknown, Record<string, unknown>>('/ai/usage'),
   streamChat,
 }
+
+/** 通用大模型的常用服务商预设。baseUrl 统一填到版本段为止，末尾的 /chat/completions 由程序补。 */
+export interface AiPreset {
+  value: string
+  label: string
+  baseUrl: string
+  model: string
+}
+
+export const AI_PRESETS: AiPreset[] = [
+  {
+    value: 'dashscope',
+    label: '阿里云百炼 · 通义千问',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    model: 'qwen-plus',
+  },
+  {
+    value: 'deepseek',
+    label: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com/v1',
+    model: 'deepseek-chat',
+  },
+  {
+    value: 'zhipu',
+    label: '智谱 GLM',
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    model: 'glm-4-flash',
+  },
+  {
+    value: 'moonshot',
+    label: '月之暗面 Kimi',
+    baseUrl: 'https://api.moonshot.cn/v1',
+    model: 'moonshot-v1-8k',
+  },
+  {
+    value: 'siliconflow',
+    label: '硅基流动',
+    baseUrl: 'https://api.siliconflow.cn/v1',
+    model: 'Qwen/Qwen2.5-7B-Instruct',
+  },
+  {
+    value: 'stepfun',
+    label: '阶跃星辰',
+    // 用实测可用的 step_plan 通道；官方通用段是 https://api.stepfun.com/v1
+    baseUrl: 'https://api.stepfun.com/step_plan/v1',
+    model: 'step-5-preview',
+  },
+  {
+    value: 'tokenrhythm',
+    label: '基元律动',
+    baseUrl: 'https://tokenrhythm.studio/v1',
+    model: 'deepseek-v4-flash',
+  },
+  {
+    value: 'openai',
+    label: 'OpenAI',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-4o-mini',
+  },
+]
+
+/** 按域名猜服务商。覆盖预设之外常见家，命中即用。 */
+const HOST_HINTS: Array<[RegExp, string]> = [
+  [/dashscope\.aliyuncs/, '通义千问'],
+  [/deepseek/, 'DeepSeek'],
+  [/bigmodel\.cn/, '智谱 GLM'],
+  [/moonshot/, '月之暗面 Kimi'],
+  [/siliconflow/, '硅基流动'],
+  [/openai\.com/, 'OpenAI'],
+  [/stepfun/, '阶跃星辰'],
+  [/minimaxi?\.com/, 'MiniMax'],
+  [/hunyuan\.cloud/, '腾讯混元'],
+  [/doubao\.com|volces\.com/, '字节豆包'],
+  [/baidubce\.com/, '百度千帆'],
+  [/aliyuncs/, '阿里云百炼'],
+  [/tokenrhythm\.studio/, '基元律动'],
+]
+
+/** 域名认不出时按模型名猜（中转站常见：域名是中转，模型名还带着家族特征）。 */
+const MODEL_HINTS: Array<[RegExp, string]> = [
+  [/qwen/, '通义千问'],
+  [/deepseek/, 'DeepSeek'],
+  [/glm/, '智谱 GLM'],
+  [/kimi|moonshot/, '月之暗面 Kimi'],
+  [/step[-_]/, '阶跃星辰'],
+  [/doubao|huala/, '字节豆包'],
+  [/hunyuan/, '腾讯混元'],
+  [/yi-|01-ai|zeroone/, '零一万物'],
+  [/gpt|o[134](-|$)|chatgpt/, 'OpenAI'],
+]
+
+/** 按当前配置算面板标题：尽量给出具体服务商，全猜不出才叫通用大模型。 */
+export function aiChannelTitle(cfg: AiConfig): string {
+  if (cfg.active === 'bicqa') return 'BIC-QA'
+  const ch = cfg.openai
+  const preset = AI_PRESETS.find((p) => p.baseUrl === ch.baseUrl)
+  if (preset) return preset.label
+  const base = ch.baseUrl.toLowerCase()
+  for (const [re, name] of HOST_HINTS) {
+    if (re.test(base)) return name
+  }
+  const model = ch.model.toLowerCase()
+  for (const [re, name] of MODEL_HINTS) {
+    if (re.test(model)) return name
+  }
+  // 模型名本身就是最好的标识（如 step-5-preview），直接亮出来
+  return ch.model.trim() || '通用大模型'
+}

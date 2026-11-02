@@ -1,83 +1,64 @@
 <template>
-  <a-drawer
-    :open="open"
-    placement="right"
-    :width="560"
-    :body-style="{ padding: '0', display: 'flex', flexDirection: 'column', height: '100%' }"
-    @close="close"
-  >
-    <template #title>
-      <div class="ai-title">
-        <span>AI 答疑</span>
-        <a-tag v-if="active?.state === 'thinking'" color="processing">思考中 {{ elapsedOf(active) }}s</a-tag>
-        <a-tag v-else-if="active?.state === 'streaming'" color="processing">回答中</a-tag>
-        <a-tag v-else-if="active?.state === 'error'" color="error">出错</a-tag>
-        <a-tag v-else-if="active?.state === 'done'" color="success">已完成</a-tag>
-      </div>
-    </template>
+  <section class="ai-panel">
+    <div class="ai-head">
+      <span class="ai-title">{{ channelTitle }}</span>
+      <span v-if="active?.state === 'thinking'" class="ai-state is-busy">思考中 {{ elapsedOf(active) }}s</span>
+      <span v-else-if="active?.state === 'streaming'" class="ai-state is-busy">回答中</span>
+      <span v-else-if="active?.state === 'error'" class="ai-state is-error">出错</span>
+      <span v-else-if="active?.state === 'done' && turns.length" class="ai-state is-done">已完成</span>
+    </div>
 
     <div ref="scrollRef" class="ai-scroll">
-      <div class="ai-source">
-        <div class="ai-source-label muted">
-          已发送的题干 · {{ type === 'multiple' ? '多选题' : '单选题' }}
-        </div>
-        <div class="ai-source-stem">{{ stem }}</div>
-      </div>
-
       <div v-for="(turn, idx) in turns" :key="idx" class="ai-turn">
-        <div class="ai-q">
-          <span class="ai-role">你</span>
-          <div class="ai-q-body">
+        <!-- 我：靠右，气泡底色；长提问默认折三行（末尾自带 …），点气泡本身展开/收起 -->
+        <div class="ai-row ai-row-me">
+          <div
+            class="ai-bubble mine"
+            :class="{ 'is-toggleable': turn.qOverflow }"
+            :title="turn.qOverflow ? (turn.qOpen ? '点击收起' : '点击展开全文') : undefined"
+            @click="turn.qOverflow && toggleQuestion(turn)"
+          >
             <div
               :ref="(el) => setQRef(el as HTMLElement | null, idx)"
               class="ai-q-text"
               :class="{ 'is-clamped': !turn.qOpen }"
             >{{ turn.question }}</div>
-            <button
-              v-if="turn.qOverflow"
-              class="ai-q-more"
-              type="button"
-              @click="toggleQuestion(turn)"
-            >{{ turn.qOpen ? '收起' : '展开全部' }}</button>
           </div>
+          <span class="ai-role">我</span>
         </div>
-        <div class="ai-a">
-          <div class="ai-a-head">
-            <span class="ai-role ai-role-bot">AI</span>
-            <a-space :size="8">
-              <a v-if="turn.answer" class="ai-mini" @click="copy(turn.answer)">复制</a>
-              <a
-                v-if="idx === turns.length - 1 && busy"
-                class="ai-mini"
-                @click="stop"
-              >停止</a>
-            </a-space>
-          </div>
 
-          <div v-if="turn.state === 'thinking' && !turn.thinking" class="ai-wait">
-            <a-spin size="small" />
-            <span>正在连接…</span>
-          </div>
+        <!-- AI：靠左，浅底气泡，推理与正文都在气泡里 -->
+        <div class="ai-row ai-row-bot">
+          <span class="ai-role ai-role-bot">AI</span>
+          <div class="ai-bubble bot">
+            <div v-if="turn.state === 'thinking' && !turn.thinking" class="ai-wait">
+              <a-spin size="small" />
+              <span>正在连接…</span>
+            </div>
 
-          <div v-if="turn.thinking" class="ai-think" :class="{ 'is-open': turn.thinkOpen }">
-            <button class="ai-think-head" type="button" @click="turn.thinkOpen = !turn.thinkOpen">
-              <a-spin v-if="turn.state === 'thinking'" size="small" />
-              <span class="ai-think-title">{{ turn.state === 'thinking' ? '正在思考' : '思考过程' }}</span>
-              <span class="muted ai-think-meta">{{ thinkLen(turn) }} 字 · {{ elapsedOf(turn) }}s</span>
-              <span class="ai-think-toggle">{{ turn.thinkOpen ? '收起' : '展开' }}</span>
-            </button>
-            <div class="ai-think-body"><div class="ai-think-text">{{ turn.thinking }}</div></div>
-          </div>
+            <div v-if="turn.thinking" class="ai-think" :class="{ 'is-open': turn.thinkOpen }">
+              <button class="ai-think-head" type="button" @click="turn.thinkOpen = !turn.thinkOpen">
+                <a-spin v-if="turn.state === 'thinking'" size="small" />
+                <span class="ai-think-title">{{ turn.state === 'thinking' ? '正在思考' : '思考过程' }}</span>
+                <span class="muted ai-think-meta">{{ thinkLen(turn) }} 字 · {{ elapsedOf(turn) }}s</span>
+                <span class="ai-think-toggle">{{ turn.thinkOpen ? '收起' : '展开' }}</span>
+              </button>
+              <div class="ai-think-body"><div class="ai-think-text">{{ turn.thinking }}</div></div>
+            </div>
 
-          <div v-if="turn.answer" class="ai-md" v-html="rendered[idx]" />
-          <div v-if="turn.state === 'streaming'" class="ai-caret">▍</div>
-          <a-alert
-            v-if="turn.state === 'error'"
-            type="error"
-            show-icon
-            :message="turn.error || 'AI 调用失败'"
-            class="ai-alert"
-          />
+            <div v-if="turn.answer" class="ai-md" v-html="rendered[idx]" />
+            <div v-if="turn.state === 'streaming'" class="ai-caret">▍</div>
+            <a-alert
+              v-if="turn.state === 'error'"
+              type="error"
+              show-icon
+              :message="turn.error || 'AI 调用失败'"
+              class="ai-alert"
+            />
+            <div v-if="idx === turns.length - 1 && busy" class="ai-stop-row">
+              <a class="ai-mini" @click="stop">停止</a>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -103,15 +84,14 @@
         </a-button>
       </div>
     </div>
-  </a-drawer>
+  </section>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from 'vue'
-import { message } from 'ant-design-vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
-import { aiApi, type ChatMessage } from '@/api/ai'
+import { aiApi, aiChannelTitle, type ChatMessage } from '@/api/ai'
 
 interface Turn {
   question: string
@@ -120,7 +100,7 @@ interface Turn {
   error: string
   thinking: string
   thinkOpen: boolean
-  /** 长题干默认折叠三行，点「展开全部」才完整显示 */
+  /** 长提问默认折三行，点气泡本身展开 */
   qOpen: boolean
   qOverflow: boolean
   startedAt: number
@@ -130,7 +110,8 @@ interface Turn {
 const MODE_KEY = 'quiz-ai-mode'
 
 const props = defineProps<{
-  open: boolean
+  /** 面板常驻挂载（父组件用 v-show 切换显示），open 表示当前是否可见，决定要不要发起首问 */
+  open?: boolean
   questionId: number
   stem: string
   options: string[]
@@ -138,7 +119,7 @@ const props = defineProps<{
   type: 'single' | 'multiple'
 }>()
 
-const emit = defineEmits<{ (e: 'update:open', value: boolean): void }>()
+/** 收起由父组件的「收起 AI」按钮控制（aiOpen），面板自身不再发 update:open */
 
 marked.setOptions({ gfm: true, breaks: true })
 
@@ -180,7 +161,7 @@ function scrollToBottom() {
   })
 }
 
-// 题干是否超过三行：折叠状态下量一次，展开时不重复量，否则全文显示会把「收起」按钮带走
+// 提问是否超过三行：折叠状态下量一次，展开时不重复量，否则全文显示会把「收起」按钮带走
 const qEls = new Map<number, HTMLElement>()
 
 function setQRef(el: HTMLElement | null, idx: number) {
@@ -253,6 +234,48 @@ function reset() {
   input.value = ''
   version.value = 0
   stopTimer()
+}
+
+/**
+ * 面板由父组件 v-if 控制挂载，关闭即销毁实例。把已完成的会话按题目缓存在模块层，
+ * 同一题关掉再打开时原样恢复，不重发首问；切题时也能找回之前问过的记录。
+ * 只留最近 20 题，防止长时间练习内存一直涨。
+ */
+const CACHE_MAX = 20
+const chatCache = new Map<number, { turns: Turn[]; conversationId: string }>()
+
+function saveToCache() {
+  if (!turns.value.length) return
+  // 在途的轮次定格：有正文就算完成，只有思考没正文就丢弃
+  for (const t of turns.value) {
+    if (t.state !== 'done' && t.state !== 'error') {
+      if (t.answer.trim()) {
+        t.state = 'done'
+        if (!t.endedAt) t.endedAt = Date.now()
+      }
+    }
+  }
+  const kept = turns.value.filter((t) => t.state === 'done' || t.state === 'error')
+  if (!kept.length) return
+  chatCache.delete(props.questionId)
+  chatCache.set(props.questionId, { turns: kept, conversationId: conversationId.value })
+  while (chatCache.size > CACHE_MAX) {
+    const oldest = chatCache.keys().next().value
+    if (oldest === undefined) break
+    chatCache.delete(oldest)
+  }
+}
+
+function restoreFromCache(id: number): boolean {
+  const saved = chatCache.get(id)
+  if (!saved) return false
+  chatCache.delete(id)
+  turns.value = saved.turns
+  conversationId.value = saved.conversationId
+  input.value = ''
+  busy.value = false
+  version.value = 0
+  return true
 }
 
 /** 最多带入的已完成轮次。通用模型按 token 计费，太长既贵又挤占回答本身的额度。 */
@@ -372,113 +395,142 @@ function stop() {
   stopTimer()
 }
 
-function close() {
-  stop()
-  emit('update:open', false)
-}
-
-async function copy(text: string) {
-  try {
-    await navigator.clipboard.writeText(text)
-    message.success('已复制')
-  } catch {
-    message.warning('复制失败，请手动选择文本')
+/** 展开时的入口：有记录直接恢复，没有才对当前题发起首问 */
+function openOrRestore() {
+  if (turns.value.length || restoreFromCache(props.questionId)) {
+    measureQuestions()
+    scrollToBottom()
+  } else {
+    void send(buildInitialQuestion())
   }
 }
+
+// 标题跟当前生效通道走：BIC-QA 显示 BIC-QA，通用模型显示服务商名（匹配不到就叫通用大模型）
+const channelTitle = ref('AI 答疑')
+
+// 容器尺寸变化时重测折叠（面板刚挂载、宽度过渡中量到的是零尺寸，会误判「没溢出」）
+let resizeObserver: ResizeObserver | null = null
+onMounted(() => {
+  resizeObserver = new ResizeObserver(() => measureQuestions())
+  if (scrollRef.value) resizeObserver.observe(scrollRef.value)
+  // 常驻挂载：挂载时若已展开（比如从别的页切回来）也要接上会话
+  if (props.open) openOrRestore()
+  aiApi.config()
+    .then((cfg) => { channelTitle.value = aiChannelTitle(cfg) })
+    .catch(() => { /* 读不到配置就保持默认标题 */ })
+})
+onBeforeUnmount(() => {
+  saveToCache()
+  resizeObserver?.disconnect()
+  resizeObserver = null
+})
 
 watch(mode, (value) => {
   localStorage.setItem(MODE_KEY, value)
 })
 
-watch(
-  () => props.open,
-  (open) => {
-    if (open) {
-      if (turns.value.length === 0) void send(buildInitialQuestion())
-    } else {
-      stop()
-    }
-  },
-)
-
+// 收起状态里切题：旧题会话存缓存，新题有缓存就静默恢复，等展开时直接看
 watch(
   () => props.questionId,
   () => {
+    saveToCache()
     reset()
-    if (props.open) emit('update:open', false)
+    if (props.open) openOrRestore()
+    else restoreFromCache(props.questionId)
+  },
+)
+
+// 每次展开：空会话才发首问，收起期间后台写完的回答原样呈现
+watch(
+  () => props.open,
+  (visible) => {
+    if (visible) openOrRestore()
   },
 )
 </script>
 
 <style scoped>
-.ai-title { display: flex; align-items: center; gap: 8px; font-size: 15px; }
-.ai-scroll { flex: 1; min-height: 0; overflow: auto; padding: 14px 16px 8px; }
-.ai-source {
-  padding: 10px 12px;
-  border: 1px dashed var(--border);
-  border-radius: 8px;
-  background: var(--bg);
+.ai-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.ai-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--border);
 }
-.ai-source-label { font-size: 11.5px; margin-bottom: 4px; }
-.ai-source-stem {
-  font-size: 13px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+.ai-title { font-size: 14.5px; font-weight: 600; }
+/* 状态标签：浅色药丸，配色取 antd 标准 soft 色，不用主题里偏灰的软色 */
+.ai-state {
+  padding: 1px 9px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  line-height: 18px;
 }
-.ai-turn { margin-top: 16px; }
-.ai-q { display: flex; gap: 8px; font-size: 13px; line-height: 1.6; }
+.ai-state.is-busy { background: #e6f4ff; border-color: #91caff; color: #0958d9; }
+.ai-state.is-done { background: #f6ffed; border-color: #b7eb8f; color: #389e0d; }
+.ai-state.is-error { background: #fff2f0; border-color: #ffccc7; color: #d4380d; }
+.ai-scroll { flex: 1; min-height: 0; overflow: auto; padding: 14px 14px 8px; }
+
+.ai-turn { margin-bottom: 18px; }
+.ai-turn:last-child { margin-bottom: 6px; }
+.ai-row { display: flex; align-items: flex-start; gap: 8px; }
+.ai-row-me { justify-content: flex-end; margin-bottom: 12px; }
 .ai-role {
   flex: none;
   height: 20px;
-  padding: 0 6px;
-  border-radius: 4px;
+  padding: 0 7px;
+  border-radius: 10px;
   background: var(--chip-bg);
   color: var(--chip-text);
   font-size: 11.5px;
   line-height: 20px;
 }
 .ai-role-bot { background: var(--ok-soft); color: var(--ok-text); }
-.ai-q-body { flex: 1; min-width: 0; }
-.ai-q-text {
-  white-space: pre-wrap;
-  word-break: break-word;
+
+.ai-bubble {
+  min-width: 0;
+  padding: 8px 11px;
+  border-radius: 10px;
   font-size: 13px;
   line-height: 1.6;
 }
-/* 长题干默认折三行，不出现内部滚动条 */
+/* 我的提问：主色淡底、右上角收尖 */
+.ai-bubble.mine {
+  max-width: 88%;
+  background: var(--primary-soft);
+  border-top-right-radius: 3px;
+}
+/* AI 回答：卡片淡底、左上角收尖 */
+.ai-bubble.bot {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-top-left-radius: 3px;
+}
+.ai-q-text { white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.6; }
+/* 长提问默认折三行，不出现内部滚动条 */
 .ai-q-text.is-clamped {
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.ai-q-more {
-  margin-top: 2px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--primary);
-  font-size: 11.5px;
-  line-height: 1.6;
-  cursor: pointer;
-}
-.ai-q-more:hover { text-decoration: underline; }
-.ai-a { margin-top: 8px; }
-.ai-a-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+/* 超过三行的提问气泡可点击展开/收起：手型光标 + 悬停微亮做暗示，省略号由 line-clamp 自带 */
+.ai-bubble.mine.is-toggleable { cursor: pointer; transition: filter .15s ease; }
+.ai-bubble.mine.is-toggleable:hover { filter: brightness(.97); }
 .ai-mini { font-size: 12px; }
-.ai-wait { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text2); padding: 6px 0; }
+.ai-stop-row { text-align: right; margin-top: 4px; }
+.ai-wait { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text2); padding: 4px 0; }
 .ai-caret { color: var(--primary); font-size: 13px; line-height: 1; }
 .ai-alert { margin-top: 8px; }
 
 .ai-think {
-  margin: 4px 0 10px;
+  margin: 2px 0 10px;
   padding: 8px 10px;
   border-left: 2px solid var(--border-strong);
-  background: var(--surface-2);
+  background: var(--surface-3);
   border-radius: 0 6px 6px 0;
 }
 .ai-think.is-open { border-left-color: var(--ok-border); }
@@ -509,6 +561,19 @@ watch(
   overflow: auto;
   margin-top: 6px;
 }
+/* 滚动条跟左侧题目区同一套：6px 细条、圆角、透明轨道，去掉系统默认的箭头粗条 */
+.ai-scroll,
+.ai-think.is-open .ai-think-body { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
+.ai-scroll::-webkit-scrollbar,
+.ai-think.is-open .ai-think-body::-webkit-scrollbar { width: 6px; height: 6px; }
+.ai-scroll::-webkit-scrollbar-track,
+.ai-think.is-open .ai-think-body::-webkit-scrollbar-track { background: transparent; }
+.ai-scroll::-webkit-scrollbar-thumb,
+.ai-think.is-open .ai-think-body::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 99px; }
+.ai-scroll::-webkit-scrollbar-thumb:hover,
+.ai-think.is-open .ai-think-body::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); }
+.ai-scroll::-webkit-scrollbar-corner,
+.ai-think.is-open .ai-think-body::-webkit-scrollbar-corner { background: transparent; }
 .ai-think-text {
   white-space: pre-wrap;
   font-size: 12.5px;
@@ -563,7 +628,7 @@ watch(
 }
 .ai-input {
   flex: none;
-  padding: 10px 16px 14px;
+  padding: 10px 14px 12px;
   border-top: 1px solid var(--border);
   background: var(--surface);
 }

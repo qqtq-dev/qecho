@@ -291,7 +291,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import { authApi } from '@/api/auth'
 import { engineApi, type EngineStatus, type SystemLogs } from '@/api/engine'
 import { settingsApi, type Settings } from '@/api/settings'
-import { aiApi, type AiConfig, type AiProvider } from '@/api/ai'
+import { aiApi, AI_PRESETS, type AiConfig, type AiProvider } from '@/api/ai'
 import { getApiBase } from '@/api/request'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
@@ -315,48 +315,7 @@ const providerOptions = [
   { value: 'openai', label: '通用大模型（OpenAI 兼容）' },
 ]
 
-/**
- * 通用模型的常用服务商预设。baseUrl 统一填到版本段为止——各家版本段
- * 并不一致（/v1、/v4、/compatible-mode/v1），末尾的 /chat/completions 由程序补。
- */
-const AI_PRESETS = [
-  {
-    value: 'dashscope',
-    label: '阿里云百炼 · 通义千问',
-    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    model: 'qwen-plus',
-  },
-  {
-    value: 'deepseek',
-    label: 'DeepSeek',
-    baseUrl: 'https://api.deepseek.com/v1',
-    model: 'deepseek-chat',
-  },
-  {
-    value: 'zhipu',
-    label: '智谱 GLM',
-    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
-    model: 'glm-4-flash',
-  },
-  {
-    value: 'moonshot',
-    label: '月之暗面 Kimi',
-    baseUrl: 'https://api.moonshot.cn/v1',
-    model: 'moonshot-v1-8k',
-  },
-  {
-    value: 'siliconflow',
-    label: '硅基流动',
-    baseUrl: 'https://api.siliconflow.cn/v1',
-    model: 'Qwen/Qwen2.5-7B-Instruct',
-  },
-  {
-    value: 'openai',
-    label: 'OpenAI',
-    baseUrl: 'https://api.openai.com/v1',
-    model: 'gpt-4o-mini',
-  },
-]
+/** 通用模型服务商预设表在 src/api/ai.ts（AI_PRESETS），答疑面板的标题也用它。 */
 const presetOptions = AI_PRESETS.map((p) => ({ value: p.value, label: p.label }))
 
 interface AiChannelForm {

@@ -7,7 +7,7 @@
     </PageHeader>
 
     <template v-if="session">
-      <div class="quiz-layout">
+      <div class="quiz-layout" :class="{ 'ai-open': aiOpen }">
         <section class="panel quiz">
           <div class="quiz-head">
             <div>
@@ -72,10 +72,10 @@
                     v-if="aiReady && currentAnswer"
                     size="small"
                     class="ai-ask-btn"
-                    @click="aiOpen = true"
+                    @click="aiOpen = !aiOpen"
                   >
                     <template #icon><Sparkles :size="12" /></template>
-                    问 AI
+                    {{ aiOpen ? '收起 AI' : '问 AI' }}
                   </a-button>
                 </div>
                 <template v-if="currentAnswer">
@@ -106,30 +106,42 @@
           </template>
         </section>
 
-        <aside class="panel answer-card">
-          <div class="side-head">
-            <h3>答题卡</h3>
-            <span class="muted">{{ answeredCount }} / {{ session.totalCount }}</span>
+        <aside class="panel side-col">
+          <!-- 两个面板常驻挂载（v-show），AI 会话不因收起而丢；流式回答收起后继续走 -->
+          <div v-show="!aiOpen" class="answer-card">
+            <div class="side-head">
+              <h3>答题卡</h3>
+              <span class="muted">{{ answeredCount }} / {{ session.totalCount }}</span>
+            </div>
+            <div class="side-legend">
+              <span><i class="dot ok"></i>答对</span>
+              <span><i class="dot bad"></i>答错</span>
+              <span><i class="dot none"></i>未答</span>
+              <span><i class="dot mark"></i>标记</span>
+            </div>
+            <div class="q-grid">
+              <button
+                v-for="(q, i) in questions"
+                :key="q.id"
+                type="button"
+                class="q-cell"
+                :class="cellClass(i)"
+                @click="go(i)"
+              >
+                {{ i + 1 }}
+              </button>
+            </div>
+            <div class="side-foot muted">答对 {{ correctCount }} 题</div>
           </div>
-          <div class="side-legend">
-            <span><i class="dot ok"></i>答对</span>
-            <span><i class="dot bad"></i>答错</span>
-            <span><i class="dot none"></i>未答</span>
-            <span><i class="dot mark"></i>标记</span>
-          </div>
-          <div class="q-grid">
-            <button
-              v-for="(q, i) in questions"
-              :key="q.id"
-              type="button"
-              class="q-cell"
-              :class="cellClass(i)"
-              @click="go(i)"
-            >
-              {{ i + 1 }}
-            </button>
-          </div>
-          <div class="side-foot muted">答对 {{ correctCount }} 题</div>
+          <AiChatPanel
+            v-show="aiOpen"
+            class="ai-host"
+            :open="aiOpen"
+            :question-id="current?.id ?? 0"
+            :stem="current?.stem ?? ''"
+            :options="aiOptions"
+            :type="current?.type ?? 'single'"
+          />
         </aside>
       </div>
     </template>
@@ -306,13 +318,6 @@
       </section>
     </div>
 
-    <AiAnswerDrawer
-      v-model:open="aiOpen"
-      :question-id="current?.id ?? 0"
-      :stem="current?.stem ?? ''"
-      :options="aiOptions"
-      :type="current?.type ?? 'single'"
-    />
   </div>
 </template>
 
@@ -324,7 +329,7 @@ import { message } from 'ant-design-vue'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/PageHeader.vue'
 import QuestionImage from '@/components/QuestionImage.vue'
-import AiAnswerDrawer from '@/components/AiAnswerDrawer.vue'
+import AiChatPanel from '@/components/AiChatPanel.vue'
 import { aiApi } from '@/api/ai'
 import { banksApi, type Bank, type Tag } from '@/api/banks'
 import { settingsApi } from '@/api/settings'
@@ -913,6 +918,23 @@ onUnmounted(() => {
   grid-template-columns: minmax(0, 1fr) 200px;
   grid-template-rows: minmax(0, 1fr);
   gap: 12px;
+  /* 打开 AI 时右列从答题卡的 200px 展开成聊天列，宽度过渡和内容切换同步 */
+  transition: grid-template-columns 0.28s ease;
+}
+.quiz-layout.ai-open { grid-template-columns: minmax(0, 1fr) 440px; }
+.side-col { display: flex; flex-direction: column; min-height: 0; }
+.side-col > * { flex: 1; min-height: 0; }
+
+/* v-show 切换：display 翻转时动画重放，效果等同之前的 Transition；两面板常驻不销毁 */
+.ai-host { animation: ai-in 0.22s ease; }
+.answer-card { animation: card-in 0.12s ease; }
+@keyframes ai-in {
+  from { opacity: 0; transform: translateX(28px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
 }
 .quiz { display: flex; flex-direction: column; padding: 18px 20px 20px; min-height: 0; overflow: hidden; }
 /* 题干、选项、解析在这一层内部滚动，底部操作条永远留在可视区 */
@@ -1014,10 +1036,10 @@ onUnmounted(() => {
 /* 行高与 24px 圆形字母齐平：antd reset 的 html{line-height:1.15} 会让首行只有 16px，
    flex-start 对齐后文字整体比圆圈高 2~3px，这里固定成 22px 让两者视觉居中一致 */
 .opt-text { flex: 1; white-space: pre-wrap; line-height: 22px; }
-/* 内容不被压扁：除解析框外都按自身高度排布，超出就滚动 */
+/* 解析框贴内容高度：没解析时不占地方，解析长了自然长高、随 quiz-body 滚动 */
 .quiz-body > *:not(.analysis-box) { flex: none; }
 .analysis-box {
-  flex: 1 0 auto; min-height: 96px; margin-top: 14px;
+  flex: none; margin-top: 14px;
   padding: 12px 14px; border: 1px dashed var(--border); border-radius: 8px;
   background: var(--bg); font-size: 13.5px; line-height: 1.7;
 }
@@ -1048,7 +1070,10 @@ onUnmounted(() => {
 .recent-continue { padding-inline: 4px; }
 @media (max-width: 900px) {
   .grid { grid-template-columns: 1fr; }
-  .quiz-layout { grid-template-columns: 1fr; grid-template-rows: auto; }
+  .quiz-layout,
+  .quiz-layout.ai-open { grid-template-columns: 1fr; grid-template-rows: auto; }
+  /* 窄屏下面板纵向堆叠，AI 面板撑起足够高度 */
+  .side-col { min-height: 480px; }
   .q-grid { max-height: 170px; }
 }
 </style>
