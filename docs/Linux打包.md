@@ -6,7 +6,7 @@ Windows 用 `build.ps1` 一条命令出 NSIS 安装包，Linux 这边情况不�
 |---|---|---|
 | `Qecho_0.2.0_amd64.deb` | Ubuntu 22.04+、Debian 12+、深度、优麒麟 | 否，依赖系统 `libwebkit2gtk-4.1-0`、`libgtk-3-0`、`libayatana-appindicator3-1` |
 | `Qecho-0.2.0-1.x86_64.rpm` | 麒麟 V10（rpm 版）、统信 UOS（rpm 版）、Rocky/Fedora/CentOS 9+ | 否，同上 |
-| `Qecho_0.2.0_amd64.AppImage` | 任意 x86_64 桌面发行版 | 是，WebKitGTK 等 178 个库全部打进去了，约 86 MB |
+| `Qecho_0.2.0_amd64.AppImage` | 任意 x86_64 桌面发行版 | 基本自包含，WebKitGTK 等 178 个库全部打进去了，约 86 MB；显卡库（`libGL` 等）仍需系统提供，见下文 |
 
 普通用户优先给 AppImage（双击即用、不用装依赖），其次是 deb。
 
@@ -104,6 +104,28 @@ scripts/linux/build-in-container.sh appimage
 ```
 
 容器内跑 AppImage 工具需要 `APPIMAGE_EXTRACT_AND_RUN=1`（脚本已设），因为没有 FUSE。
+
+## AppImage 运行时报缺库
+
+AppImage 打包了 WebKitGTK 等 178 个库，但**故意不打包显卡相关库**（`libGL` / `libEGL` / `libgbm` / `libdrm`）——这些必须和目标机的显卡驱动匹配，塞进镜像反而会崩。所以精简安装的 RHEL 系系统（OpenCloudOS、Rocky、Alma、麒麟服务器版）首次运行会报：
+
+```
+quizbox-desktop: error while loading shared libraries: libGL.so.1: cannot open shared object file: No such file or directory
+```
+
+补装即可，装完直接重跑，**不需要重新打包**：
+
+```bash
+# RHEL / CentOS / OpenCloudOS / Rocky / Alma / 麒麟（rpm 系）
+sudo dnf install -y mesa-libGL mesa-libEGL mesa-libgbm libglvnd-glx libglvnd-egl
+
+# Ubuntu / Debian / 深度 / 优麒麟（deb 系）
+sudo apt install -y libgl1 libegl1 libgbm1
+```
+
+如果补完 GL 后接着报 `cannot open display` 或 `Failed to connect to display`，说明这台机器没有图形界面（云主机常见），AppImage 不是适用场景，得配 X11 转发或装 VNC/桌面环境。
+
+rpm 系还有更省事的路：直接 `sudo dnf install ./Qecho-0.2.0-1.x86_64.rpm`，依赖交给包管理器自动补。前提是软件源里有 `webkit2gtk4.1`——RHEL 9.2+ / OpenCloudOS 9 有，CentOS 7、8 没有。
 
 ## 已知限制
 
