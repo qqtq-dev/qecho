@@ -1011,7 +1011,9 @@ onUnmounted(() => {
 }
 .opt.selected .opt-key, .opt.correct .opt-key { background: #24945f; border-color: #24945f; color: #fff; }
 .opt.wrong .opt-key { background: var(--bad-text); border-color: var(--bad-text); color: #fff; }
-.opt-text { flex: 1; white-space: pre-wrap; }
+/* 行高与 24px 圆形字母齐平：antd reset 的 html{line-height:1.15} 会让首行只有 16px，
+   flex-start 对齐后文字整体比圆圈高 2~3px，这里固定成 22px 让两者视觉居中一致 */
+.opt-text { flex: 1; white-space: pre-wrap; line-height: 22px; }
 /* 内容不被压扁：除解析框外都按自身高度排布，超出就滚动 */
 .quiz-body > *:not(.analysis-box) { flex: none; }
 .analysis-box {
