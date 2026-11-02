@@ -1,8 +1,8 @@
 {
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publishedAt": "2026-11-02",
-  "notes": "新增题库共享、用户权限管理与站内通知；答题卡改为四态配色，解析框支持内部滚动；新增 Linux 桌面版与 Windows 免安装版。",
-  "url": "https://gitee.com/qqtq/qecho-releases/releases/tag/v0.2.0",
-  "downloadUrl": "https://gitee.com/qqtq/qecho-releases/releases/tag/v0.2.0",
+  "notes": "AI 答疑支持 BIC-QA 与通用大模型双通道，两条配置各自保存、同时只生效一条；新增 Linux 服务端网页版一键安装包；修正练习页选项文字对齐。",
+  "url": "https://gitee.com/qqtq/qecho-releases/releases/tag/v0.2.1",
+  "downloadUrl": "https://gitee.com/qqtq/qecho-releases/releases/tag/v0.2.1",
   "force": false
 }

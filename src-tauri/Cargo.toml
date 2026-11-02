@@ -1,6 +1,6 @@
 [package]
 name = "quizbox-desktop"
-version = "0.2.0"
+version = "0.2.1"
 description = "题鸣 —— 单机题库练习与考试"
 edition = "2021"
 
