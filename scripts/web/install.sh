@@ -37,8 +37,15 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [ -f "$HERE/quizbox-engine" ] || { echo "缺少 quizbox-engine" >&2; exit 1; }
 [ -f "$HERE/dist/index.html" ] || { echo "缺少 dist/index.html" >&2; exit 1; }
 
-# 压缩包内的二进制可能不带执行位（取决于打包环境的权限），探测版本前先补上
-chmod +x "$HERE/quizbox-engine" 2>/dev/null || true
+# 包里按理已经带执行位（打包时在归档内修正过）；这里再补一次，覆盖手工拷贝的场景。
+# 补不上就直接报错：以前是 || true 吞掉失败，结果 systemd 启动时才报 203/EXEC。
+if [ ! -x "$HERE/quizbox-engine" ]; then
+  chmod 755 "$HERE/quizbox-engine" 2>/dev/null || true
+fi
+if [ ! -x "$HERE/quizbox-engine" ]; then
+  echo "quizbox-engine 没有执行权限，chmod 也无法修复（是否解压在 noexec 分区？）" >&2
+  exit 1
+fi
 VER="$("$HERE/quizbox-engine" --version 2>/dev/null | tr -d '\r' | tail -1 || true)"
 echo "== 安装题鸣网页版 ${VER:-未知版本} → $PREFIX (监听 $ADDR:$PORT)"
 
