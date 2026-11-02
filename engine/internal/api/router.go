@@ -30,6 +30,8 @@ type Server struct {
 	rateMu         sync.Mutex
 	rates          map[string]*rateBucket
 	aiMu           sync.Mutex
+	updateMu       sync.Mutex
+	updateSnap     *updateSnapshot
 }
 
 func New(st *store.Store, version, dataDir, shutdownToken string, port int, desktop bool, webDir string, onShutdown func()) http.Handler {
@@ -62,10 +64,12 @@ func New(st *store.Store, version, dataDir, shutdownToken string, port int, desk
 	mux.HandleFunc("GET /api/v1/users/search", s.auth(s.searchUsers))
 	mux.HandleFunc("PUT /api/v1/users/{id}/role", s.auth(s.updateUserRole))
 	mux.HandleFunc("PUT /api/v1/users/{id}/permissions", s.auth(s.updateUserPermissions))
+	mux.HandleFunc("PUT /api/v1/users/{id}/status", s.auth(s.setUserStatus))
 	mux.HandleFunc("POST /api/v1/users/{id}/password", s.auth(s.resetUserPassword))
 	mux.HandleFunc("DELETE /api/v1/users/{id}", s.auth(s.deleteUser))
 	mux.HandleFunc("GET /api/v1/system/status", s.auth(s.status))
 	mux.HandleFunc("GET /api/v1/system/logs", s.auth(s.systemLogs))
+	mux.HandleFunc("GET /api/v1/update/check", s.auth(s.checkUpdate))
 	mux.HandleFunc("POST /api/v1/images", s.auth(s.uploadImage))
 	mux.HandleFunc("GET /api/v1/images/{filename}", s.serveImage)
 	mux.HandleFunc("GET /images/{filename}", s.serveImage)
@@ -97,7 +101,10 @@ func New(st *store.Store, version, dataDir, shutdownToken string, port int, desk
 	mux.HandleFunc("GET /api/v1/banks/{id}/tags", s.auth(s.listBankTags))
 	mux.HandleFunc("GET /api/v1/tags", s.auth(s.listTags))
 	mux.HandleFunc("PUT /api/v1/tags/{id}", s.auth(s.renameTag))
+	mux.HandleFunc("GET /api/v1/tags/{id}/impact", s.auth(s.tagImpact))
 	mux.HandleFunc("POST /api/v1/tags/{id}/merge", s.auth(s.mergeTag))
+	mux.HandleFunc("GET /api/v1/notices", s.auth(s.listNotices))
+	mux.HandleFunc("POST /api/v1/notices/read", s.auth(s.readNotices))
 	mux.HandleFunc("DELETE /api/v1/tags/{id}", s.auth(s.deleteTag))
 	mux.HandleFunc("GET /api/v1/import-template", s.auth(s.downloadImportTemplate))
 	mux.HandleFunc("POST /api/v1/import-template", s.auth(s.saveImportTemplate))

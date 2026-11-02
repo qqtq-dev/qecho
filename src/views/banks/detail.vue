@@ -233,14 +233,7 @@
                   >
                     合并
                   </a-button>
-                  <a-popconfirm
-                    :title="`删除标签「${record.name}」？只解除题目标签，不会删除题目。`"
-                    ok-text="删除"
-                    cancel-text="取消"
-                    @confirm="removeTag(record)"
-                  >
-                    <a-button type="link" size="small" danger>删除</a-button>
-                  </a-popconfirm>
+                  <a-button type="link" size="small" danger @click="removeTag(record)">删除</a-button>
                 </template>
               </a-space>
             </template>
@@ -420,12 +413,12 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
-import { message } from 'ant-design-vue'
+import { Modal, message } from 'ant-design-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ImportQuestionsModal from '@/components/ImportQuestionsModal.vue'
 import BankSharingDrawer from '@/components/BankSharingDrawer.vue'
 import ImageUploadField from '@/components/ImageUploadField.vue'
-import { banksApi, type Bank, type ImportJob, type Question, type QuestionOption, type Tag } from '@/api/banks'
+import { banksApi, type Bank, type ImportJob, type Question, type QuestionOption, type Tag, type TagImpact } from '@/api/banks'
 import { isTauri } from '@/api/request'
 import { useAuthStore } from '@/stores/auth'
 
@@ -609,6 +602,45 @@ async function refreshAfterTagChange() {
   await loadQuestions()
 }
 
+/**
+ * 标签是全局字典：改名/合并/删除会连带改到别人的题库。
+ * 先查影响面，涉及他人题库时把数量写进确认框。
+ */
+async function confirmTagAction(
+  tag: Tag,
+  verb: '重命名' | '合并' | '删除',
+  run: () => Promise<void>,
+  alwaysConfirm = false,
+) {
+  let impact: TagImpact | null = null
+  try {
+    impact = await banksApi.tagImpact(tag.id)
+  } catch {
+    /* 拿不到影响面就按普通流程处理 */
+  }
+  const others = impact?.otherBanks ?? 0
+  if (!alwaysConfirm && others === 0) {
+    await run()
+    return
+  }
+  const lines = [`这个标签共 ${impact?.questions ?? 0} 道题，分布在 ${impact?.banks ?? 0} 个题库。`]
+  if (others > 0) {
+    lines.push(
+      `其中 ${others} 个题库不属于你（共 ${impact?.otherQuestions ?? 0} 道题），${verb}后它们也会一起变化。`,
+    )
+  }
+  Modal.confirm({
+    title: `确认${verb}标签「${tag.name}」？`,
+    content: lines.join(''),
+    okText: `继续${verb}`,
+    cancelText: '取消',
+    okType: verb === '删除' ? 'danger' : 'primary',
+    async onOk() {
+      await run()
+    },
+  })
+}
+
 async function saveTagRename(tag: Tag) {
   const name = editingTagName.value.trim()
   if (!name) {
@@ -619,10 +651,12 @@ async function saveTagRename(tag: Tag) {
     cancelTagRename()
     return
   }
-  await banksApi.renameTag(tag.id, name)
-  message.success('标签已重命名')
-  cancelTagRename()
-  await refreshAfterTagChange()
+  await confirmTagAction(tag, '重命名', async () => {
+    await banksApi.renameTag(tag.id, name)
+    message.success('标签已重命名')
+    cancelTagRename()
+    await refreshAfterTagChange()
+  })
 }
 
 function openMerge(tag: Tag) {
@@ -636,21 +670,32 @@ async function confirmMerge() {
     message.warning('请选择合并到的标签')
     return
   }
+  const source = mergeSource.value
+  const targetId = mergeTargetId.value
   mergeSaving.value = true
   try {
-    await banksApi.mergeTag(mergeSource.value.id, mergeTargetId.value)
-    message.success('标签已合并')
-    mergeModalOpen.value = false
-    await refreshAfterTagChange()
+    await confirmTagAction(source, '合并', async () => {
+      await banksApi.mergeTag(source.id, targetId)
+      message.success('标签已合并')
+      mergeModalOpen.value = false
+      await refreshAfterTagChange()
+    })
   } finally {
     mergeSaving.value = false
   }
 }
 
 async function removeTag(tag: Tag) {
-  await banksApi.removeTag(tag.id)
-  message.success('标签已删除')
-  await refreshAfterTagChange()
+  await confirmTagAction(
+    tag,
+    '删除',
+    async () => {
+      await banksApi.removeTag(tag.id)
+      message.success('标签已删除')
+      await refreshAfterTagChange()
+    },
+    true,
+  )
 }
 
 const importJobs = ref<ImportJob[]>([])

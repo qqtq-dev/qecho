@@ -21,7 +21,7 @@
             <span>在线考试</span>
           </div>
         </div>
-        <p class="side-foot">© 2026 Qecho · 版权所有</p>
+        <p class="side-foot">© 2026 Qecho · 柒柒天晴</p>
       </aside>
 
       <section class="main">
@@ -34,7 +34,7 @@
           <slot />
           <div v-if="$slots.footer" class="foot"><slot name="footer" /></div>
         </div>
-        <p class="main-foot">© 2026 Qecho · 版权所有</p>
+        <p class="main-foot">© 2026 Qecho · 柒柒天晴</p>
       </section>
     </div>
   </div>

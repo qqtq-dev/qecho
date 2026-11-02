@@ -17,6 +17,16 @@ const router = createRouter({
         { path: 'exams', component: () => import('@/views/exams/index.vue'), meta: { title: '考试' } },
         { path: 'wrong', component: () => import('@/views/wrong/index.vue'), meta: { title: '错题本' } },
         { path: 'stats', component: () => import('@/views/stats/index.vue'), meta: { title: '统计' } },
+        {
+          path: 'users',
+          component: () => import('@/views/users/index.vue'),
+          meta: { title: '用户管理', admin: true },
+        },
+        {
+          path: 'backups',
+          component: () => import('@/views/backups/index.vue'),
+          meta: { title: '数据备份', admin: true },
+        },
         { path: 'settings', component: () => import('@/views/settings/index.vue'), meta: { title: '设置' } },
       ],
     },
@@ -46,6 +56,10 @@ router.beforeEach((to) => {
   }
   if (!auth.loggedIn) {
     return { path: '/login', query: { redirect: to.fullPath } }
+  }
+  // 管理员专用页面：非管理员直接回概览，避免停在无数据的空页面
+  if (to.meta.admin && !auth.isAdmin) {
+    return { path: '/dashboard' }
   }
   return true
 })

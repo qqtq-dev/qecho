@@ -35,10 +35,10 @@ func userFrom(r *http.Request) *store.User {
 func applyBankAccess(u *store.User, b *store.Bank, memberLevel string) {
 	level := memberLevel
 	switch {
-	case u.Role == "admin":
-		level = levelAdmin
 	case b.OwnerID != nil && *b.OwnerID == u.ID:
 		level = levelOwner
+	case u.Role == "admin":
+		level = levelAdmin
 	}
 	b.MemberLevel = level
 	b.CanEdit = level == levelAdmin || level == levelOwner || level == levelEditor

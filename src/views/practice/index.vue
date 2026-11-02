@@ -1,5 +1,5 @@
 <template>
-  <div class="page">
+  <div class="page" :class="{ 'page-quiz': !!session }">
     <PageHeader title="练习" subtitle="按题库、标签、题型与难度组卷，作答即时判分并自动保存进度">
       <template #actions>
         <a-button v-if="!session" type="primary" :loading="starting" @click="start()">开始练习</a-button>
@@ -17,76 +17,73 @@
               <span class="muted progress-hint">已答 {{ answeredCount }}</span>
             </div>
             <div class="head-right">
-              <a-button v-if="current" size="small" :type="isMarked ? 'primary' : 'default'" @click="toggleMark">
-                <template #icon><Flag :size="12" :fill="isMarked ? 'currentColor' : 'none'" /></template>
-                {{ isMarked ? '已标记' : '标记本题' }}
-              </a-button>
+              <a-tooltip v-if="current" :title="isMarked ? '取消标记' : '标记本题'" placement="bottomRight">
+                <a-button
+                  size="small"
+                  class="mark-btn"
+                  :class="{ marked: isMarked }"
+                  :aria-label="isMarked ? '取消标记' : '标记本题'"
+                  :aria-pressed="isMarked"
+                  @click="toggleMark"
+                >
+                  <template #icon><Flag :size="12" :fill="isMarked ? 'currentColor' : 'none'" /></template>
+                </a-button>
+              </a-tooltip>
             </div>
           </div>
 
           <template v-if="current">
-            <div class="q-type">{{ current.type === 'multiple' ? '多选题' : '单选题' }}</div>
-            <div class="q-stem">{{ current.stem }}</div>
-            <QuestionImage v-if="current.stemImage" :name="current.stemImage" class="q-img" />
+            <div ref="bodyRef" class="quiz-body">
+              <div class="q-type">{{ current.type === 'multiple' ? '多选题' : '单选题' }}</div>
+              <div class="q-stem">{{ current.stem }}</div>
+              <QuestionImage v-if="current.stemImage" :name="current.stemImage" class="q-img" />
 
-            <div class="options">
-              <div
-                v-for="opt in current.options"
-                :key="opt.key"
-                class="opt"
-                :class="optionClass(opt)"
-                @click="toggleOption(opt.key)"
-              >
-                <span class="opt-key">{{ opt.label }}</span>
-                <span v-if="opt.image" class="opt-thumb" @click.stop>
-                  <QuestionImage :name="opt.image" :thumb="true" :size="72" />
-                </span>
-                <span class="opt-text">{{ opt.content }}</span>
-              </div>
-            </div>
-
-            <div v-if="current.type === 'multiple' && !currentAnswer" class="multi-submit">
-              <a-button
-                type="primary"
-                :loading="submitting"
-                :disabled="chosen.length === 0"
-                @click="submitAnswer"
-              >
-                确认答案
-              </a-button>
-            </div>
-
-            <div v-if="currentAnswer" class="feedback" :class="currentAnswer.result.isCorrect ? 'ok' : 'bad'">
-              <div class="feedback-line">
-                <strong>{{ currentAnswer.result.isCorrect ? '回答正确' : '回答错误' }}</strong>
-                <span class="muted">正确答案：{{ currentAnswer.result.answer.join('') || '—' }}</span>
-              </div>
-              <div v-if="!currentAnswer.result.isCorrect" class="feedback-line muted">
-                已计入错题本（累计答错 {{ currentAnswer.result.wrongCount }} 次）
-              </div>
-              <div v-else-if="currentAnswer.result.correctStreak" class="feedback-line muted">
-                连续答对 {{ currentAnswer.result.correctStreak }} 次{{ currentAnswer.result.mastered ? '，已移出错题本' : '' }}
-              </div>
-            </div>
-
-            <div class="analysis-box">
-              <div class="analysis-head">
-                <div class="analysis-title">解析</div>
-                <a-button
-                  v-if="aiReady && currentAnswer"
-                  size="small"
-                  class="ai-ask-btn"
-                  @click="aiOpen = true"
+              <div class="options">
+                <div
+                  v-for="opt in current.options"
+                  :key="opt.key"
+                  class="opt"
+                  :class="optionClass(opt)"
+                  @click="toggleOption(opt.key)"
                 >
-                  <template #icon><Sparkles :size="12" /></template>
-                  问 AI
+                  <span class="opt-key">{{ opt.label }}</span>
+                  <span v-if="opt.image" class="opt-thumb" @click.stop>
+                    <QuestionImage :name="opt.image" :thumb="true" :size="72" />
+                  </span>
+                  <span class="opt-text">{{ opt.content }}</span>
+                </div>
+              </div>
+
+              <div v-if="current.type === 'multiple' && !currentAnswer" class="multi-submit">
+                <a-button
+                  type="primary"
+                  :loading="submitting"
+                  :disabled="chosen.length === 0"
+                  @click="submitAnswer"
+                >
+                  确认答案
                 </a-button>
               </div>
-              <template v-if="currentAnswer">
-                <div v-if="currentAnswer.result.analysis" class="analysis-text">{{ currentAnswer.result.analysis }}</div>
-                <div v-else class="muted">本题暂无解析</div>
-              </template>
-              <div v-else class="muted">作答后显示解析</div>
+
+              <div class="analysis-box">
+                <div class="analysis-head">
+                  <div class="analysis-title">解析</div>
+                  <a-button
+                    v-if="aiReady && currentAnswer"
+                    size="small"
+                    class="ai-ask-btn"
+                    @click="aiOpen = true"
+                  >
+                    <template #icon><Sparkles :size="12" /></template>
+                    问 AI
+                  </a-button>
+                </div>
+                <template v-if="currentAnswer">
+                  <div v-if="currentAnswer.result.analysis" class="analysis-text">{{ currentAnswer.result.analysis }}</div>
+                  <div v-else class="muted">本题暂无解析</div>
+                </template>
+                <div v-else class="muted">作答后显示解析</div>
+              </div>
             </div>
 
             <div class="quiz-actions">
@@ -543,6 +540,7 @@ const session = ref<PracticeSession | null>(null)
 const questions = ref<PracticeItem[]>([])
 const index = ref(0)
 const chosen = ref<string[]>([])
+const bodyRef = ref<HTMLElement | null>(null)
 const submitting = ref(false)
 const finished = ref(false)
 const summary = ref<PracticeSummary | null>(null)
@@ -795,8 +793,12 @@ async function submitAnswer() {
     session.value.answeredCount = answeredCount.value
     session.value.correctCount = correctCount.value
     session.value.durationSec = result.durationSec
-    if (result.isCorrect) message.success('回答正确')
-    else message.warning(`回答错误，正确答案：${result.answer.join('')}`)
+    // 答对保持安静，只有答错才提示并说明已计入错题本
+    if (!result.isCorrect) {
+      message.warning(
+        `回答错误，正确答案：${result.answer.join('') || '—'}，已计入错题本（累计答错 ${result.wrongCount} 次）`
+      )
+    }
   } finally {
     submitting.value = false
   }
@@ -850,6 +852,8 @@ function go(next: number) {
   const item = questions.value[next]
   chosen.value = item && answers[item.id] ? [...answers[item.id].chosen] : []
   questionStartedAt = Date.now()
+  // 换题后把题目区滚回顶部，避免停在上一题的解析位置
+  if (bodyRef.value) bodyRef.value.scrollTop = 0
   savePosition()
 }
 
@@ -893,6 +897,9 @@ onUnmounted(() => {
 
 <style scoped>
 .page { min-height: 100%; display: flex; flex-direction: column; }
+/* 答题态锁定在一屏内，长内容由题目区内部滚动，不再把底部按钮顶出屏幕 */
+.page-quiz { height: 100%; min-height: 0; overflow: hidden; }
+.page-quiz > :first-child { flex: none; }
 .grid {
   display: grid;
   grid-template-columns: minmax(280px, 1fr) minmax(0, 1.6fr);
@@ -907,20 +914,52 @@ onUnmounted(() => {
   grid-template-rows: minmax(0, 1fr);
   gap: 12px;
 }
-.quiz { display: flex; flex-direction: column; padding: 18px 20px 20px; }
+.quiz { display: flex; flex-direction: column; padding: 18px 20px 20px; min-height: 0; overflow: hidden; }
+/* 题干、选项、解析在这一层内部滚动，底部操作条永远留在可视区 */
+.quiz-body {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+  overflow-y: auto; padding-right: 4px;
+}
+.quiz-body, .q-grid { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
+.quiz-body::-webkit-scrollbar,
+.q-grid::-webkit-scrollbar { width: 6px; height: 6px; }
+.quiz-body::-webkit-scrollbar-track,
+.q-grid::-webkit-scrollbar-track { background: transparent; }
+.quiz-body::-webkit-scrollbar-thumb,
+.q-grid::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 99px; }
+.quiz-body::-webkit-scrollbar-thumb:hover,
+.q-grid::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); }
+.quiz-body::-webkit-scrollbar-corner,
+.q-grid::-webkit-scrollbar-corner { background: transparent; }
 .quiz-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .quiz-head .muted { margin-left: 8px; font-size: 13px; }
 .progress-hint { opacity: .8; }
 .head-right { display: flex; align-items: center; gap: 10px; }
+.mark-btn {
+  width: 26px; height: 24px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text2);
+}
+.mark-btn :deep(.ant-btn-icon) { display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
+.mark-btn:hover,
+.mark-btn.ant-btn-default:not(:disabled):hover,
+.mark-btn.ant-btn-default:not(:disabled):focus { color: var(--mark); border-color: var(--mark-border); }
+.mark-btn.marked {
+  color: var(--mark);
+  background: var(--mark-soft);
+  border-color: var(--mark-border);
+}
+.mark-btn.marked:hover,
+.mark-btn.marked.ant-btn-default:not(:disabled):hover { color: var(--mark); background: var(--mark-soft); border-color: var(--mark); }
 .answer-card { display: flex; flex-direction: column; padding: 14px 12px 12px; min-height: 0; }
 .side-head { display: flex; align-items: baseline; justify-content: space-between; }
 .side-head h3 { margin: 0; font-size: 14px; font-weight: 600; }
 .side-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 10px 0; font-size: 11.5px; color: var(--text2); }
 .side-legend span { display: inline-flex; align-items: center; gap: 4px; }
-.dot { width: 8px; height: 8px; border-radius: 2px; border: 1px solid var(--border); background: var(--surface); }
-.dot.ok { background: var(--ok-soft); border-color: #24945f; }
-.dot.bad { background: var(--bad-soft); border-color: #d4380d; }
-.dot.mark { background: #fa8c16; border-color: #fa8c16; }
+.dot { width: 9px; height: 9px; border-radius: 2px; border: 1px solid var(--border); background: var(--surface); }
+.dot.ok { background: var(--ok-soft); border-color: var(--ok-text); }
+.dot.bad { background: var(--bad-soft); border-color: var(--bad-text); }
+.dot.mark { background: var(--mark-soft); border-color: var(--mark); }
 .q-grid {
   flex: 1; min-height: 0; overflow: auto;
   display: grid; grid-template-columns: repeat(auto-fill, minmax(26px, 1fr));
@@ -931,17 +970,22 @@ onUnmounted(() => {
   height: 26px; padding: 0; border: 1px solid var(--border); border-radius: 4px;
   background: var(--surface); color: var(--text2);
   font-size: 11.5px; line-height: 1; cursor: pointer;
-  transition: border-color .12s, background .12s, color .12s;
+  transition: border-color .12s, background .12s, color .12s, box-shadow .12s;
 }
-.q-cell.marked::after {
-  content: ''; position: absolute; top: 2px; right: 2px;
-  width: 5px; height: 5px; border-radius: 50%; background: #fa8c16;
+.q-cell:hover { border-color: var(--primary); color: var(--primary); }
+/* 状态：浅色底 + 饱和边框 + 同色数字；声明顺序即叠加优先级（答错 > 标记 > 答对） */
+.q-cell.ok { background: var(--ok-soft); border-color: var(--ok-text); color: var(--ok-text); }
+.q-cell.marked { background: var(--mark-soft); border-color: var(--mark); color: var(--mark-text); }
+.q-cell.bad { background: var(--bad-soft); border-color: var(--bad-text); color: var(--bad-text); }
+.q-cell.ok:hover, .q-cell.bad:hover, .q-cell.marked:hover { filter: brightness(.985); }
+/* 当前题：一律用主题绿实心填充，与这题是答对、答错还是标记无关 */
+.q-cell.current,
+.q-cell.current:hover {
+  color: var(--surface);
+  background: var(--primary);
+  border-color: var(--primary);
+  font-weight: 600;
 }
-.q-cell:hover { border-color: #24945f; color: #24945f; }
-.q-cell.ok { background: var(--ok-soft); border-color: var(--ok-border); color: var(--ok-text); }
-.q-cell.bad { background: var(--bad-soft); border-color: var(--bad-border); color: var(--bad-text); }
-.q-cell.current { border-color: #24945f; box-shadow: 0 0 0 1px #24945f inset; color: var(--ok-text); font-weight: 600; }
-.q-cell.bad.current { border-color: #d4380d; box-shadow: 0 0 0 1px #d4380d inset; color: var(--bad-text); }
 .side-foot { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); text-align: right; }
 .q-type { margin-top: 18px; font-size: 12.5px; color: var(--text2); }
 .q-stem { margin-top: 6px; font-size: 16px; line-height: 1.6; white-space: pre-wrap; }
@@ -958,7 +1002,7 @@ onUnmounted(() => {
 .opt:hover { background: var(--hover); }
 .opt.selected { border-color: #24945f; background: var(--ok-soft); }
 .opt.correct { border-color: #24945f; background: var(--ok-soft); }
-.opt.wrong { border-color: #d4380d; background: var(--bad-soft); }
+.opt.wrong { border-color: var(--bad-text); background: var(--bad-soft); }
 .opt-key {
   flex: none; width: 24px; height: 24px; border-radius: 50%;
   border: 1.5px solid var(--border-strong); color: var(--text2);
@@ -966,14 +1010,12 @@ onUnmounted(() => {
   display: flex; align-items: center; justify-content: center;
 }
 .opt.selected .opt-key, .opt.correct .opt-key { background: #24945f; border-color: #24945f; color: #fff; }
-.opt.wrong .opt-key { background: #d4380d; border-color: #d4380d; color: #fff; }
+.opt.wrong .opt-key { background: var(--bad-text); border-color: var(--bad-text); color: #fff; }
 .opt-text { flex: 1; white-space: pre-wrap; }
-.feedback { margin-top: 14px; padding: 12px; border-radius: 8px; font-size: 13.5px; }
-.feedback.ok { background: var(--ok-soft); border: 1px solid var(--ok-border); }
-.feedback.bad { background: var(--bad-soft); border: 1px solid var(--bad-border); }
-.feedback-line { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+/* 内容不被压扁：除解析框外都按自身高度排布，超出就滚动 */
+.quiz-body > *:not(.analysis-box) { flex: none; }
 .analysis-box {
-  flex: 1; min-height: 96px; margin-top: 14px;
+  flex: 1 0 auto; min-height: 96px; margin-top: 14px;
   padding: 12px 14px; border: 1px dashed var(--border); border-radius: 8px;
   background: var(--bg); font-size: 13.5px; line-height: 1.7;
 }
@@ -981,8 +1023,12 @@ onUnmounted(() => {
 .analysis-title { font-size: 13px; font-weight: 600; }
 .ai-ask-btn { height: 24px; padding: 0 8px; font-size: 12px; }
 .analysis-text { color: var(--text); white-space: pre-wrap; }
-.quiz-actions { display: flex; justify-content: space-between; margin-top: auto; padding-top: 18px; flex-wrap: wrap; gap: 10px; }
-.kbd-hint { margin-top: 10px; font-size: 12px; text-align: right; }
+.quiz-actions {
+  display: flex; justify-content: space-between; align-items: center;
+  padding-top: 12px; margin-top: 12px; border-top: 1px solid var(--border);
+  flex-wrap: wrap; gap: 10px;
+}
+.kbd-hint { margin-top: 8px; font-size: 12px; text-align: right; }
 .result { margin-top: 0; }
 .switch-hint { margin-left: 10px; font-size: 12.5px; }
 .range-row { display: flex; align-items: center; gap: 6px; }

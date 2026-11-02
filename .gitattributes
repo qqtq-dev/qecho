@@ -1,0 +1,9 @@
+# 仓库内统一用 LF 存储，工作区也检出为 LF。
+# 原因：Windows 上 core.autocrlf=true 会把文件检出成 CRLF，而 gofmt 只认 LF，
+# 结果整份文件被判成「每行都改动」，掩盖真实的格式问题（captcha.go 曾因此误报）。
+* text=auto eol=lf
+
+# Windows 脚本保持 CRLF，避免某些旧工具解析异常。
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf

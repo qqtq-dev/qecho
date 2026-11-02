@@ -126,12 +126,20 @@ func (s *Server) deleteBank(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "题库编号无效")
 		return
 	}
-	if _, ok := s.bankFor(w, r, id, accessManage); !ok {
+	bank, ok := s.bankFor(w, r, id, accessManage)
+	if !ok {
 		return
 	}
 	if err := s.store.DeleteBank(id); err != nil {
 		response.BadRequest(w, err.Error())
 		return
+	}
+	// 共享成员会丢失访问权，逐个通知，避免他们下次点进来才发现。
+	if members, err := s.store.ListBankMembers(id); err == nil {
+		for _, m := range members {
+			bankID := id
+			s.notify(m.UserID, "bank-deleted", "题库《"+bank.Name+"》已被所有者删除", &bankID)
+		}
 	}
 	response.OK(w, nil)
 }

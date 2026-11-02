@@ -81,6 +81,14 @@ export interface Tag {
   questionCount: number
 }
 
+/** 标签改名/合并/删除的影响范围；others 指不属于自己的题库。 */
+export interface TagImpact {
+  questions: number
+  banks: number
+  otherQuestions: number
+  otherBanks: number
+}
+
 export interface PageResult<T> {
   items: T[]
   total: number
@@ -185,6 +193,7 @@ export const banksApi = {
   bankTags: (id: number) => http.get<unknown, { items: Tag[] }>(`/banks/${id}/tags`),
   tags: () => http.get<unknown, { items: Tag[] }>('/tags'),
   renameTag: (id: number, name: string) => http.put<unknown, void>(`/tags/${id}`, { name }),
+  tagImpact: (id: number) => http.get<unknown, TagImpact>(`/tags/${id}/impact`),
   mergeTag: (id: number, targetId: number) =>
     http.post<unknown, void>(`/tags/${id}/merge`, { targetId }),
   removeTag: (id: number) => http.delete<unknown, void>(`/tags/${id}`),

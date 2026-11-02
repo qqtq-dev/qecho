@@ -32,6 +32,20 @@ func (s *Server) tagManage(w http.ResponseWriter, r *http.Request) (int64, bool)
 	return id, true
 }
 
+// tagImpact 返回该标签的影响范围，前端在改名/合并/删除前用它提醒「会改到别人的题库」。
+func (s *Server) tagImpact(w http.ResponseWriter, r *http.Request) {
+	id, ok := s.tagManage(w, r)
+	if !ok {
+		return
+	}
+	impact, err := s.store.TagImpact(userFrom(r).ID, id)
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	response.OK(w, impact)
+}
+
 func (s *Server) renameTag(w http.ResponseWriter, r *http.Request) {
 	id, ok := s.tagManage(w, r)
 	if !ok {

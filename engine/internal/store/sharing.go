@@ -113,3 +113,22 @@ func (s *Store) BankMemberLevels(userID int64) (map[int64]string, error) {
 	}
 	return out, rows.Err()
 }
+
+// VisibleBankIDs 返回该用户当前可读的题库编号集合，供统计页屏蔽已失权题库的名称。
+func (s *Store) VisibleBankIDs(viewer *User) (map[int64]bool, error) {
+	cond, args := bankVisibleClause("b", viewer)
+	rows, err := s.DB.Query("SELECT b.id FROM banks b WHERE b.is_deleted = 0 AND "+cond, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]bool{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}

@@ -30,6 +30,7 @@ var migrationFiles = []string{
 	"migrations/0007_practice_resume.sql",
 	"migrations/0008_polish.sql",
 	"migrations/0009_sharing.sql",
+	"migrations/0010_notices.sql",
 }
 
 func LatestSchemaVersion() int {

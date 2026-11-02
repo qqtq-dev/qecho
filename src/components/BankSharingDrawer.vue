@@ -93,7 +93,8 @@
               :filter-option="false"
               :options="options"
               :loading="searching"
-              placeholder="输入用户名搜索"
+              :not-found-content="searchHint || undefined"
+              placeholder="输入用户名搜索（至少 2 个字符）"
               style="flex: 1; min-width: 0"
               @search="onSearch"
             />
@@ -133,6 +134,7 @@ const state = ref<BankSharing | null>(null)
 const loading = ref(false)
 const busy = ref(false)
 const searching = ref(false)
+const searchHint = ref('')
 const pickUserId = ref<number | undefined>(undefined)
 const pickLevel = ref<'viewer' | 'editor'>('viewer')
 const options = ref<{ value: number; label: string; disabled?: boolean }[]>([])
@@ -222,10 +224,14 @@ async function removeMember(record: { userId: number; username: string }) {
 function onSearch(keyword: string) {
   if (searchTimer) clearTimeout(searchTimer)
   const key = keyword.trim()
-  if (!key) {
+  // 服务端要求至少两个字；这里提前拦一下，省一次往返也避免用户以为搜不到人。
+  if (key.length < 2) {
     options.value = []
+    searching.value = false
+    searchHint.value = key ? '请至少输入 2 个字符' : ''
     return
   }
+  searchHint.value = ''
   searching.value = true
   searchTimer = setTimeout(async () => {
     try {

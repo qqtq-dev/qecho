@@ -17,6 +17,8 @@ type User struct {
 	// 能力位由管理员授予，管理员始终具备（见 MayCreateBank / MayExportImport）。
 	CanCreateBank   bool `json:"canCreateBank"`
 	CanExportImport bool `json:"canExportImport"`
+	// Disabled 为 true 时账号无法登录，已有会话在下次请求时失效。
+	Disabled bool `json:"disabled"`
 }
 
 // MayCreateBank 表示是否允许新建个人题库。
@@ -64,7 +66,7 @@ func (s *Store) CountUsers() (int, error) {
 func (s *Store) ListUsers() ([]User, error) {
 	rows, err := s.DB.Query(`
 		SELECT id, username, role, created_at, COALESCE(last_login_at, ''),
-		       can_create_bank, can_export_import
+		       can_create_bank, can_export_import, is_disabled
 		FROM users ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -74,7 +76,7 @@ func (s *Store) ListUsers() ([]User, error) {
 	for rows.Next() {
 		var u User
 		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt, &u.LastLoginAt,
-			&u.CanCreateBank, &u.CanExportImport); err != nil {
+			&u.CanCreateBank, &u.CanExportImport, &u.Disabled); err != nil {
 			return nil, err
 		}
 		u.applyEffective()
@@ -136,6 +138,22 @@ func (s *Store) SetUserPermissions(id int64, canCreateBank, canExportImport bool
 
 func (s *Store) SetUserRole(id int64, role string) error {
 	res, err := s.DB.Exec("UPDATE users SET role = ? WHERE id = ?", role, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// SetUserDisabled 停用/启用账号。停用后无法登录，且已有会话在下一次请求时失效。
+func (s *Store) SetUserDisabled(id int64, disabled bool) error {
+	flag := 0
+	if disabled {
+		flag = 1
+	}
+	res, err := s.DB.Exec("UPDATE users SET is_disabled = ? WHERE id = ?", flag, id)
 	if err != nil {
 		return err
 	}

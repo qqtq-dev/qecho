@@ -25,6 +25,18 @@ fn engine_base_url(state: State<'_, EngineState>) -> String {
     state.base_url.lock().unwrap().clone()
 }
 
+/// 用系统默认浏览器打开 https 链接；只放行 http/https，避免被当成启动本地程序。
+#[tauri::command]
+fn open_external(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    let target = url.trim();
+    if !(target.starts_with("https://") || target.starts_with("http://")) {
+        return Err("仅支持 http/https 链接".to_string());
+    }
+    app.shell()
+        .open(target.to_string(), None)
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn request_lan_access() -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
@@ -318,6 +330,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             engine_base_url,
+            open_external,
             set_window_size,
             set_close_behavior,
             restart_app,

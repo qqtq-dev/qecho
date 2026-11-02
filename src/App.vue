@@ -39,11 +39,19 @@ dayjs.locale('zh-cn')
   --ok-soft: #e8f5ee;
   --ok-border: #cfe8da;
   --ok-text: #1b7a4d;
-  --bad-soft: #fdece8;
-  --bad-border: #f5d6cc;
-  --bad-text: #b8340f;
+  --bad-soft: #fde6e0;
+  --bad-border: #ffd4d1;
+  --bad-text: #e5352b;
   --warn-soft: #fff8e6;
   --warn-text: #8a6100;
+  /* 标记（待回顾）语义色：图例、答题卡角标、顶栏旗子共用同一组 */
+  --mark: #fa8c16;
+  --mark-soft: #faf9de;
+  --mark-border: #ffd08f;
+  --mark-text: #ad5200;
+  /* 滚动条滑块：细、浅绿，轨道透明 */
+  --scroll-thumb: rgba(36, 148, 95, .35);
+  --scroll-thumb-hover: rgba(36, 148, 95, .6);
   --code-bg: #f1f3f2;
   --auth-bg: radial-gradient(circle at 18% 12%, #e6f2ec 0, #eef2f0 42%, #e9eeeb 100%);
 }
@@ -65,11 +73,17 @@ html.dark {
   --ok-soft: #173325;
   --ok-border: #2f6b4c;
   --ok-text: #63c894;
-  --bad-soft: #33201c;
-  --bad-border: #6d382b;
-  --bad-text: #f08a72;
+  --bad-soft: #3a1a18;
+  --bad-border: #a8403a;
+  --bad-text: #ff7466;
   --warn-soft: #2e2612;
   --warn-text: #e3b558;
+  --mark: #f0a13c;
+  --mark-soft: #33270f;
+  --mark-border: #7d5820;
+  --mark-text: #ffc069;
+  --scroll-thumb: rgba(83, 196, 145, .42);
+  --scroll-thumb-hover: rgba(83, 196, 145, .7);
   --code-bg: #232b35;
   --auth-bg: radial-gradient(circle at 18% 12%, #16241d 0, #12171c 42%, #0f1216 100%);
 }
@@ -107,4 +121,29 @@ body {
 .ant-table-tbody > tr > td:last-child {
   white-space: nowrap;
 }
+
+/* 全局消息提示：卡片化，颜色跟随主题；错误态与答题卡同一套红 */
+.ant-message { top: 60px; }
+.ant-message .ant-message-notice .ant-message-notice-content {
+  padding: 11px 15px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 10px 28px rgba(16, 28, 22, .12);
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.55;
+  text-align: left;
+}
+.ant-message .ant-message-custom-content { align-items: center; }
+.ant-message .ant-message-custom-content .anticon { font-size: 15px; }
+.ant-message .ant-message-notice .ant-message-notice-content:has(.ant-message-warning),
+.ant-message .ant-message-notice .ant-message-notice-content:has(.ant-message-error) {
+  background: var(--bad-soft);
+  border-color: var(--bad-border);
+}
+.ant-message .ant-message-notice .ant-message-notice-content:has(.ant-message-warning) .anticon,
+.ant-message .ant-message-notice .ant-message-notice-content:has(.ant-message-error) .anticon { color: var(--bad-text); }
+.ant-message .ant-message-notice .ant-message-notice-content:has(.ant-message-success) .anticon { color: var(--ok-text); }
+html.dark .ant-message .ant-message-notice .ant-message-notice-content { box-shadow: 0 12px 32px rgba(0, 0, 0, .5); }
 </style>

@@ -154,6 +154,33 @@ func (s *Store) TagInOwnedBank(userID, tagID int64) (bool, error) {
 	return ok, err
 }
 
+// TagImpact 描述一次标签改名/合并/删除会波及的范围。
+// Others* 指不属于调用者的题库 —— 标签是全局字典，改一次会连带改到别人的题库。
+type TagImpact struct {
+	Questions      int `json:"questions"`
+	Banks          int `json:"banks"`
+	OtherQuestions int `json:"otherQuestions"`
+	OtherBanks     int `json:"otherBanks"`
+}
+
+func (s *Store) TagImpact(userID, tagID int64) (*TagImpact, error) {
+	out := &TagImpact{}
+	err := s.DB.QueryRow(`
+		SELECT COUNT(DISTINCT q.id),
+		       COUNT(DISTINCT b.id),
+		       COUNT(DISTINCT CASE WHEN b.owner_id IS NOT ? THEN q.id END),
+		       COUNT(DISTINCT CASE WHEN b.owner_id IS NOT ? THEN b.id END)
+		FROM question_tags qt
+		JOIN questions q ON q.id = qt.question_id AND q.is_deleted = 0
+		JOIN banks b ON b.id = q.bank_id AND b.is_deleted = 0
+		WHERE qt.tag_id = ?`, userID, userID, tagID,
+	).Scan(&out.Questions, &out.Banks, &out.OtherQuestions, &out.OtherBanks)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (s *Store) RenameTag(id int64, name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {

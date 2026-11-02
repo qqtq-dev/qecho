@@ -193,6 +193,64 @@ func (s *Server) updateUserPermissions(w http.ResponseWriter, r *http.Request) {
 	response.OK(w, nil)
 }
 
+// setUserStatus 停用或启用账号。停用会踢掉已有会话，题库与历史数据都保留；
+// 与删除不同，停用是可逆的，用于「先冻结、观察一段时间再决定是否删除」。
+func (s *Server) setUserStatus(w http.ResponseWriter, r *http.Request) {
+	me := userFrom(r)
+	if me.Role != "admin" {
+		response.Forbidden(w, "只有管理员可以管理用户")
+		return
+	}
+	id, ok := pathID(r, "id")
+	if !ok {
+		response.BadRequest(w, "用户编号无效")
+		return
+	}
+	var in struct {
+		Disabled bool `json:"disabled"`
+	}
+	if err := decodeJSON(r, &in); err != nil {
+		response.BadRequest(w, "请求格式不正确")
+		return
+	}
+	if id == me.ID {
+		response.BadRequest(w, "不能停用当前登录的账号")
+		return
+	}
+	rec, err := s.store.GetUserByID(id)
+	if errors.Is(err, sql.ErrNoRows) {
+		response.NotFound(w, "用户不存在")
+		return
+	}
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	if rec.Username == "local" {
+		response.BadRequest(w, "本机账号不能停用")
+		return
+	}
+	if in.Disabled && rec.Role == "admin" {
+		admins, err := s.store.CountAdmins()
+		if err != nil {
+			response.Internal(w, err)
+			return
+		}
+		if admins <= 1 {
+			response.BadRequest(w, "至少需要保留一名可用的管理员")
+			return
+		}
+	}
+	if err := s.store.SetUserDisabled(id, in.Disabled); err != nil {
+		response.Internal(w, err)
+		return
+	}
+	if in.Disabled {
+		_ = s.store.RevokeUserSessions(id)
+	}
+	response.OK(w, nil)
+}
+
 // deleteUser 删除账号；删除前自动备份，个人题库一并软删、外联考试关闭。
 func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 	me := userFrom(r)
@@ -245,16 +303,24 @@ func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 }
 
 // searchUsers 供题库所有者在共享时挑选用户，只暴露编号、用户名与角色。
+// 共享题库时挑选用户的搜索下限与条数上限。
+// 下限取 2 是为了不让「输入一个字就列出大半账号」成为可用能力；
+// 共享场景下正常用户本来就会打出两个以上的字符。
+const (
+	userSearchMinRunes = 2
+	userSearchLimit    = 10
+)
+
 func (s *Server) searchUsers(w http.ResponseWriter, r *http.Request) {
 	keyword := strings.TrimSpace(r.URL.Query().Get("keyword"))
-	if utf8.RuneCountInString(keyword) < 1 {
+	if utf8.RuneCountInString(keyword) < userSearchMinRunes {
 		response.OK(w, map[string]any{"items": []any{}})
 		return
 	}
 	if utf8.RuneCountInString(keyword) > 20 {
 		keyword = string([]rune(keyword)[:20])
 	}
-	users, err := s.store.SearchUsers(keyword, 20)
+	users, err := s.store.SearchUsers(keyword, userSearchLimit)
 	if err != nil {
 		response.Internal(w, err)
 		return

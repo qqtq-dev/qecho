@@ -14,6 +14,42 @@
             {{ online ? '服务正常' : '服务异常' }}
           </span>
         </a-tooltip>
+        <a-popover
+          :open="noticeOpen"
+          placement="bottomRight"
+          trigger="click"
+          :overlay-style="{ width: '320px' }"
+          @open-change="onNoticeOpenChange"
+        >
+          <template #content>
+            <div class="notice-wrap">
+              <div v-if="hasUpdate" class="update-card">
+                <div class="update-top">
+                  <Download :size="13" />
+                  <span class="update-title">发现新版本</span>
+                  <span class="update-ver">v{{ updateInfo?.latest }}</span>
+                </div>
+                <div v-if="updateInfo?.notes" class="update-notes">{{ updateInfo.notes }}</div>
+                <div class="update-foot">
+                  <span class="update-cur">当前 v{{ updateInfo?.current }}</span>
+                  <a-button size="small" type="primary" @click="openRelease">查看更新</a-button>
+                </div>
+              </div>
+              <div class="notice-box">
+                <a-empty v-if="!notices.length" description="暂无通知" :image="false" />
+                <div v-for="item in notices" :key="item.id" class="notice-item">
+                  <div class="notice-text">{{ item.text }}</div>
+                  <div class="notice-time">{{ formatNoticeTime(item.createdAt) }}</div>
+                </div>
+              </div>
+            </div>
+          </template>
+          <a-badge :count="unread" :offset="[-2, 2]" size="small">
+            <button class="ghost-btn" :class="{ 'dot-new': updateDot }" :title="bellTitle">
+              <Bell :size="15" />
+            </button>
+          </a-badge>
+        </a-popover>
         <a-tooltip title="收起 / 展开侧栏">
           <button class="ghost-btn" @click="collapsed = !collapsed">
             <PanelLeftOpen v-if="collapsed" :size="15" />
@@ -61,7 +97,7 @@
             @click="onMenuClick"
           />
         </nav>
-        <div v-if="!collapsed" class="sider-foot">© 2026 Qecho · 版权所有</div>
+        <div v-if="!collapsed" class="sider-foot">© 2026 Qecho · 柒柒天晴</div>
       </aside>
       <main class="content">
         <router-view />
@@ -75,8 +111,11 @@ import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { MenuProps } from 'ant-design-vue'
 import {
+  Bell,
   BookX,
   ChartColumn,
+  DatabaseBackup,
+  Download,
   LayoutDashboard,
   Library,
   Moon,
@@ -87,10 +126,13 @@ import {
   Sun,
   Timer,
   UserRound,
+  Users,
 } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { isTauri } from '@/api/request'
+import { noticesApi, type Notice } from '@/api/notices'
+import { updateApi, type UpdateInfo } from '@/api/update'
 import { isDark, toggleTheme } from '@/theme'
 import WindowControls from '@/components/WindowControls.vue'
 
@@ -103,15 +145,25 @@ const desktop = isTauri()
 const collapsed = ref(localStorage.getItem('quiz-sider-collapsed') === '1')
 watch(collapsed, (v) => localStorage.setItem('quiz-sider-collapsed', v ? '1' : '0'))
 
-const menuItems = computed<MenuProps['items']>(() => [
-  { key: '/dashboard', icon: () => h(LayoutDashboard, { size: 15 }), label: '概览' },
-  { key: '/banks', icon: () => h(Library, { size: 15 }), label: '题库管理' },
-  { key: '/practice', icon: () => h(SquarePen, { size: 15 }), label: '练习' },
-  { key: '/exams', icon: () => h(Timer, { size: 15 }), label: '考试' },
-  { key: '/wrong', icon: () => h(BookX, { size: 15 }), label: '错题本' },
-  { key: '/stats', icon: () => h(ChartColumn, { size: 15 }), label: '统计' },
-  { key: '/settings', icon: () => h(Settings, { size: 15 }), label: '设置' },
-])
+const menuItems = computed<MenuProps['items']>(() => {
+  const items: NonNullable<MenuProps['items']> = [
+    { key: '/dashboard', icon: () => h(LayoutDashboard, { size: 15 }), label: '概览' },
+    { key: '/banks', icon: () => h(Library, { size: 15 }), label: '题库管理' },
+    { key: '/practice', icon: () => h(SquarePen, { size: 15 }), label: '练习' },
+    { key: '/exams', icon: () => h(Timer, { size: 15 }), label: '考试' },
+    { key: '/wrong', icon: () => h(BookX, { size: 15 }), label: '错题本' },
+    { key: '/stats', icon: () => h(ChartColumn, { size: 15 }), label: '统计' },
+  ]
+  // 用户管理与数据备份只对管理员开放，普通用户看不到入口。
+  if (auth.isAdmin) {
+    items.push(
+      { key: '/users', icon: () => h(Users, { size: 15 }), label: '用户管理' },
+      { key: '/backups', icon: () => h(DatabaseBackup, { size: 15 }), label: '数据备份' },
+    )
+  }
+  items.push({ key: '/settings', icon: () => h(Settings, { size: 15 }), label: '设置' })
+  return items
+})
 
 const selectedKey = computed(() => (route.path.startsWith('/banks/') ? '/banks' : route.path))
 const online = computed(() => appStore.health?.status === 'ok')
@@ -136,13 +188,120 @@ async function onLogout() {
 
 let timer: number | undefined
 
+// —— 通知 ——
+const notices = ref<Notice[]>([])
+const unread = ref(0)
+const noticeOpen = ref(false)
+
+// —— 版本更新 ——
+const updateInfo = ref<UpdateInfo | null>(null)
+const hasUpdate = computed(() => !!updateInfo.value?.hasUpdate)
+// 未读通知的数字优先占用角标，此时版本更新不再额外画点
+const updateDot = computed(() => hasUpdate.value && unread.value === 0)
+const bellTitle = computed(() => (hasUpdate.value ? `有新版本 v${updateInfo.value?.latest}` : '通知'))
+
+async function checkUpdate(force = false) {
+  if (!auth.loggedIn) return
+  try {
+    updateInfo.value = await updateApi.check(force)
+  } catch {
+    /* 拿不到版本信息不影响使用，静默失败 */
+  }
+}
+
+async function openRelease() {
+  const url = updateInfo.value?.downloadUrl || updateInfo.value?.url
+  if (!url) return
+  if (desktop) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      await invoke('open_external', { url })
+      return
+    } catch {
+      /* 壳层打不开时退回浏览器方式 */
+    }
+  }
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+async function loadNotices() {
+  if (!auth.loggedIn) return
+  try {
+    const res = await noticesApi.list()
+    notices.value = res.items
+    unread.value = res.unread
+  } catch {
+    /* 通知拉取失败不打断使用 */
+  }
+}
+
+async function onNoticeOpenChange(open: boolean) {
+  noticeOpen.value = open
+  if (!open) return
+  await loadNotices()
+  // 用户主动打开铃铛时绕过引擎缓存，确保刚发布的新版本能立刻看到
+  void checkUpdate(true)
+  if (unread.value > 0) {
+    try {
+      await noticesApi.readAll()
+      unread.value = 0
+      notices.value = notices.value.map((item) => ({ ...item, read: true }))
+    } catch {
+      /* 标记已读失败时保留未读态 */
+    }
+  }
+}
+
+function formatNoticeTime(raw: string) {
+  if (!raw) return ''
+  const date = new Date(raw)
+  if (Number.isNaN(date.getTime())) return ''
+  return `${date.getMonth() + 1}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+// —— 权限位刷新 ——
+// 管理员改了「建题库/导出导入」或停用账号后，前端要跟上；切页与窗口聚焦时轻量拉一次。
+let lastProfileAt = 0
+async function refreshProfile() {
+  if (!auth.loggedIn) return
+  const now = Date.now()
+  if (now - lastProfileAt < 15_000) return
+  lastProfileAt = now
+  try {
+    await auth.refresh()
+  } catch {
+    /* 会话失效由请求层统一处理 */
+  }
+}
+
+watch(
+  () => route.path,
+  () => {
+    void refreshProfile()
+    void loadNotices()
+  },
+)
+
+function onWindowFocus() {
+  void refreshProfile()
+  void loadNotices()
+}
+
 onMounted(() => {
   appStore.refresh()
-  timer = window.setInterval(() => appStore.refresh(), 30_000)
+  void loadNotices()
+  void checkUpdate()
+  timer = window.setInterval(() => {
+    appStore.refresh()
+    void refreshProfile()
+    void loadNotices()
+  }, 30_000)
+  window.addEventListener('focus', onWindowFocus)
   resizeMain()
 })
 onBeforeUnmount(() => {
   if (timer) window.clearInterval(timer)
+  window.removeEventListener('focus', onWindowFocus)
 })
 
 async function resizeMain() {
@@ -178,7 +337,7 @@ async function resizeMain() {
 .tb-right { display: flex; align-items: center; gap: 6px; }
 .ghost-btn {
   width: 28px; height: 28px; border: none; border-radius: 6px;
-  background: transparent; color: var(--text);
+  background: transparent; color: var(--text); position: relative;
   cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
   transition: background-color 0.15s;
 }
@@ -194,6 +353,43 @@ async function resizeMain() {
 .engine-tag .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
 .engine-tag.off { background: var(--bad-soft); color: var(--bad-text); }
 .engine-tag.off .dot { background: var(--bad-text); }
+
+.notice-wrap { display: flex; flex-direction: column; gap: 10px; }
+.notice-box { max-height: 280px; overflow: auto; }
+.notice-item { padding: 8px 4px; border-bottom: 1px solid var(--border); }
+.notice-item:last-child { border-bottom: 0; }
+.notice-text { font-size: 13px; line-height: 1.5; }
+.notice-time { margin-top: 2px; font-size: 11px; color: var(--text2); }
+
+/* 新版本提示：整块卡片置顶，和下面的通知列表分开 */
+.update-card {
+  padding: 10px 11px;
+  border-radius: 8px;
+  background: var(--mark-soft);
+  border: 1px solid var(--mark-border);
+}
+.update-top { display: flex; align-items: center; gap: 6px; color: var(--mark-text); }
+.update-title { font-size: 12.5px; font-weight: 600; }
+.update-ver {
+  margin-left: auto; padding: 0 6px; border-radius: 999px;
+  background: var(--mark); color: #fff; font-size: 11px; line-height: 17px;
+}
+.update-notes {
+  margin-top: 6px; font-size: 12px; line-height: 1.55; color: var(--text2);
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.update-foot {
+  margin-top: 9px; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.update-cur { font-size: 11px; color: var(--text2); }
+
+/* 未读数字已经被角标占用时改用小圆点，两者互斥不会重叠 */
+.ghost-btn.dot-new::after {
+  content: ''; position: absolute; top: 5px; right: 5px;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--mark);
+  box-shadow: 0 0 0 2px var(--surface);
+}
 
 .body { flex: 1; display: flex; min-height: 0; }
 

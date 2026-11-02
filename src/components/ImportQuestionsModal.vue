@@ -30,13 +30,18 @@
                 {{ bank.name }}（{{ bank.questionCount }} 题）
               </a-select-option>
             </a-select>
-            <a-input
-              v-else
-              v-model:value="newBankName"
-              style="width: 240px"
-              :maxlength="60"
-              placeholder="新题库名称"
-            />
+            <template v-else>
+              <a-input
+                v-model:value="newBankName"
+                style="width: 240px"
+                :maxlength="60"
+                placeholder="新题库名称"
+              />
+              <a-checkbox v-if="auth.isAdmin" v-model:checked="newBankPublic">公共题库</a-checkbox>
+              <span v-if="auth.isAdmin && mode === 'new'" class="muted small">
+                勾选后所有登录用户可见，由管理员共同维护
+              </span>
+            </template>
           </template>
         </div>
 
@@ -296,6 +301,10 @@ const images = ref<File[]>([])
 const mode = ref<'existing' | 'new'>('existing')
 const selectedBankId = ref<number | undefined>()
 const newBankName = ref('')
+const newBankPublic = ref(false)
+// 记录本次导入临时建出的题库，供失败/取消时回收。
+const createdBankId = ref<number | null>(null)
+const committed = ref(false)
 const file = ref<File | null>(null)
 const preview = ref<ImportPreview | null>(null)
 const result = ref<ImportResult | null>(null)
@@ -396,6 +405,9 @@ function reset() {
   dragActive.value = false
   reverted.value = false
   newBankName.value = ''
+  newBankPublic.value = false
+  createdBankId.value = null
+  committed.value = false
   policy.value = 'skip'
   sheet.value = undefined
   headerRow.value = 1
@@ -412,8 +424,24 @@ watch(
   () => props.open,
   (open) => {
     if (open) reset()
+    else void discardEmptyBank()
   },
 )
+
+/**
+ * 「新建题库」是先生成题库再预览的：预览失败或用户中途关掉弹窗时，
+ * 把这个空题库删掉，避免列表里留下一本（可能是公共的）空库。
+ */
+async function discardEmptyBank() {
+  const id = createdBankId.value
+  if (!id || committed.value) return
+  createdBankId.value = null
+  try {
+    await banksApi.remove(id)
+  } catch {
+    /* 回收失败不影响主流程，用户可手动删除 */
+  }
+}
 
 function pickFile() {
   if (busy.value) return
@@ -533,7 +561,13 @@ async function startPreview() {
       }
       busy.value = 'preview'
       try {
-        const bank = await banksApi.create({ name, description: `由 ${file.value.name} 导入` })
+        const bank = await banksApi.create({
+          name,
+          description: `由 ${file.value.name} 导入`,
+          public: auth.isAdmin && newBankPublic.value,
+        })
+        createdBankId.value = bank.id
+        committed.value = false
         bankID = bank.id
         targetId.value = bank.id
       } catch {
@@ -544,7 +578,12 @@ async function startPreview() {
     }
   }
   targetId.value = bankID
-  await runPreview(bankID!)
+  const ok = await runPreview(bankID!)
+  if (!ok && createdBankId.value === bankID) {
+    await discardEmptyBank()
+    targetId.value = props.bankId
+    message.warning('预览未通过，已撤销本次新建的题库')
+  }
 }
 
 function previewOptions() {
@@ -560,7 +599,7 @@ function previewOptions() {
 }
 
 async function runPreview(bankID: number) {
-  if (!file.value) return
+  if (!file.value) return false
   busy.value = 'preview'
   try {
     const res = await banksApi.importPreview(bankID, file.value, previewOptions(), images.value)
@@ -569,8 +608,10 @@ async function runPreview(bankID: number) {
     headerRow.value = res.headerRow || 1
     for (const key of Object.keys(mappingDraft)) delete mappingDraft[key]
     for (const [key, value] of Object.entries(res.mapping || {})) mappingDraft[key] = value
+    return true
   } catch {
     preview.value = null
+    return false
   } finally {
     busy.value = ''
   }
@@ -590,6 +631,7 @@ async function commit() {
   busy.value = 'commit'
   try {
     result.value = await banksApi.importCommit(targetId.value, preview.value.token, policy.value)
+    committed.value = true
     emit('imported', targetId.value)
     message.success(`已导入 ${result.value.inserted} 道题`)
   } catch {

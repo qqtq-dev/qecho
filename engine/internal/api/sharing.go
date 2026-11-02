@@ -127,9 +127,25 @@ func (s *Server) saveBankMember(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "管理员本就可见全部题库，无需共享")
 		return
 	}
+	before, err := s.store.BankMemberLevel(bank.ID, in.UserID)
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
 	if err := s.store.UpsertBankMember(bank.ID, in.UserID, in.Level); err != nil {
 		response.Internal(w, err)
 		return
+	}
+	levelText := "只读"
+	if in.Level == store.LevelEditor {
+		levelText = "可编辑"
+	}
+	bankID := bank.ID
+	switch {
+	case before == "":
+		s.notify(in.UserID, "share-added", "题库《"+bank.Name+"》已共享给你（"+levelText+"）", &bankID)
+	case before != in.Level:
+		s.notify(in.UserID, "share-changed", "题库《"+bank.Name+"》的共享权限已改为"+levelText, &bankID)
 	}
 	state, err := s.sharingState(bank)
 	if err != nil {
@@ -153,6 +169,8 @@ func (s *Server) deleteBankMember(w http.ResponseWriter, r *http.Request) {
 		response.Internal(w, err)
 		return
 	}
+	bankID := bank.ID
+	s.notify(userID, "share-removed", "题库《"+bank.Name+"》已取消与你共享", &bankID)
 	state, err := s.sharingState(bank)
 	if err != nil {
 		response.Internal(w, err)

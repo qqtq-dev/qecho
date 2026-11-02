@@ -16,19 +16,11 @@
         <h3>题库</h3>
         <span class="muted">共 {{ banks.length }} 个</span>
       </div>
-      <div class="tabs">
-        <a-radio-group v-model:value="tab" button-style="solid" size="small">
-          <a-radio-button value="all">全部 {{ banks.length }}</a-radio-button>
-          <a-radio-button value="mine">我的 {{ counts.mine }}</a-radio-button>
-          <a-radio-button value="shared">共享给我 {{ counts.shared }}</a-radio-button>
-          <a-radio-button value="public">公共 {{ counts.public }}</a-radio-button>
-        </a-radio-group>
-      </div>
-      <div class="panel-body" :class="{ 'empty-state': !loading && visibleBanks.length === 0 }">
+      <div class="panel-body" :class="{ 'empty-state': !loading && banks.length === 0 }">
         <a-spin :spinning="loading">
-          <a-empty v-if="!loading && visibleBanks.length === 0" :description="emptyText">
+          <a-empty v-if="!loading && banks.length === 0" description="还没有题库">
             <a-button
-              v-if="tab !== 'shared' && tab !== 'public' && auth.mayCreateBank"
+              v-if="auth.mayCreateBank"
               type="primary"
               ghost
               @click="openCreate"
@@ -38,11 +30,12 @@
           </a-empty>
           <a-table
             v-else
-            :data-source="visibleBanks"
+            :data-source="banks"
             :columns="columns"
             :pagination="false"
             row-key="id"
             size="middle"
+            :scroll="{ x: 1200 }"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'name'">
@@ -53,10 +46,11 @@
                 <a-tag color="green">{{ record.questionCount }} 道</a-tag>
               </template>
               <template v-else-if="column.key === 'practice'">
-                <template v-if="record.answeredCount > 0">
-                  <span class="mono">{{ formatRate(record.correctRate) }}</span>
-                  <div class="muted small">作答 {{ record.answeredCount }} 次</div>
-                </template>
+                <span v-if="record.answeredCount > 0" class="mono">{{ formatRate(record.correctRate) }}</span>
+                <span v-else class="muted">—</span>
+              </template>
+              <template v-else-if="column.key === 'answered'">
+                <span v-if="record.answeredCount > 0">{{ record.answeredCount }} 次</span>
                 <span v-else class="muted">—</span>
               </template>
               <template v-else-if="column.key === 'lastPracticedAt'">
@@ -64,15 +58,16 @@
               </template>
               <template v-else-if="column.key === 'owner'">
                 <a-tag v-if="record.isPublic" color="blue">公共</a-tag>
-                <a-tag v-else-if="record.memberLevel === 'owner'" color="green">我的</a-tag>
+                <span v-else-if="record.ownerName">{{ record.ownerName }}</span>
+                <span v-else class="muted">—</span>
+              </template>
+              <template v-else-if="column.key === 'access'">
+                <a-tag v-if="record.memberLevel === 'owner'" color="green">所有者</a-tag>
                 <a-tag v-else-if="record.memberLevel === 'admin'" color="purple">管理员</a-tag>
                 <a-tag v-else-if="record.memberLevel === 'editor'" color="blue">共享 · 可编辑</a-tag>
                 <a-tag v-else-if="record.memberLevel === 'viewer'">共享 · 只读</a-tag>
-                <a-tag v-else-if="record.visibility === 'public'">公开 · 只读</a-tag>
-                <a-tag v-else>其他</a-tag>
-                <div v-if="record.memberLevel !== 'owner' && record.ownerName" class="muted small">
-                  {{ record.ownerName }}
-                </div>
+                <a-tag v-else-if="record.visibility === 'public'" color="cyan">公开 · 只读</a-tag>
+                <a-tag v-else>只读</a-tag>
               </template>
               <template v-else-if="column.key === 'updatedAt'">
                 <span class="muted">{{ formatTime(record.updatedAt) }}</span>
@@ -153,7 +148,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import dayjs from 'dayjs'
@@ -172,48 +167,44 @@ const importOpen = ref(false)
 const saving = ref(false)
 const editing = ref<Bank | null>(null)
 const form = reactive({ name: '', description: '', public: false })
-const tab = ref<'all' | 'mine' | 'shared' | 'public'>('all')
 
 const sharingOpen = ref(false)
 const sharingBank = ref<Bank | null>(null)
 
-function groupOf(bank: Bank): 'mine' | 'shared' | 'public' | 'other' {
-  if (bank.memberLevel === 'owner') return 'mine'
-  if (bank.memberLevel === 'viewer' || bank.memberLevel === 'editor') return 'shared'
-  if (bank.isPublic || bank.visibility === 'public') return 'public'
-  // 管理员看到的他人私有题库
-  return 'other'
+type AccessKey = 'owner' | 'admin' | 'editor' | 'viewer' | 'public' | 'readonly'
+
+function accessKey(bank: Bank): AccessKey {
+  if (bank.memberLevel === 'owner') return 'owner'
+  if (bank.memberLevel === 'admin') return 'admin'
+  if (bank.memberLevel === 'editor') return 'editor'
+  if (bank.memberLevel === 'viewer') return 'viewer'
+  if (bank.visibility === 'public') return 'public'
+  return 'readonly'
 }
 
-const counts = computed(() => {
-  const out = { mine: 0, shared: 0, public: 0 }
-  for (const bank of banks.value) {
-    const group = groupOf(bank)
-    if (group === 'mine') out.mine += 1
-    else if (group === 'shared') out.shared += 1
-    else if (group === 'public') out.public += 1
-  }
-  return out
-})
-
-const visibleBanks = computed(() => {
-  if (tab.value === 'all') return banks.value
-  return banks.value.filter((bank) => groupOf(bank) === tab.value)
-})
-
-const emptyText = computed(() => {
-  if (tab.value === 'mine') return '你还没有自己的题库'
-  if (tab.value === 'shared') return '还没有人共享题库给你'
-  if (tab.value === 'public') return '还没有公共题库'
-  return '还没有题库'
-})
+const accessFilters = [
+  { text: '所有者', value: 'owner' },
+  { text: '管理员', value: 'admin' },
+  { text: '共享 · 可编辑', value: 'editor' },
+  { text: '共享 · 只读', value: 'viewer' },
+  { text: '公开 · 只读', value: 'public' },
+  { text: '只读', value: 'readonly' },
+]
 
 const columns = [
   { title: '题库', key: 'name', dataIndex: 'name' },
   { title: '题目数', key: 'questionCount', dataIndex: 'questionCount', width: 100 },
-  { title: '练习正确率', key: 'practice', width: 130 },
+  { title: '正确率', key: 'practice', width: 100 },
+  { title: '作答次数', key: 'answered', width: 100 },
   { title: '最近练习', key: 'lastPracticedAt', width: 150 },
-  { title: '归属', key: 'owner', width: 130 },
+  { title: '归属', key: 'owner', width: 110 },
+  {
+    title: '我的权限',
+    key: 'access',
+    width: 130,
+    filters: accessFilters,
+    onFilter: (value: unknown, record: Bank) => accessKey(record) === value,
+  },
   { title: '更新时间', key: 'updatedAt', dataIndex: 'updatedAt', width: 160 },
   { title: '操作', key: 'actions', width: 230 },
 ]
@@ -309,5 +300,4 @@ onMounted(load)
 .switch-hint { margin-left: 10px; font-size: 12px; }
 .readonly { font-size: 12px; }
 .small { font-size: 12px; }
-.tabs { padding: 12px 16px 0; }
 </style>

@@ -1,0 +1,8 @@
+{
+  "version": "0.2.0",
+  "publishedAt": "2026-11-02",
+  "notes": "答题卡改为四态配色，解析框支持内部滚动；新增题库共享与用户权限管理；管理员入口独立拆分。",
+  "url": "https://gitee.com/qqtq/qecho-releases",
+  "downloadUrl": "https://gitee.com/qqtq/qecho-releases/releases",
+  "force": false
+}

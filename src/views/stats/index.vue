@@ -37,7 +37,7 @@
         <ul v-else class="bank-list">
           <li v-for="bank in banks" :key="bank.bankId">
             <div class="bl-top">
-              <span class="bl-name">{{ bank.bankName }}</span>
+              <span class="bl-name" :class="{ masked: bank.masked }">{{ bank.bankName }}</span>
               <span class="bl-rate">{{ rateOf(bank.correct, bank.answered) }}%</span>
             </div>
             <div class="bl-bar">
@@ -293,6 +293,7 @@ onBeforeUnmount(() => {
 .bank-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
 .bl-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .bl-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bl-name.masked { color: var(--text2); font-weight: 400; font-style: italic; }
 .bl-rate { font-size: 13px; font-weight: 700; color: var(--primary); flex: none; }
 .bl-rate.weak { color: #d4380d; }
 .bl-bar {

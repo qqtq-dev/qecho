@@ -16,6 +16,8 @@ type StatsBank struct {
 	BankName string `json:"bankName"`
 	Answered int    `json:"answered"`
 	Correct  int    `json:"correct"`
+	// Masked 为 true 表示题库已不可访问（共享被取消或题库被删），名称只作占位。
+	Masked bool `json:"masked"`
 }
 
 type StatsTag struct {
@@ -331,6 +333,20 @@ func (s *Store) statsBanks(user *User, admin bool, startDay string) ([]StatsBank
 	out := make([]StatsBank, 0, len(merged))
 	for _, b := range merged {
 		out = append(out, *b)
+	}
+	// 题库被删除或共享被取消后，作答历史仍保留；这里只隐去名称，避免显示已无权查看的题库。
+	if !admin {
+		visible, err := s.VisibleBankIDs(user)
+		if err != nil {
+			return nil, err
+		}
+		for i := range out {
+			if out[i].BankID == 0 || visible[out[i].BankID] {
+				continue
+			}
+			out[i].Masked = true
+			out[i].BankName = "已不可访问的题库"
+		}
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Answered != out[j].Answered {

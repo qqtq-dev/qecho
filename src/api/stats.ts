@@ -11,6 +11,8 @@ export interface StatsBank {
   bankName: string
   answered: number
   correct: number
+  /** 题库已不可访问（共享被取消或题库被删），名称只是占位。 */
+  masked: boolean
 }
 
 export interface StatsTag {

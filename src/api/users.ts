@@ -8,6 +8,7 @@ export interface UserItem {
   lastLoginAt: string
   canCreateBank: boolean
   canExportImport: boolean
+  disabled: boolean
 }
 
 export interface UserBrief {
@@ -24,6 +25,8 @@ export const usersApi = {
     http.put<unknown, void>(`/users/${id}/role`, { role }),
   updatePermissions: (id: number, data: { canCreateBank: boolean; canExportImport: boolean }) =>
     http.put<unknown, void>(`/users/${id}/permissions`, data),
+  setStatus: (id: number, disabled: boolean) =>
+    http.put<unknown, void>(`/users/${id}/status`, { disabled }),
   resetPassword: (id: number, password: string) =>
     http.post<unknown, void>(`/users/${id}/password`, { password }),
   remove: (id: number) => http.delete<unknown, void>(`/users/${id}`),
