@@ -44,3 +44,7 @@ dist-server/
 # 各平台安装包产物
 dist-linux/
 dist-windows/
+
+# 打包脚本的 python 缓存
+__pycache__/
+*.pyc
