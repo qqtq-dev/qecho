@@ -1,7 +1,7 @@
 {
   "name": "quizbox-desktop",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "description": "Qecho —— 单机题库练习与考试（Tauri 2 + Vue 3 + Go）",
   "scripts": {
