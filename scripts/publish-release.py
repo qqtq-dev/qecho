@@ -22,6 +22,7 @@ API = f"https://gitee.com/api/v5/repos/{OWNER}/{REPO}"
 ROOT = Path(__file__).resolve().parent.parent
 DIST_LINUX = ROOT / "dist-linux"
 DIST_WIN = ROOT / "dist-windows"
+DIST_SERVER = ROOT / "dist-server"
 NSIS = ROOT / "src-tauri" / "target" / "release" / "bundle" / "nsis"
 
 
@@ -37,6 +38,9 @@ def collect(version):
         (DIST_LINUX / f"Qecho_{version}_amd64.deb", "Debian / Ubuntu", "12 MB"),
         (DIST_LINUX / f"Qecho-{version}-1.x86_64.rpm", "RHEL / Kylin", "12 MB"),
         (DIST_LINUX / f"Qecho_{version}_amd64.AppImage", "通用 Linux", "86 MB"),
+        # 服务端网页版：静态链接的 Go 引擎 + dist，不依赖 glibc / libGL，
+        # 与桌面端是两套形态，别混在一起发。
+        (DIST_SERVER / f"Qecho-{version}-web-linux-amd64.tar.gz", "服务端网页版", "8 MB"),
     ]
     found = [(p, label) for p, label, _ in candidates if p.exists()]
     if not found:
@@ -73,6 +77,9 @@ def build_body(version, files):
 {table}
 
 Windows 需要 WebView2 运行时（Win11 与较新的 Win10 默认已装）。免安装版的数据存在 `%APPDATA%\\com.quizbox.desktop`。
+
+服务端网页版包解压后 `sudo ./install.sh` 即可，跑在服务器上、浏览器访问；
+它是静态链接的 Go 引擎，不依赖目标机的 glibc 与 libGL，与桌面端 AppImage 的限制无关。
 
 服务端部署见主仓库 [docs/服务端部署.md](https://gitee.com/qqtq/qecho/blob/main/docs/服务端部署.md)。
 
