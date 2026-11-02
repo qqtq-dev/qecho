@@ -34,4 +34,4 @@
   systemctl restart qecho
   journalctl -u qecho -n 50 --no-pager
   /opt/quizbox/quizbox-engine --verify-db /var/lib/quizbox/quiz.db
-  sqlite3 /var/lib/quizbox/quiz.db ".backup '/var/backups/quizbox-2026-11-02.db'"
+  sqlite3 /var/lib/quizbox/quiz.db ".backup '/var/backups/quizbox-$(date +%F).db'"

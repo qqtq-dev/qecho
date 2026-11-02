@@ -30,7 +30,10 @@ install -m 644 "$root/scripts/web/README.txt" "$stage/README.txt"
 sed -i "s/__VERSION__/$ver/g" "$stage/README.txt"
 
 out="$root/dist-server/Qecho-$ver-web-linux-amd64.tar.gz"
-tar -czf "$out" -C "$(dirname "$stage")" "quizbox-web-$ver"
+# --mode 是必须的：在 Windows/MSYS 上给无扩展名的 ELF 二进制设可执行位会静默失效
+# （install -m 755 也救不回来），打出来的包解压后引擎是 644，用户直接 ./quizbox-engine
+# 会报 Permission denied。tar 的 --mode 与文件系统无关，能保证产物在任何平台上一致。
+tar -czf "$out" --mode='u+rwx,go+rx' -C "$(dirname "$stage")" "quizbox-web-$ver"
 
 echo "== 产物：$out"
 ls -lh "$out"
