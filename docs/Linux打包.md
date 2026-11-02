@@ -80,6 +80,26 @@ failed to bundle project: `io: Network is unreachable (os error 101)`
 GH_PROXY=https://gh-proxy.com/ scripts/linux/build-package.sh appimage
 ```
 
+### 有 HTTP 代理时优先直连
+
+镜像站（ghfast.top 之类）随时可能限速或挂掉，能直连 GitHub 就别绕。`build-in-container.sh` 会把宿主机的 `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`（大小写都认）原样传进容器，`build-package.sh` 里的 `fetch_github` 据此决定顺序：
+
+| 环境 | 下载顺序 |
+|---|---|
+| 配了 `HTTPS_PROXY` | 先直连 GitHub（curl 自动走代理），失败再套镜像 |
+| 没配代理 | 先套 `GH_PROXY` 镜像，失败再直连（一般直接失败） |
+| `GH_PROXY=` 置空 | 只直连，不套镜像 |
+
+代理地址必须是**容器能访问的**地址。代理跑在宿主机上时不能用 `127.0.0.1`，要写宿主机的局域网 IP（例如 `HTTPS_PROXY=http://192.168.40.1:7890`），并且代理程序要允许来自局域网的连接。
+
+国内镜像（apt/npm/crates）不要走代理，加进 `NO_PROXY` 更稳：
+
+```bash
+export HTTPS_PROXY=http://192.168.40.1:7890
+export NO_PROXY=localhost,127.0.0.1,.aliyun.com,.npmmirror.com,.rsproxy.cn
+scripts/linux/build-in-container.sh appimage
+```
+
 容器内跑 AppImage 工具需要 `APPIMAGE_EXTRACT_AND_RUN=1`（脚本已设），因为没有 FUSE。
 
 ## 已知限制

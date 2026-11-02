@@ -15,6 +15,11 @@ SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 IMAGE="qecho-builder:base"
 UBUNTU="docker.m.daocloud.io/library/ubuntu:24.04"
 
+PROXY_ENV=()
+for v in HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy; do
+  [ -n "${!v:-}" ] && PROXY_ENV+=(--env "$v")
+done
+
 command -v podman >/dev/null || { echo "需要 podman：dnf install -y podman" >&2; exit 1; }
 
 if ! podman image exists "$IMAGE"; then
@@ -22,12 +27,12 @@ if ! podman image exists "$IMAGE"; then
   podman pull "$UBUNTU"
   podman tag "$UBUNTU" ubuntu:24.04
   podman rm -f qecho-prep >/dev/null 2>&1 || true
-  podman run --name qecho-prep -v "$SRC":/work:Z -w /work ubuntu:24.04 \
+  podman run --name qecho-prep "${PROXY_ENV[@]}" -v "$SRC":/work:Z -w /work ubuntu:24.04 \
     bash /work/scripts/linux/prepare-env.sh
   podman commit qecho-prep "$IMAGE"
   podman rm -f qecho-prep
 fi
 
 echo "=== 构建 $TARGET ==="
-podman run --rm -v "$SRC":/work:Z -w /work "$IMAGE" \
+podman run --rm "${PROXY_ENV[@]}" -v "$SRC":/work:Z -w /work "$IMAGE" \
   bash "/work/scripts/linux/build-package.sh" "$TARGET"

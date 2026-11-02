@@ -59,11 +59,14 @@ pnpm tauri dev
 ## 打包
 
 ```powershell
-.\build.ps1        # 桌面端：引擎 sidecar + 前端 + Tauri 安装包
-./build-server.sh  # 服务端：Linux amd64 二进制 → dist-server/
+.\build.ps1          # 桌面端：引擎 sidecar + 前端 + Tauri 安装包
+.\build-portable.ps1 # 免安装版：把 release 产物打成 dist-windows\Qecho-<版本>-x64-portable.zip
+./build-server.sh    # 服务端：Linux amd64 二进制 → dist-server/
 ```
 
 `build.ps1` 依次执行 `build-engine.ps1`（Go 引擎 → `src-tauri/binaries/`）、`pnpm install --frozen-lockfile`、`pnpm tauri build`。安装包输出到 `src-tauri/target/release/bundle/nsis/`。
+
+`build-portable.ps1` 不重新编译，只把 `src-tauri/target/release/` 里现成的 `quizbox-desktop.exe`（改名 `Qecho.exe`）、`engine.exe` 和图标收进一个文件夹，附一份使用说明后压成 zip（约 12 MB）。免安装版不写注册表、不建快捷方式，但数据仍在 `%APPDATA%\com.quizbox.desktop`，卸载就是删文件夹加删这个目录。
 
 两个构建脚本都会从 `src-tauri/tauri.conf.json` 读取版本号并注入 `-X main.version`，因此「关于」页与 `/health` 显示的是真实版本；**不要手写不带 `-X main.version` 的 `go build`**，否则会退化成 `dev`，客户端也无法比对版本。
 

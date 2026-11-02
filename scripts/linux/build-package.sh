@@ -14,11 +14,35 @@ export PATH="$HOME/.cargo/bin:$PATH"
 export APPIMAGE_EXTRACT_AND_RUN=1
 
 TARGET="${1:-deb}"
-GH_PROXY="${GH_PROXY:-https://ghfast.top/}"
+# GitHub 工具链下载策略：
+#   - 容器里配了 HTTP(S)_PROXY → 先直连 GitHub（curl 自动走代理），失败再套镜像；
+#   - 没配代理 → 先套 GH_PROXY 镜像，失败再直连；
+#   - GH_PROXY= （置空）→ 只直连，不套镜像。
+GH_PROXY="${GH_PROXY-https://ghfast.top/}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CACHE="$HOME/.cache/tauri"
 
 log() { echo "=== [$(date +%H:%M:%S)] $* ==="; }
+
+# fetch_github <url> <输出文件>：按上面的策略依次尝试候选地址
+fetch_github() {
+  local url="$1" out="$2" u
+  local urls=()
+  if [ -n "${HTTPS_PROXY:-${https_proxy:-}}" ] || [ -n "${HTTP_PROXY:-${http_proxy:-}}" ]; then
+    urls+=("$url")
+  fi
+  [ -n "$GH_PROXY" ] && urls+=("${GH_PROXY}${url}")
+  [ ${#urls[@]} -eq 0 ] && urls+=("$url")
+  for u in "${urls[@]}"; do
+    log "下载 $u"
+    if curl -fL --retry 2 --retry-delay 2 -m 600 -o "$out" "$u"; then
+      return 0
+    fi
+    rm -f "$out"
+  done
+  echo "工具链下载失败：$url" >&2
+  return 1
+}
 
 cd "$ROOT"
 
@@ -46,11 +70,11 @@ case "$TARGET" in
     mkdir -p "$CACHE"
     log "准备 linuxdeploy 工具链"
     [ -s "$CACHE/linuxdeploy-x86_64.AppImage" ] || \
-      curl -fL --retry 2 -o "$CACHE/linuxdeploy-x86_64.AppImage" \
-        "${GH_PROXY}https://github.com/tauri-apps/binary-releases/releases/download/linuxdeploy/linuxdeploy-x86_64.AppImage"
+      fetch_github "https://github.com/tauri-apps/binary-releases/releases/download/linuxdeploy/linuxdeploy-x86_64.AppImage" \
+        "$CACHE/linuxdeploy-x86_64.AppImage"
     [ -s "$CACHE/linuxdeploy-plugin-gtk.sh" ] || \
-      curl -fL --retry 2 -o "$CACHE/linuxdeploy-plugin-gtk.sh" \
-        "${GH_PROXY}https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh"
+      fetch_github "https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh" \
+        "$CACHE/linuxdeploy-plugin-gtk.sh"
     chmod +x "$CACHE/linuxdeploy-x86_64.AppImage" "$CACHE/linuxdeploy-plugin-gtk.sh"
 
     log "构造 AppDir"
