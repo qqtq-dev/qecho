@@ -7,7 +7,7 @@
     </PageHeader>
 
     <div class="metrics">
-      <MetricTile label="题目总数" :value="overview?.questionCount ?? 0" hint="全部题库的有效题目" />
+      <MetricTile label="题目总数" :value="overview?.questionCount ?? 0" hint="你可访问题库的有效题目" />
       <MetricTile label="今日答题" :value="overview?.todayAnswered ?? 0" hint="练习与考试作答合计" />
       <MetricTile label="总正确率" :value="accuracyText" :hint="accuracyHint" />
       <MetricTile label="待复习错题" :value="overview?.wrongPending ?? 0" :hint="wrongHint" />

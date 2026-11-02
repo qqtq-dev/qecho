@@ -5,14 +5,19 @@
     </div>
     <PageHeader :title="bank?.name || '题库详情'" :subtitle="bank?.description || '维护题目、答案与解析'">
       <template #actions>
-        <a-button :loading="exporting" :disabled="total === 0" @click="exportBank">导出题目</a-button>
-        <a-button :loading="exportingImages" @click="exportImages">导出图片</a-button>
-        <template v-if="canEdit">
+        <template v-if="auth.mayExportImport">
+          <a-button :loading="exporting" :disabled="total === 0" @click="exportBank">导出题目</a-button>
+          <a-button :loading="exportingImages" @click="exportImages">导出图片</a-button>
+        </template>
+        <template v-if="canManage">
           <a-button @click="openEditBank">编辑题库</a-button>
-          <a-button @click="importOpen = true">导入题目</a-button>
+          <a-button v-if="bank && !bank.isPublic" @click="sharingOpen = true">共享</a-button>
+        </template>
+        <template v-if="canEdit">
+          <a-button v-if="auth.mayExportImport" @click="importOpen = true">导入题目</a-button>
           <a-button type="primary" @click="openCreateQuestion">添加题目</a-button>
         </template>
-        <a-tag v-else color="default">只读题库</a-tag>
+        <a-tag v-if="!canEdit" color="default">只读题库</a-tag>
       </template>
     </PageHeader>
 
@@ -49,7 +54,7 @@
             {{ tag.name }}（{{ tag.questionCount }}）
           </a-select-option>
         </a-select>
-        <a-button v-if="auth.isAdmin" type="link" size="small" @click="openTagManager">标签管理</a-button>
+        <a-button v-if="canManage" type="link" size="small" @click="openTagManager">标签管理</a-button>
       </div>
       <div class="panel-body" :class="{ 'empty-state': !loading && items.length === 0 }">
         <a-spin :spinning="loading">
@@ -395,6 +400,13 @@
       </a-form>
     </a-modal>
 
+    <BankSharingDrawer
+      v-model:open="sharingOpen"
+      :bank-id="bankId"
+      :bank-name="bank?.name"
+      @updated="loadBank"
+    />
+
     <ImportQuestionsModal
       v-model:open="importOpen"
       :bank-id="bankId"
@@ -411,6 +423,7 @@ import dayjs from 'dayjs'
 import { message } from 'ant-design-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ImportQuestionsModal from '@/components/ImportQuestionsModal.vue'
+import BankSharingDrawer from '@/components/BankSharingDrawer.vue'
 import ImageUploadField from '@/components/ImageUploadField.vue'
 import { banksApi, type Bank, type ImportJob, type Question, type QuestionOption, type Tag } from '@/api/banks'
 import { isTauri } from '@/api/request'
@@ -428,6 +441,7 @@ const page = ref(1)
 const size = 20
 const loading = ref(false)
 const importOpen = ref(false)
+const sharingOpen = ref(false)
 const bankTags = ref<Tag[]>([])
 const filters = reactive({
   keyword: '',
@@ -436,10 +450,8 @@ const filters = reactive({
   difficulty: 0,
 })
 
-const canEdit = computed(() => {
-  if (!bank.value) return false
-  return auth.isAdmin || (bank.value.ownerId !== null && bank.value.ownerId !== undefined)
-})
+const canEdit = computed(() => bank.value?.canEdit ?? false)
+const canManage = computed(() => bank.value?.canManage ?? false)
 
 const columns = computed(() => {
   const base = [

@@ -23,6 +23,7 @@ const (
 	BackupPreImport  BackupKind = "pre-import"
 	BackupPreMigrate BackupKind = "pre-migrate"
 	BackupPreRestore BackupKind = "pre-restore"
+	BackupPreDelete  BackupKind = "pre-delete"
 )
 
 const (
@@ -42,6 +43,7 @@ func defaultBackupRetention() map[BackupKind]int {
 		BackupPreImport:  5,
 		BackupPreMigrate: 3,
 		BackupPreRestore: 3,
+		BackupPreDelete:  3,
 	}
 }
 

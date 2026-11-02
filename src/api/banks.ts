@@ -1,5 +1,8 @@
 import { http } from './request'
 
+export type BankVisibility = 'private' | 'public'
+export type BankLevel = '' | 'viewer' | 'editor' | 'owner' | 'admin'
+
 export interface Bank {
   id: number
   name: string
@@ -11,8 +14,31 @@ export interface Bank {
   ownerId: number | null
   ownerName: string
   isPublic: boolean
+  /** private 仅所有者与共享成员可见；public 所有登录用户可读 */
+  visibility: BankVisibility
+  /** 当前登录者在该题库中的身份 */
+  memberLevel: BankLevel
+  /** 可增删改题目（所有者、管理员、共享编辑者） */
+  canEdit: boolean
+  /** 可改题库信息、删除、共享（所有者与管理员） */
+  canManage: boolean
   createdAt: string
   updatedAt: string
+}
+
+export interface BankMember {
+  userId: number
+  username: string
+  level: 'viewer' | 'editor'
+  createdAt: string
+}
+
+export interface BankSharing {
+  bankId: number
+  visibility: BankVisibility
+  ownerId: number | null
+  ownerName: string
+  members: BankMember[]
 }
 
 export interface QuestionOption {
@@ -142,6 +168,13 @@ export const banksApi = {
   update: (id: number, data: { name: string; description: string }) =>
     http.put<unknown, Bank>(`/banks/${id}`, data),
   remove: (id: number) => http.delete<unknown, void>(`/banks/${id}`),
+  sharing: (id: number) => http.get<unknown, BankSharing>(`/banks/${id}/sharing`),
+  updateSharing: (id: number, visibility: BankVisibility) =>
+    http.put<unknown, BankSharing>(`/banks/${id}/sharing`, { visibility }),
+  saveMember: (id: number, userId: number, level: 'viewer' | 'editor') =>
+    http.put<unknown, BankSharing>(`/banks/${id}/members`, { userId, level }),
+  removeMember: (id: number, userId: number) =>
+    http.delete<unknown, BankSharing>(`/banks/${id}/members/${userId}`),
   questions: (id: number, query: QuestionQuery = {}) =>
     http.get<unknown, PageResult<Question>>(`/banks/${id}/questions`, { params: query }),
   createQuestion: (id: number, data: QuestionInput) =>

@@ -2,24 +2,43 @@
   <div class="page">
     <PageHeader title="题库管理" subtitle="维护本机题库与题目，考试按题库抽题">
       <template #actions>
-        <a-button @click="importOpen = true">导入题库</a-button>
-        <a-button type="primary" @click="openCreate">新建题库</a-button>
+        <a-tooltip :title="auth.mayExportImport ? '' : '管理员未开放导出与导入题库的权限'">
+          <a-button :disabled="!auth.mayExportImport" @click="importOpen = true">导入题库</a-button>
+        </a-tooltip>
+        <a-tooltip :title="auth.mayCreateBank ? '' : '管理员未开放新建题库的权限'">
+          <a-button type="primary" :disabled="!auth.mayCreateBank" @click="openCreate">新建题库</a-button>
+        </a-tooltip>
       </template>
     </PageHeader>
 
     <section class="panel">
       <div class="panel-head">
-        <h3>全部题库</h3>
+        <h3>题库</h3>
         <span class="muted">共 {{ banks.length }} 个</span>
       </div>
-      <div class="panel-body" :class="{ 'empty-state': !loading && banks.length === 0 }">
+      <div class="tabs">
+        <a-radio-group v-model:value="tab" button-style="solid" size="small">
+          <a-radio-button value="all">全部 {{ banks.length }}</a-radio-button>
+          <a-radio-button value="mine">我的 {{ counts.mine }}</a-radio-button>
+          <a-radio-button value="shared">共享给我 {{ counts.shared }}</a-radio-button>
+          <a-radio-button value="public">公共 {{ counts.public }}</a-radio-button>
+        </a-radio-group>
+      </div>
+      <div class="panel-body" :class="{ 'empty-state': !loading && visibleBanks.length === 0 }">
         <a-spin :spinning="loading">
-          <a-empty v-if="!loading && banks.length === 0" description="还没有题库">
-            <a-button type="primary" ghost @click="openCreate">新建第一个题库</a-button>
+          <a-empty v-if="!loading && visibleBanks.length === 0" :description="emptyText">
+            <a-button
+              v-if="tab !== 'shared' && tab !== 'public' && auth.mayCreateBank"
+              type="primary"
+              ghost
+              @click="openCreate"
+            >
+              新建题库
+            </a-button>
           </a-empty>
           <a-table
             v-else
-            :data-source="banks"
+            :data-source="visibleBanks"
             :columns="columns"
             :pagination="false"
             row-key="id"
@@ -45,15 +64,31 @@
               </template>
               <template v-else-if="column.key === 'owner'">
                 <a-tag v-if="record.isPublic" color="blue">公共</a-tag>
-                <a-tag v-else color="default">{{ record.ownerName || '我的' }}</a-tag>
+                <a-tag v-else-if="record.memberLevel === 'owner'" color="green">我的</a-tag>
+                <a-tag v-else-if="record.memberLevel === 'admin'" color="purple">管理员</a-tag>
+                <a-tag v-else-if="record.memberLevel === 'editor'" color="blue">共享 · 可编辑</a-tag>
+                <a-tag v-else-if="record.memberLevel === 'viewer'">共享 · 只读</a-tag>
+                <a-tag v-else-if="record.visibility === 'public'">公开 · 只读</a-tag>
+                <a-tag v-else>其他</a-tag>
+                <div v-if="record.memberLevel !== 'owner' && record.ownerName" class="muted small">
+                  {{ record.ownerName }}
+                </div>
               </template>
               <template v-else-if="column.key === 'updatedAt'">
                 <span class="muted">{{ formatTime(record.updatedAt) }}</span>
               </template>
               <template v-else-if="column.key === 'actions'">
-                <a-space>
+                <a-space :size="2">
                   <a-button type="link" size="small" @click="router.push(`/banks/${record.id}`)">题目</a-button>
-                  <template v-if="canWrite(record)">
+                  <template v-if="record.canManage">
+                    <a-button
+                      v-if="!record.isPublic"
+                      type="link"
+                      size="small"
+                      @click="openSharing(record)"
+                    >
+                      共享
+                    </a-button>
                     <a-button type="link" size="small" @click="openEdit(record)">编辑</a-button>
                     <a-popconfirm
                       title="删除后该题库的题目也会一并移除，确定吗？"
@@ -64,6 +99,7 @@
                       <a-button type="link" size="small" danger>删除</a-button>
                     </a-popconfirm>
                   </template>
+                  <a-tag v-else-if="record.canEdit" color="blue">可编辑题目</a-tag>
                   <span v-else class="muted readonly">只读</span>
                 </a-space>
               </template>
@@ -86,9 +122,9 @@
         <a-form-item label="题库名称" required>
           <a-input v-model:value="form.name" :maxlength="60" placeholder="例如：2026 安全规程题库" />
         </a-form-item>
-        <a-form-item v-if="auth.isAdmin && !editing" label="共享范围">
+        <a-form-item v-if="auth.isAdmin && !editing" label="公共题库">
           <a-switch v-model:checked="form.public" />
-          <span class="muted switch-hint">开启后所有登录用户都能看到并使用该题库</span>
+          <span class="muted switch-hint">开启后作为公共题库，所有登录用户都能看到并使用</span>
         </a-form-item>
         <a-form-item label="说明">
           <a-textarea
@@ -101,6 +137,13 @@
       </a-form>
     </a-modal>
 
+    <BankSharingDrawer
+      v-model:open="sharingOpen"
+      :bank-id="sharingBank?.id ?? null"
+      :bank-name="sharingBank?.name"
+      @updated="load"
+    />
+
     <ImportQuestionsModal
       v-model:open="importOpen"
       :banks="banks"
@@ -110,12 +153,13 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/PageHeader.vue'
 import ImportQuestionsModal from '@/components/ImportQuestionsModal.vue'
+import BankSharingDrawer from '@/components/BankSharingDrawer.vue'
 import { useAuthStore } from '@/stores/auth'
 import { banksApi, type Bank } from '@/api/banks'
 
@@ -128,19 +172,50 @@ const importOpen = ref(false)
 const saving = ref(false)
 const editing = ref<Bank | null>(null)
 const form = reactive({ name: '', description: '', public: false })
+const tab = ref<'all' | 'mine' | 'shared' | 'public'>('all')
 
-function canWrite(bank: Bank) {
-  return auth.isAdmin || (bank.ownerId !== null && bank.ownerId !== undefined)
+const sharingOpen = ref(false)
+const sharingBank = ref<Bank | null>(null)
+
+function groupOf(bank: Bank): 'mine' | 'shared' | 'public' | 'other' {
+  if (bank.memberLevel === 'owner') return 'mine'
+  if (bank.memberLevel === 'viewer' || bank.memberLevel === 'editor') return 'shared'
+  if (bank.isPublic || bank.visibility === 'public') return 'public'
+  // 管理员看到的他人私有题库
+  return 'other'
 }
+
+const counts = computed(() => {
+  const out = { mine: 0, shared: 0, public: 0 }
+  for (const bank of banks.value) {
+    const group = groupOf(bank)
+    if (group === 'mine') out.mine += 1
+    else if (group === 'shared') out.shared += 1
+    else if (group === 'public') out.public += 1
+  }
+  return out
+})
+
+const visibleBanks = computed(() => {
+  if (tab.value === 'all') return banks.value
+  return banks.value.filter((bank) => groupOf(bank) === tab.value)
+})
+
+const emptyText = computed(() => {
+  if (tab.value === 'mine') return '你还没有自己的题库'
+  if (tab.value === 'shared') return '还没有人共享题库给你'
+  if (tab.value === 'public') return '还没有公共题库'
+  return '还没有题库'
+})
 
 const columns = [
   { title: '题库', key: 'name', dataIndex: 'name' },
   { title: '题目数', key: 'questionCount', dataIndex: 'questionCount', width: 100 },
   { title: '练习正确率', key: 'practice', width: 130 },
   { title: '最近练习', key: 'lastPracticedAt', width: 150 },
-  { title: '归属', key: 'owner', width: 110 },
-  { title: '更新时间', key: 'updatedAt', dataIndex: 'updatedAt', width: 165 },
-  { title: '操作', key: 'actions', width: 190 },
+  { title: '归属', key: 'owner', width: 130 },
+  { title: '更新时间', key: 'updatedAt', dataIndex: 'updatedAt', width: 160 },
+  { title: '操作', key: 'actions', width: 230 },
 ]
 
 function formatRate(rate: number) {
@@ -163,6 +238,10 @@ async function load() {
 }
 
 function openCreate() {
+  if (!auth.mayCreateBank) {
+    message.warning('管理员未开放新建题库的权限')
+    return
+  }
   editing.value = null
   form.name = ''
   form.description = ''
@@ -176,6 +255,11 @@ function openEdit(bank: Bank) {
   form.description = bank.description
   form.public = bank.isPublic
   modalOpen.value = true
+}
+
+function openSharing(bank: Bank) {
+  sharingBank.value = bank
+  sharingOpen.value = true
 }
 
 async function saveBank() {
@@ -225,4 +309,5 @@ onMounted(load)
 .switch-hint { margin-left: 10px; font-size: 12px; }
 .readonly { font-size: 12px; }
 .small { font-size: 12px; }
+.tabs { padding: 12px 16px 0; }
 </style>

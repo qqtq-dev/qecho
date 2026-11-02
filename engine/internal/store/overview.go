@@ -43,8 +43,9 @@ func (s *Store) Overview(user *User) (*Overview, error) {
 		WHERE q.is_deleted = 0 AND b.is_deleted = 0`
 	args := []any{}
 	if !admin {
-		q += " AND (b.owner_id IS NULL OR b.owner_id = ?)"
-		args = append(args, user.ID)
+		cond, condArgs := bankVisibleClause("b", user)
+		q += " AND " + cond
+		args = append(args, condArgs...)
 	}
 	if err := s.DB.QueryRow(q, args...).Scan(&out.QuestionCount); err != nil {
 		return nil, err

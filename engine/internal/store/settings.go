@@ -142,6 +142,7 @@ func settingsRetention(db queryer) map[BackupKind]int {
 		BackupPreImport:  5,
 		BackupPreMigrate: 3,
 		BackupPreRestore: 3,
+		BackupPreDelete:  3,
 	}
 	for key, kind := range map[string]BackupKind{
 		"backup_daily":       BackupDaily,

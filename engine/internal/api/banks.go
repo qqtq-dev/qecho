@@ -32,8 +32,13 @@ func pathID(r *http.Request, name string) (int64, bool) {
 }
 
 func (s *Server) listBanks(w http.ResponseWriter, r *http.Request) {
-	banks, err := s.store.ListBanks(userFrom(r))
+	user := userFrom(r)
+	banks, err := s.store.ListBanks(user)
 	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	if err := s.decorateBanks(user, banks); err != nil {
 		response.Internal(w, err)
 		return
 	}
@@ -46,7 +51,7 @@ func (s *Server) getBank(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "题库编号无效")
 		return
 	}
-	bank, ok := s.bankFor(w, r, id, false)
+	bank, ok := s.bankFor(w, r, id, accessRead)
 	if !ok {
 		return
 	}
@@ -64,6 +69,10 @@ func (s *Server) createBank(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user := userFrom(r)
+	if !user.MayCreateBank() {
+		response.Forbidden(w, "管理员未开放新建题库的权限")
+		return
+	}
 	var owner *int64
 	if in.Public {
 		if user.Role != "admin" {
@@ -78,6 +87,7 @@ func (s *Server) createBank(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, err.Error())
 		return
 	}
+	applyBankAccess(user, bank, "")
 	response.OK(w, bank)
 }
 
@@ -87,7 +97,7 @@ func (s *Server) updateBank(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "题库编号无效")
 		return
 	}
-	if _, ok := s.bankFor(w, r, id, true); !ok {
+	if _, ok := s.bankFor(w, r, id, accessManage); !ok {
 		return
 	}
 	var in struct {
@@ -116,7 +126,7 @@ func (s *Server) deleteBank(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "题库编号无效")
 		return
 	}
-	if _, ok := s.bankFor(w, r, id, true); !ok {
+	if _, ok := s.bankFor(w, r, id, accessManage); !ok {
 		return
 	}
 	if err := s.store.DeleteBank(id); err != nil {
@@ -133,8 +143,11 @@ func (s *Server) exportBank(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "题库编号无效")
 		return
 	}
-	bank, ok := s.bankFor(w, r, id, false)
+	bank, ok := s.bankFor(w, r, id, accessRead)
 	if !ok {
+		return
+	}
+	if !requireExportImport(w, r) {
 		return
 	}
 	if !isLoopback(r.RemoteAddr) {
@@ -184,8 +197,11 @@ func (s *Server) downloadBank(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "题库编号无效")
 		return
 	}
-	bank, ok := s.bankFor(w, r, id, false)
+	bank, ok := s.bankFor(w, r, id, accessRead)
 	if !ok {
+		return
+	}
+	if !requireExportImport(w, r) {
 		return
 	}
 	questions, err := s.store.ExportQuestions(id)
@@ -230,7 +246,7 @@ func (s *Server) listBankTags(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "题库编号无效")
 		return
 	}
-	if _, ok := s.bankFor(w, r, id, false); !ok {
+	if _, ok := s.bankFor(w, r, id, accessRead); !ok {
 		return
 	}
 	tags, err := s.store.ListBankTags(id)
@@ -310,8 +326,11 @@ func (s *Server) downloadBankImages(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "题库编号无效")
 		return
 	}
-	bank, ok := s.bankFor(w, r, id, false)
+	bank, ok := s.bankFor(w, r, id, accessRead)
 	if !ok {
+		return
+	}
+	if !requireExportImport(w, r) {
 		return
 	}
 	data, count, err := s.bankImagesZip(id)
@@ -338,7 +357,10 @@ func (s *Server) exportBankImages(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "题库编号无效")
 		return
 	}
-	if _, ok := s.bankFor(w, r, id, false); !ok {
+	if _, ok := s.bankFor(w, r, id, accessRead); !ok {
+		return
+	}
+	if !requireExportImport(w, r) {
 		return
 	}
 	if !isLoopback(r.RemoteAddr) {
@@ -382,7 +404,7 @@ func (s *Server) listQuestions(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "题库编号无效")
 		return
 	}
-	if _, ok := s.bankFor(w, r, id, false); !ok {
+	if _, ok := s.bankFor(w, r, id, accessRead); !ok {
 		return
 	}
 	query := r.URL.Query()
@@ -410,7 +432,7 @@ func (s *Server) createQuestion(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "题库编号无效")
 		return
 	}
-	if _, ok := s.bankFor(w, r, id, true); !ok {
+	if _, ok := s.bankFor(w, r, id, accessEdit); !ok {
 		return
 	}
 	var in store.QuestionInput
@@ -437,7 +459,7 @@ func (s *Server) updateQuestion(w http.ResponseWriter, r *http.Request) {
 		response.NotFound(w, "题目不存在")
 		return
 	}
-	if _, ok := s.bankFor(w, r, q.BankID, true); !ok {
+	if _, ok := s.bankFor(w, r, q.BankID, accessEdit); !ok {
 		return
 	}
 	var in store.QuestionInput
@@ -464,7 +486,7 @@ func (s *Server) deleteQuestion(w http.ResponseWriter, r *http.Request) {
 		response.NotFound(w, "题目不存在")
 		return
 	}
-	if _, ok := s.bankFor(w, r, q.BankID, true); !ok {
+	if _, ok := s.bankFor(w, r, q.BankID, accessEdit); !ok {
 		return
 	}
 	if err := s.store.DeleteQuestion(id); err != nil {

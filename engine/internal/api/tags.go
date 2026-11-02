@@ -8,21 +8,32 @@ import (
 	"quizbox/engine/internal/response"
 )
 
-func (s *Server) tagAdmin(w http.ResponseWriter, r *http.Request) (int64, bool) {
-	if userFrom(r).Role != "admin" {
-		response.Forbidden(w, "只有管理员可以管理标签")
-		return 0, false
-	}
+// tagManage 校验标签管理权限：管理员，或该标签所在题库的所有者。
+// 共享题库的 editor 只能给题目打标签，不能重命名/合并/删除标签。
+func (s *Server) tagManage(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	id, ok := pathID(r, "id")
 	if !ok {
 		response.BadRequest(w, "标签编号无效")
+		return 0, false
+	}
+	user := userFrom(r)
+	if user.Role == "admin" {
+		return id, true
+	}
+	owned, err := s.store.TagInOwnedBank(user.ID, id)
+	if err != nil {
+		response.Internal(w, err)
+		return 0, false
+	}
+	if !owned {
+		response.Forbidden(w, "只有标签所在题库的所有者可以管理标签")
 		return 0, false
 	}
 	return id, true
 }
 
 func (s *Server) renameTag(w http.ResponseWriter, r *http.Request) {
-	id, ok := s.tagAdmin(w, r)
+	id, ok := s.tagManage(w, r)
 	if !ok {
 		return
 	}
@@ -45,7 +56,7 @@ func (s *Server) renameTag(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) mergeTag(w http.ResponseWriter, r *http.Request) {
-	id, ok := s.tagAdmin(w, r)
+	id, ok := s.tagManage(w, r)
 	if !ok {
 		return
 	}
@@ -68,7 +79,7 @@ func (s *Server) mergeTag(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteTag(w http.ResponseWriter, r *http.Request) {
-	id, ok := s.tagAdmin(w, r)
+	id, ok := s.tagManage(w, r)
 	if !ok {
 		return
 	}

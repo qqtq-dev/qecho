@@ -92,6 +92,8 @@ func parseBackupKind(base string) BackupKind {
 		return BackupPreMigrate
 	case strings.HasPrefix(base, "quizbox-pre-restore-"):
 		return BackupPreRestore
+	case strings.HasPrefix(base, "quizbox-pre-delete-"):
+		return BackupPreDelete
 	default:
 		return BackupManual
 	}

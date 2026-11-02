@@ -18,7 +18,7 @@
             <span class="muted">导入到</span>
             <a-select v-model:value="mode" style="width: 132px">
               <a-select-option value="existing" :disabled="!banks?.length">已有题库</a-select-option>
-              <a-select-option value="new">新建题库</a-select-option>
+              <a-select-option value="new" :disabled="!auth.mayCreateBank">新建题库</a-select-option>
             </a-select>
             <a-select
               v-if="mode === 'existing'"
@@ -348,11 +348,7 @@ const commitLabel = computed(() => {
   return count > 0 ? `开始导入 ${count} 道` : '没有可导入的题目'
 })
 
-const writableBanks = computed(() =>
-  (props.banks ?? []).filter(
-    (b) => auth.isAdmin || (b.ownerId !== null && b.ownerId !== undefined),
-  ),
-)
+const writableBanks = computed(() => (props.banks ?? []).filter((b) => b.canEdit))
 const reverted = ref(false)
 
 const sizeText = computed(() => {

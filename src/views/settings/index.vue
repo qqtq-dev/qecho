@@ -66,6 +66,25 @@
                   {{ record.role === 'admin' ? '管理员' : '普通用户' }}
                 </a-tag>
               </template>
+              <template v-else-if="column.key === 'permissions'">
+                <span v-if="record.role === 'admin'" class="muted">全部权限</span>
+                <a-space v-else :size="14">
+                  <a-checkbox
+                    :checked="record.canCreateBank"
+                    :disabled="permSaving === record.id"
+                    @change="onCreatePermChange(record, $event)"
+                  >
+                    建题库
+                  </a-checkbox>
+                  <a-checkbox
+                    :checked="record.canExportImport"
+                    :disabled="permSaving === record.id"
+                    @change="onExportPermChange(record, $event)"
+                  >
+                    导出导入
+                  </a-checkbox>
+                </a-space>
+              </template>
               <template v-else-if="column.key === 'createdAt'">
                 <span class="muted">{{ formatTime(record.createdAt) }}</span>
               </template>
@@ -88,11 +107,29 @@
                   >
                     重置密码
                   </a-button>
+                  <a-popconfirm
+                    title="删除账号后，其个人题库会一并删除，创建的外联考试会被关闭（删除前自动备份）。确定吗？"
+                    ok-text="删除"
+                    cancel-text="取消"
+                    :width="320"
+                    @confirm="removeUser(record)"
+                  >
+                    <a-button
+                      size="small"
+                      danger
+                      :disabled="record.username === 'local' || record.username === auth.username"
+                    >
+                      删除
+                    </a-button>
+                  </a-popconfirm>
                 </a-space>
               </template>
             </template>
           </a-table>
-          <p class="note">重置密码会让该用户已登录的会话失效；本机账号请使用上方“修改密码”。</p>
+          <p class="note">
+            重置密码会让该用户已登录的会话失效；本机账号请使用上方“修改密码”。
+            「建题库」「导出导入」为普通用户的授权位，管理员始终具备；删除账号前会自动备份数据库。
+          </p>
         </div>
       </section>
 
@@ -562,9 +599,10 @@ const usersLoading = ref(false)
 const userColumns = [
   { title: '用户', key: 'username', dataIndex: 'username' },
   { title: '角色', key: 'role', width: 100 },
+  { title: '权限', key: 'permissions', width: 190 },
   { title: '注册时间', key: 'createdAt', width: 160 },
   { title: '最近登录', key: 'lastLoginAt', width: 160 },
-  { title: '操作', key: 'actions', width: 210 },
+  { title: '操作', key: 'actions', width: 300 },
 ]
 
 async function loadUsers() {
@@ -576,14 +614,63 @@ async function loadUsers() {
   }
 }
 
+const permSaving = ref<number | null>(null)
+
+function checkedOf(event: unknown): boolean {
+  return Boolean((event as { target?: { checked?: boolean } } | undefined)?.target?.checked)
+}
+
+function onCreatePermChange(item: UserItem, event: unknown) {
+  void togglePermission(item, 'canCreateBank', event)
+}
+
+function onExportPermChange(item: UserItem, event: unknown) {
+  void togglePermission(item, 'canExportImport', event)
+}
+
+async function togglePermission(
+  item: UserItem,
+  key: 'canCreateBank' | 'canExportImport',
+  event: unknown,
+) {
+  const next = { canCreateBank: item.canCreateBank, canExportImport: item.canExportImport }
+  next[key] = checkedOf(event)
+  permSaving.value = item.id
+  try {
+    await usersApi.updatePermissions(item.id, next)
+    item.canCreateBank = next.canCreateBank
+    item.canExportImport = next.canExportImport
+    message.success('权限已更新')
+  } catch {
+    await loadUsers()
+  } finally {
+    permSaving.value = null
+  }
+}
+
+function removeUser(item: UserItem) {
+  Modal.confirm({
+    title: '删除账号',
+    content: `删除 ${item.username} 后，其个人题库会一并删除，创建的外联考试会被关闭。删除前会自动备份，确定继续？`,
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    async onOk() {
+      await usersApi.remove(item.id)
+      message.success(`已删除 ${item.username}`)
+      await loadUsers()
+    },
+  })
+}
+
 function toggleRole(item: UserItem) {
   const target: 'admin' | 'user' = item.role === 'admin' ? 'user' : 'admin'
   Modal.confirm({
     title: target === 'admin' ? '设为管理员' : '取消管理员',
     content:
       target === 'admin'
-        ? `将 ${item.username} 设为管理员，可管理用户、共享标签与全局设置。`
-        : `将 ${item.username} 设为普通用户，其只能管理自己的题库。`,
+        ? `将 ${item.username} 设为管理员，可管理用户、全部题库与全局设置。`
+        : `将 ${item.username} 设为普通用户，之后只能访问自己的题库与被共享的题库；建题库与导出导入权限需在列表中单独授予。`,
     okText: '确定',
     cancelText: '取消',
     async onOk() {

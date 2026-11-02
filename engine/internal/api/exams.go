@@ -72,7 +72,7 @@ func (s *Server) createExam(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "请求格式不正确")
 		return
 	}
-	if _, ok := s.bankFor(w, r, in.BankID, false); !ok {
+	if _, ok := s.bankFor(w, r, in.BankID, accessRead); !ok {
 		return
 	}
 	if in.TimeLimitSec == 0 && in.TimeLimitMin > 0 {

@@ -262,12 +262,13 @@ func (s *Store) practiceScope(userID int64, in PracticeInput) (string, string, [
 		placeholders, idArgs := idPlaceholders(in.QuestionIDs)
 		where += " AND q.id IN (" + placeholders + ")"
 		args = append(args, idArgs...)
-		if !in.Admin {
-			where += ` AND EXISTS (
-				SELECT 1 FROM banks b2 WHERE b2.id = q.bank_id AND b2.is_deleted = 0
-				  AND (b2.owner_id IS NULL OR b2.owner_id = ?))`
-			args = append(args, userID)
-		}
+	}
+	if !in.Admin {
+		cond, condArgs := bankVisibleClause("b2", &User{ID: userID})
+		where += ` AND EXISTS (
+			SELECT 1 FROM banks b2 WHERE b2.id = q.bank_id AND b2.is_deleted = 0
+			  AND ` + cond + `)`
+		args = append(args, condArgs...)
 	}
 	if in.QuestionType != "" {
 		where += " AND q.type = ?"

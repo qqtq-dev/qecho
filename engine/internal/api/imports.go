@@ -87,7 +87,10 @@ func (s *Server) previewImport(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "题库编号无效")
 		return
 	}
-	if _, ok := s.bankFor(w, r, bankID, true); !ok {
+	if _, ok := s.bankFor(w, r, bankID, accessEdit); !ok {
+		return
+	}
+	if !requireExportImport(w, r) {
 		return
 	}
 	fileName, data, err := readImportFile(w, r)
@@ -296,7 +299,10 @@ func (s *Server) commitImport(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "导入目标与预览时不一致，请重新上传")
 		return
 	}
-	if _, ok := s.bankFor(w, r, bankID, true); !ok {
+	if _, ok := s.bankFor(w, r, bankID, accessEdit); !ok {
+		return
+	}
+	if !requireExportImport(w, r) {
 		return
 	}
 	if _, err := s.store.CreateBackup(store.BackupPreImport); err != nil {
@@ -331,7 +337,10 @@ func (s *Server) revertImport(w http.ResponseWriter, r *http.Request) {
 		response.Internal(w, err)
 		return
 	}
-	if _, ok := s.bankFor(w, r, bankID, true); !ok {
+	if _, ok := s.bankFor(w, r, bankID, accessEdit); !ok {
+		return
+	}
+	if !requireExportImport(w, r) {
 		return
 	}
 	count, kept, err := s.store.RevertImport(id)
@@ -348,7 +357,7 @@ func (s *Server) listImportJobs(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "题库编号无效")
 		return
 	}
-	if _, ok := s.bankFor(w, r, bankID, false); !ok {
+	if _, ok := s.bankFor(w, r, bankID, accessRead); !ok {
 		return
 	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
@@ -376,7 +385,7 @@ func (s *Server) importErrors(w http.ResponseWriter, r *http.Request) {
 		response.Internal(w, err)
 		return
 	}
-	if _, ok := s.bankFor(w, r, bankID, false); !ok {
+	if _, ok := s.bankFor(w, r, bankID, accessRead); !ok {
 		return
 	}
 	rows, err := s.store.ImportJobErrors(id)

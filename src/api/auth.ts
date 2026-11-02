@@ -5,6 +5,8 @@ export interface LoginResult {
   userId: number
   username: string
   role: 'admin' | 'user'
+  canCreateBank: boolean
+  canExportImport: boolean
 }
 
 export interface Profile {
@@ -12,6 +14,8 @@ export interface Profile {
   username: string
   role: 'admin' | 'user'
   desktop: boolean
+  canCreateBank: boolean
+  canExportImport: boolean
 }
 
 export interface Captcha {

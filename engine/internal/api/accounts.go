@@ -40,6 +40,7 @@ func (s *Server) issueSession(w http.ResponseWriter, user *store.User) {
 	_ = s.store.PruneSessions()
 	response.OK(w, map[string]any{
 		"token": token, "userId": user.ID, "username": user.Username, "role": user.Role,
+		"canCreateBank": user.MayCreateBank(), "canExportImport": user.MayExportImport(),
 	})
 }
 
@@ -126,6 +127,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	user := userFrom(r)
 	response.OK(w, map[string]any{
 		"id": user.ID, "username": user.Username, "role": user.Role, "desktop": s.desktop,
+		"canCreateBank": user.MayCreateBank(), "canExportImport": user.MayExportImport(),
 	})
 }
 

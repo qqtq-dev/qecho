@@ -133,7 +133,7 @@ func TestPreMigrationBackup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
-	// 模拟 v5 数据库：去掉 v6/v7/v8 新增的列，再回退版本号。
+	// 模拟 v5 数据库：去掉 v6 以后新增的列，再回退版本号。
 	drops := []string{
 		"ALTER TABLE question_options DROP COLUMN image",
 		"ALTER TABLE practice_sessions DROP COLUMN status",
@@ -149,6 +149,9 @@ func TestPreMigrationBackup(t *testing.T) {
 		"ALTER TABLE import_jobs DROP COLUMN errors_json",
 		"ALTER TABLE import_jobs DROP COLUMN duplicate_policy",
 		"ALTER TABLE exam_answers DROP COLUMN option_order",
+		"ALTER TABLE users DROP COLUMN can_create_bank",
+		"ALTER TABLE users DROP COLUMN can_export_import",
+		"ALTER TABLE banks DROP COLUMN visibility",
 	}
 	for _, stmt := range drops {
 		if _, err := st.DB.Exec(stmt); err != nil {

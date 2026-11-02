@@ -10,14 +10,27 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref<string>(getToken())
   const username = ref<string>(localStorage.getItem(USER_KEY) ?? '')
   const role = ref<'admin' | 'user' | ''>((localStorage.getItem(ROLE_KEY) as 'admin' | 'user') ?? '')
+  // 能力位由管理员授予，登录后由 /auth/login 或 /auth/me 下发。
+  const canCreateBank = ref(false)
+  const canExportImport = ref(false)
 
   const isAdmin = computed(() => role.value === 'admin')
   const loggedIn = computed(() => !!token.value)
+  const mayCreateBank = computed(() => isAdmin.value || canCreateBank.value)
+  const mayExportImport = computed(() => isAdmin.value || canExportImport.value)
 
-  function apply(tokenValue: string, name: string, roleValue: 'admin' | 'user') {
+  function apply(
+    tokenValue: string,
+    name: string,
+    roleValue: 'admin' | 'user',
+    createBank = false,
+    exportImport = false,
+  ) {
     token.value = tokenValue
     username.value = name
     role.value = roleValue
+    canCreateBank.value = createBank
+    canExportImport.value = exportImport
     persistToken(tokenValue)
     localStorage.setItem(USER_KEY, name)
     localStorage.setItem(ROLE_KEY, roleValue)
@@ -32,7 +45,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function login(user: string, password: string) {
     const r = await authApi.login(user, password)
-    apply(r.token, r.username, r.role)
+    apply(r.token, r.username, r.role, r.canCreateBank, r.canExportImport)
   }
 
   async function register(data: {
@@ -42,12 +55,12 @@ export const useAuthStore = defineStore('auth', () => {
     captchaAnswer: string
   }) {
     const r = await authApi.register(data)
-    apply(r.token, r.username, r.role)
+    apply(r.token, r.username, r.role, r.canCreateBank, r.canExportImport)
   }
 
   async function refresh() {
     const profile = await authApi.me()
-    apply(getToken(), profile.username, profile.role)
+    apply(getToken(), profile.username, profile.role, profile.canCreateBank, profile.canExportImport)
   }
 
   async function logout() {
@@ -63,12 +76,30 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = ''
     username.value = ''
     role.value = ''
+    canCreateBank.value = false
+    canExportImport.value = false
     persistToken('')
     localStorage.removeItem(USER_KEY)
     localStorage.removeItem(ROLE_KEY)
   }
 
-  return { token, username, role, isAdmin, loggedIn, login, register, refresh, logout, clear, adopt }
+  return {
+    token,
+    username,
+    role,
+    isAdmin,
+    loggedIn,
+    canCreateBank,
+    canExportImport,
+    mayCreateBank,
+    mayExportImport,
+    login,
+    register,
+    refresh,
+    logout,
+    clear,
+    adopt,
+  }
 })
 
 /**

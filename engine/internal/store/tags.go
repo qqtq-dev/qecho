@@ -49,8 +49,9 @@ func (s *Store) ListTags(viewer *User) ([]Tag, error) {
 	where := []string{"1=1"}
 	args := []any{}
 	if viewer.Role != "admin" {
-		where = append(where, "(b.id IS NULL OR b.owner_id IS NULL OR b.owner_id = ?)")
-		args = append(args, viewer.ID)
+		cond, condArgs := bankVisibleClause("b", viewer)
+		where = append(where, "(b.id IS NULL OR "+cond+")")
+		args = append(args, condArgs...)
 	}
 	query += " WHERE " + strings.Join(where, " AND ") + " GROUP BY t.id, t.name ORDER BY COUNT(DISTINCT q.id) DESC, t.name"
 	rows, err := s.DB.Query(query, args...)
@@ -138,6 +139,19 @@ func (s *Store) loadQuestionTags(q *Question) error {
 // deleteOrphanTags 清理已没有任何题目的标签。
 func (s *Store) deleteOrphanTags() {
 	_, _ = s.DB.Exec(`DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM question_tags)`)
+}
+
+// TagInOwnedBank 判断该标签是否出现在某个由 userID 拥有的题库中。
+// 共享题库的 editor 只能给题目打标签，重命名/合并/删除标签仅限题库所有者与管理员。
+func (s *Store) TagInOwnedBank(userID, tagID int64) (bool, error) {
+	var ok bool
+	err := s.DB.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1 FROM question_tags qt
+			JOIN questions q ON q.id = qt.question_id AND q.is_deleted = 0
+			JOIN banks b ON b.id = q.bank_id AND b.is_deleted = 0
+			WHERE qt.tag_id = ? AND b.owner_id = ?)`, tagID, userID).Scan(&ok)
+	return ok, err
 }
 
 func (s *Store) RenameTag(id int64, name string) error {

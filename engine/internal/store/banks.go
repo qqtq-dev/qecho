@@ -20,8 +20,15 @@ type Bank struct {
 	OwnerID         *int64  `json:"ownerId"`
 	OwnerName       string  `json:"ownerName"`
 	IsPublic        bool    `json:"isPublic"`
-	CreatedAt       string  `json:"createdAt"`
-	UpdatedAt       string  `json:"updatedAt"`
+	// Visibility 为 owner 设置的范围：private 仅所有者与成员可见，public 所有登录用户可读。
+	// 公共题库（owner_id 为空）恒为 public。
+	Visibility string `json:"visibility"`
+	// 以下字段按当前登录者计算，由 API 层填充。
+	MemberLevel string `json:"memberLevel"`
+	CanEdit     bool   `json:"canEdit"`
+	CanManage   bool   `json:"canManage"`
+	CreatedAt   string `json:"createdAt"`
+	UpdatedAt   string `json:"updatedAt"`
 }
 
 const bankColumns = `b.id, b.name, b.description,
@@ -37,7 +44,8 @@ const bankColumns = `b.id, b.name, b.description,
 	b.owner_id, COALESCE(u.username,''), b.created_at, b.updated_at,
 	(SELECT MAX(pa.answered_at) FROM practice_answers pa
 	   JOIN questions q ON q.id = pa.question_id
-	  WHERE q.bank_id = b.id)`
+	  WHERE q.bank_id = b.id),
+	b.visibility`
 
 func scanBank(row interface{ Scan(...any) error }) (*Bank, error) {
 	var b Bank
@@ -46,7 +54,7 @@ func scanBank(row interface{ Scan(...any) error }) (*Bank, error) {
 	var lastPracticed sql.NullString
 	if err := row.Scan(&b.ID, &b.Name, &b.Description, &b.QuestionCount,
 		&b.AnsweredCount, &correct, &owner, &b.OwnerName, &b.CreatedAt, &b.UpdatedAt,
-		&lastPracticed); err != nil {
+		&lastPracticed, &b.Visibility); err != nil {
 		return nil, err
 	}
 	if b.AnsweredCount > 0 {
@@ -60,6 +68,12 @@ func scanBank(row interface{ Scan(...any) error }) (*Bank, error) {
 		b.OwnerID = &id
 	}
 	b.IsPublic = !owner.Valid
+	if b.IsPublic {
+		b.Visibility = "public"
+	}
+	if b.Visibility == "" {
+		b.Visibility = "private"
+	}
 	return &b, nil
 }
 
@@ -132,10 +146,9 @@ func (s *Store) ListBanks(viewer *User) ([]Bank, error) {
 		FROM banks b LEFT JOIN users u ON u.id = b.owner_id
 		WHERE b.is_deleted = 0`
 	args := []any{}
-	if viewer.Role != "admin" {
-		query += " AND (b.owner_id IS NULL OR b.owner_id = ?)"
-		args = append(args, viewer.ID)
-	}
+	visibility, vArgs := bankVisibleClause("b", viewer)
+	query += " AND " + visibility
+	args = append(args, vArgs...)
 	query += " ORDER BY b.updated_at DESC, b.id DESC"
 	rows, err := s.DB.Query(query, args...)
 	if err != nil {
@@ -155,16 +168,20 @@ func (s *Store) ListBanks(viewer *User) ([]Bank, error) {
 
 func (s *Store) CreateBank(name, description string, ownerID *int64) (*Bank, error) {
 	now := nowString()
+	visibility := VisibilityPrivate
+	if ownerID == nil {
+		visibility = VisibilityPublic
+	}
 	res, err := s.DB.Exec(
-		"INSERT INTO banks(name, description, owner_id, created_at, updated_at) VALUES(?, ?, ?, ?, ?)",
-		name, description, ownerID, now, now,
+		"INSERT INTO banks(name, description, owner_id, visibility, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?)",
+		name, description, ownerID, visibility, now, now,
 	)
 	if err != nil {
 		return nil, err
 	}
 	id, _ := res.LastInsertId()
 	b := &Bank{ID: id, Name: name, Description: description, CreatedAt: now, UpdatedAt: now,
-		OwnerID: ownerID, IsPublic: ownerID == nil}
+		OwnerID: ownerID, IsPublic: ownerID == nil, Visibility: visibility}
 	return b, nil
 }
 

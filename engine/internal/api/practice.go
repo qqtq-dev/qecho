@@ -44,7 +44,7 @@ func (s *Server) createPractice(w http.ResponseWriter, r *http.Request) {
 			response.BadRequest(w, "题库编号无效")
 			return
 		}
-		if _, ok := s.bankFor(w, r, id, false); !ok {
+		if _, ok := s.bankFor(w, r, id, accessRead); !ok {
 			return
 		}
 	}
@@ -104,7 +104,7 @@ func (s *Server) previewPractice(w http.ResponseWriter, r *http.Request) {
 			response.BadRequest(w, "题库编号无效")
 			return
 		}
-		if _, ok := s.bankFor(w, r, id, false); !ok {
+		if _, ok := s.bankFor(w, r, id, accessRead); !ok {
 			return
 		}
 	}
