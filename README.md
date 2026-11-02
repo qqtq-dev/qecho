@@ -7,6 +7,10 @@
 >
 > 两种形态功能一致；桌面版另有系统托盘、系统保存对话框、防火墙放行等本机集成。
 
+## 界面预览
+
+![Qecho 桌面版登录页](docs/images/windows-login.png)
+
 完整设计见 [docs/题鸣详细设计文档.md](docs/题鸣详细设计文档.md)，安装与操作说明见 [docs/使用手册.md](docs/使用手册.md)，发版与版本清单见 [docs/版本发布.md](docs/版本发布.md)，服务端部署见 [docs/服务端部署.md](docs/服务端部署.md)，Linux 桌面版打包见 [docs/Linux打包.md](docs/Linux打包.md)。
 
 ## 当前进度
