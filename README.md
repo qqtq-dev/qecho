@@ -7,7 +7,7 @@
 >
 > 两种形态功能一致；桌面版另有系统托盘、系统保存对话框、防火墙放行等本机集成。
 
-完整设计见 [docs/题鸣详细设计文档.md](docs/题鸣详细设计文档.md)，安装与操作说明见 [docs/使用手册.md](docs/使用手册.md)，发版与版本清单见 [docs/版本发布.md](docs/版本发布.md)，服务端部署见 [docs/服务端部署.md](docs/服务端部署.md)。
+完整设计见 [docs/题鸣详细设计文档.md](docs/题鸣详细设计文档.md)，安装与操作说明见 [docs/使用手册.md](docs/使用手册.md)，发版与版本清单见 [docs/版本发布.md](docs/版本发布.md)，服务端部署见 [docs/服务端部署.md](docs/服务端部署.md)，Linux 桌面版打包见 [docs/Linux打包.md](docs/Linux打包.md)。
 
 ## 当前进度
 
@@ -62,6 +62,14 @@ pnpm tauri dev
 `build.ps1` 依次执行 `build-engine.ps1`（Go 引擎 → `src-tauri/binaries/`）、`pnpm install --frozen-lockfile`、`pnpm tauri build`。安装包输出到 `src-tauri/target/release/bundle/nsis/`。
 
 两个构建脚本都会从 `src-tauri/tauri.conf.json` 读取版本号并注入 `-X main.version`，因此「关于」页与 `/health` 显示的是真实版本；**不要手写不带 `-X main.version` 的 `go build`**，否则会退化成 `dev`，客户端也无法比对版本。
+
+Linux 桌面版（deb / rpm / AppImage）在 Ubuntu 24.04 容器里构建，宿主机只要装了 podman：
+
+```bash
+scripts/linux/build-in-container.sh deb    # 也可用 rpm / appimage
+```
+
+RHEL 9 系（Rocky、麒麟服务器版）没有 `webkit2gtk-4.1`，无法直接编译 Tauri 2，必须走容器；AppImage 的工具链需要经代理获取。完整说明与已知限制见 [docs/Linux打包.md](docs/Linux打包.md)。
 
 ## 静态资源托管（网页版）
 

@@ -15,7 +15,8 @@ engine/bin/
 
 # 本机数据与预编译引擎
 data/
-src-tauri/binaries/*.exe
+# 各平台 sidecar 二进制，均由 build-engine.ps1 / build-server.sh 生成
+src-tauri/binaries/
 
 # Tauri / Rust
 src-tauri/target/
@@ -39,3 +40,7 @@ dev-login.html
 
 # 服务端交叉编译产物
 dist-server/
+
+# 各平台安装包产物
+dist-linux/
+dist-windows/
