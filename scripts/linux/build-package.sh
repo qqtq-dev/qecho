@@ -62,8 +62,20 @@ case "$TARGET" in
     ;;
 
   appimage)
-    # tauri bundler 打 AppImage 时会从 GitHub 拉固定版本工具链，国内网络基本拿不到，
-    # 因此这里自己构造 AppDir 再调 linuxdeploy，工具包经代理预置。
+    # 优先走 tauri 自带 bundler：它会自己拉 AppRun、linuxdeploy、linuxdeploy-plugin-appimage，
+    # 实测这几个下载认 HTTP(S)_PROXY，配了代理就能一次成功，产物自包含（webkit2gtk 等库都在里面）。
+    if [ -n "${HTTPS_PROXY:-${https_proxy:-}}" ] || [ -n "${HTTP_PROXY:-${http_proxy:-}}" ]; then
+      log "有代理，用 tauri 自带 bundler 打 AppImage"
+      if npx tauri build --bundles appimage; then
+        log "产物"
+        find "$ROOT/src-tauri/target/release/bundle/appimage" -maxdepth 1 -name '*.AppImage' \
+          -printf '%p  %kKB\n'
+        exit 0
+      fi
+      log "原生打包失败，退回手动 AppDir"
+    fi
+
+    # 没代理时 bundler 拉不到 GitHub 工具链，改为自己构造 AppDir 再调 linuxdeploy。
     log "编译（不打包）"
     npx tauri build --no-bundle
 

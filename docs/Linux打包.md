@@ -6,7 +6,7 @@ Windows 用 `build.ps1` 一条命令出 NSIS 安装包，Linux 这边情况不�
 |---|---|---|
 | `Qecho_0.2.0_amd64.deb` | Ubuntu 22.04+、Debian 12+、深度、优麒麟 | 否，依赖系统 `libwebkit2gtk-4.1-0`、`libgtk-3-0`、`libayatana-appindicator3-1` |
 | `Qecho-0.2.0-1.x86_64.rpm` | 麒麟 V10（rpm 版）、统信 UOS（rpm 版）、Rocky/Fedora/CentOS 9+ | 否，同上 |
-| `Qecho-x86_64.AppImage` | 任意 x86_64 桌面发行版 | 是，WebKitGTK 等 159 个库全部打进去了，约 94 MB |
+| `Qecho_0.2.0_amd64.AppImage` | 任意 x86_64 桌面发行版 | 是，WebKitGTK 等 178 个库全部打进去了，约 86 MB |
 
 普通用户优先给 AppImage（双击即用、不用装依赖），其次是 deb。
 
@@ -46,7 +46,8 @@ scripts/linux/build-in-container.sh appimage
 ```
 src-tauri/target/release/bundle/deb/Qecho_0.2.0_amd64.deb
 src-tauri/target/release/bundle/rpm/Qecho-0.2.0-1.x86_64.rpm
-Qecho-x86_64.AppImage                       # 仓库根目录
+src-tauri/target/release/bundle/appimage/Qecho_0.2.0_amd64.AppImage   # 有代理走官方 bundler
+Qecho-x86_64.AppImage                                               # 无代理退回手动方案
 ```
 
 ## 三个脚本各自做什么
@@ -59,22 +60,24 @@ Qecho-x86_64.AppImage                       # 仓库根目录
 
 镜像源都走了国内：apt → 阿里云，npm → npmmirror，crates → rsproxy，容器镜像 → `docker.m.daocloud.io`。
 
-## AppImage 为什么要单独处理
+## AppImage：有代理就用官方 bundler
 
-`tauri build --bundles appimage` 会从 GitHub 下载**固定版本**的 linuxdeploy 工具链，国内网络拿不到：
+`tauri build --bundles appimage` 会下载**固定版本**的 AppRun、linuxdeploy、linuxdeploy-plugin-appimage，国内直连 GitHub 拿不到时报：
 
 ```
 Downloading https://github.com/tauri-apps/binary-releases/releases/download/linuxdeploy-07333c6/linuxdeploy-x86_64.AppImage
 failed to bundle project: `io: Network is unreachable (os error 101)`
 ```
 
-所以 `build-package.sh appimage` 不复用 tauri 的 bundler，而是：
+但它的下载器认 `HTTP_PROXY` / `HTTPS_PROXY`（已实测）：**配了代理时 `build-package.sh appimage` 直接调官方 bundler**，产物在 `src-tauri/target/release/bundle/appimage/Qecho_0.2.0_amd64.AppImage`，约 86 MB，解包后 `usr/lib` 里有 178 个库（`libwebkit2gtk-4.1` 等都在），自包含。
+
+没代理时才退回手动方案，产物是仓库根目录的 `Qecho-x86_64.AppImage`（约 92 MB）：
 
 1. `tauri build --no-bundle` 只编译出 `quizbox-desktop`
 2. 手动构造 AppDir（主程序、sidecar、图标、`.desktop`）
-3. 用经代理预置的 `linuxdeploy` + `--plugin gtk` 生成 AppImage
+3. 用经镜像预置的 `linuxdeploy` + `--plugin gtk` 生成 AppImage
 
-代理地址可用环境变量覆盖，默认 `https://ghfast.top/`：
+手动方案的镜像地址可用环境变量覆盖，默认 `https://ghfast.top/`：
 
 ```bash
 GH_PROXY=https://gh-proxy.com/ scripts/linux/build-package.sh appimage
