@@ -68,8 +68,9 @@
               <div class="analysis-box">
                 <div class="analysis-head">
                   <div class="analysis-title">解析</div>
+                  <!-- 面板开着时按钮常驻，保证任何时刻都能收起；没开面板才要求先作答 -->
                   <a-button
-                    v-if="aiReady && currentAnswer"
+                    v-if="aiReady && (aiOpen || currentAnswer)"
                     size="small"
                     class="ai-ask-btn"
                     @click="aiOpen = !aiOpen"
@@ -853,6 +854,8 @@ function onKeydown(e: KeyboardEvent) {
 function go(next: number) {
   if (!session.value) return
   if (next < 0 || next >= session.value.totalCount) return
+  // 切题即收起 AI 面板：会话已随切题作废，留着只会挡住答题卡并在切题瞬间自动发新首问
+  aiOpen.value = false
   index.value = next
   const item = questions.value[next]
   chosen.value = item && answers[item.id] ? [...answers[item.id].chosen] : []
