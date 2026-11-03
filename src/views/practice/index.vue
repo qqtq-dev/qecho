@@ -75,7 +75,7 @@
                     class="ai-setup-hint"
                     @click="router.push('/settings')"
                   >
-                    想用 AI 答疑？去设置配置 →
+                    配置 AI 答疑 →
                   </a-button>
                   <!-- 面板开着时按钮常驻，保证任何时刻都能收起；没开面板才要求先作答 -->
                   <a-button
