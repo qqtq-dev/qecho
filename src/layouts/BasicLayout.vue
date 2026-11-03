@@ -22,7 +22,9 @@
           @open-change="onNoticeOpenChange"
         >
           <template #content>
-            <div class="notice-wrap">
+            <!-- key 绑内容指纹：异步数据（升级卡片/通知列表）到达后节点重建，antd 重新测量定位，
+                 否则气泡按弹出时的矮内容定位，卡片插进来会底部截断/箭头错位 -->
+            <div :key="`${hasUpdate ? 1 : 0}-${notices.length}`" class="notice-wrap">
               <div v-if="hasUpdate" class="update-card">
                 <div class="update-top">
                   <Download :size="13" />
