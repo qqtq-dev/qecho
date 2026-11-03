@@ -1,8 +1,8 @@
 {
   "version": "0.2.3",
-  "publishedAt": "2026-11-02",
-  "notes": "AI 答疑支持 BIC-QA 与通用大模型双通道，两条配置各自保存、同时只生效一条；新增 Linux 服务端网页版一键安装包；修正练习页选项文字对齐。",
-  "url": "https://gitee.com/qqtq/qecho-releases/releases/tag/v0.2.1",
-  "downloadUrl": "https://gitee.com/qqtq/qecho-releases/releases/tag/v0.2.1",
+  "publishedAt": "2026-11-03",
+  "notes": "AI 答疑修复：切题必开新对话、切题自动收起面板、新练习不再残留会话；未配置 AI 时解析区显示配置引导；铃铛通知气泡错位修复；考试参与者页品牌更新为 Qecho 在线考试并精简限时提示。",
+  "url": "https://gitee.com/qqtq/qecho-releases/releases/tag/v0.2.3",
+  "downloadUrl": "https://gitee.com/qqtq/qecho-releases/releases/tag/v0.2.3",
   "force": false
 }
