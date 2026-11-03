@@ -105,11 +105,6 @@
   .exam-head-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .exam-title { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
   .head-right { flex: none; display: flex; align-items: center; gap: 8px; }
-  .time-chip {
-    font-size: 12px; color: var(--green-dark);
-    background: var(--green-soft); border-radius: 999px; padding: 2px 9px;
-    white-space: nowrap;
-  }
   .nav-toggle {
     border: 1px solid var(--green); background: #fff; color: var(--green-dark);
     border-radius: 6px; padding: 4px 9px; font-size: 12.5px; font-weight: 600; cursor: pointer;
@@ -568,11 +563,6 @@
     }
   }
 
-  function fmtLimit(sec) {
-    if (!sec) return '不限时';
-    return '限时 ' + Math.round(sec / 60) + ' 分钟';
-  }
-
   function navButton(q) {
     var num = el('button', {
       class: 'q-nav-num', type: 'button', 'data-nav': String(q.seq),
@@ -664,11 +654,11 @@
       panel.classList.toggle('hidden');
       navToggle.classList.toggle('open', !panel.classList.contains('hidden'));
     });
-    var timeChip = el('span', { class: 'time-chip', text: fmtLimit(data.timeLimitSec) });
     var head = el('div', { class: 'exam-head' }, [
       el('div', { class: 'exam-head-row' }, [
         el('div', { class: 'exam-title', text: data.title }),
-        el('div', { class: 'head-right' }, [timeChip, navToggle, timer]),
+        // 时长强制必填（1–360 分钟），倒计时本身就是时长展示，不再放「限时 X 分钟」药丸
+        el('div', { class: 'head-right' }, [navToggle, timer]),
       ]),
     ]);
 
