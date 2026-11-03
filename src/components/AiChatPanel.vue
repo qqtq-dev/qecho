@@ -236,46 +236,14 @@ function reset() {
   stopTimer()
 }
 
-/**
- * 面板由父组件 v-if 控制挂载，关闭即销毁实例。把已完成的会话按题目缓存在模块层，
- * 同一题关掉再打开时原样恢复，不重发首问；切题时也能找回之前问过的记录。
- * 只留最近 20 题，防止长时间练习内存一直涨。
- */
-const CACHE_MAX = 20
-const chatCache = new Map<number, { turns: Turn[]; conversationId: string }>()
-
-function saveToCache() {
-  if (!turns.value.length) return
-  // 在途的轮次定格：有正文就算完成，只有思考没正文就丢弃
-  for (const t of turns.value) {
-    if (t.state !== 'done' && t.state !== 'error') {
-      if (t.answer.trim()) {
-        t.state = 'done'
-        if (!t.endedAt) t.endedAt = Date.now()
-      }
-    }
+/** 展开时的入口：本实例里已有会话就接着用，没有才对当前题发起首问 */
+function openOrRestore() {
+  if (turns.value.length) {
+    measureQuestions()
+    scrollToBottom()
+  } else {
+    void send(buildInitialQuestion())
   }
-  const kept = turns.value.filter((t) => t.state === 'done' || t.state === 'error')
-  if (!kept.length) return
-  chatCache.delete(props.questionId)
-  chatCache.set(props.questionId, { turns: kept, conversationId: conversationId.value })
-  while (chatCache.size > CACHE_MAX) {
-    const oldest = chatCache.keys().next().value
-    if (oldest === undefined) break
-    chatCache.delete(oldest)
-  }
-}
-
-function restoreFromCache(id: number): boolean {
-  const saved = chatCache.get(id)
-  if (!saved) return false
-  chatCache.delete(id)
-  turns.value = saved.turns
-  conversationId.value = saved.conversationId
-  input.value = ''
-  busy.value = false
-  version.value = 0
-  return true
 }
 
 /** 最多带入的已完成轮次。通用模型按 token 计费，太长既贵又挤占回答本身的额度。 */
@@ -395,16 +363,6 @@ function stop() {
   stopTimer()
 }
 
-/** 展开时的入口：有记录直接恢复，没有才对当前题发起首问 */
-function openOrRestore() {
-  if (turns.value.length || restoreFromCache(props.questionId)) {
-    measureQuestions()
-    scrollToBottom()
-  } else {
-    void send(buildInitialQuestion())
-  }
-}
-
 // 标题跟当前生效通道走：BIC-QA 显示 BIC-QA，通用模型显示服务商名（匹配不到就叫通用大模型）
 const channelTitle = ref('AI 答疑')
 
@@ -420,7 +378,6 @@ onMounted(() => {
     .catch(() => { /* 读不到配置就保持默认标题 */ })
 })
 onBeforeUnmount(() => {
-  saveToCache()
   resizeObserver?.disconnect()
   resizeObserver = null
 })
@@ -429,14 +386,12 @@ watch(mode, (value) => {
   localStorage.setItem(MODE_KEY, value)
 })
 
-// 收起状态里切题：旧题会话存缓存，新题有缓存就静默恢复，等展开时直接看
+// 切题必开新对话：旧会话直接丢弃（含在途流式），新题展开就发新首问，绝不含上一题内容
 watch(
   () => props.questionId,
   () => {
-    saveToCache()
     reset()
     if (props.open) openOrRestore()
-    else restoreFromCache(props.questionId)
   },
 )
 
