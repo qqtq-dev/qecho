@@ -68,9 +68,18 @@
               <div class="analysis-box">
                 <div class="analysis-head">
                   <div class="analysis-title">解析</div>
+                  <!-- 未配置（配置读取完成且 ready=false）时在按钮原位显示引导；null=还在读取，不闪 -->
+                  <a-button
+                    v-if="aiReady === false"
+                    size="small"
+                    class="ai-setup-hint"
+                    @click="router.push('/settings')"
+                  >
+                    想用 AI 答疑？去设置配置 →
+                  </a-button>
                   <!-- 面板开着时按钮常驻，保证任何时刻都能收起；没开面板才要求先作答 -->
                   <a-button
-                    v-if="aiReady && (aiOpen || currentAnswer)"
+                    v-else-if="aiReady && (aiOpen || currentAnswer)"
                     size="small"
                     class="ai-ask-btn"
                     @click="aiOpen = !aiOpen"
@@ -567,7 +576,8 @@ const answeredCount = computed(() => Object.keys(answers).length)
 const correctCount = computed(() => Object.values(answers).filter((a) => a.result.isCorrect).length)
 
 // AI 答疑：仅在服务端已启用并配置凭据时显示入口
-const aiReady = ref(false)
+// null=配置还在读取（引导不闪），false=未配置，true=已配置
+const aiReady = ref<boolean | null>(null)
 const aiOpen = ref(false)
 const aiOptions = computed(() =>
   (current.value?.options ?? []).map((o) => `${o.label}. ${o.content}`),
@@ -1051,6 +1061,16 @@ onUnmounted(() => {
 .analysis-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
 .analysis-title { font-size: 13px; font-weight: 600; }
 .ai-ask-btn { height: 24px; padding: 0 8px; font-size: 12px; }
+/* AI 未配置引导：柔和药丸链接样式，与「问 AI」同位同尺寸 */
+.ai-setup-hint {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+  border: none;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
 .analysis-text { color: var(--text); white-space: pre-wrap; }
 .quiz-actions {
   display: flex; justify-content: space-between; align-items: center;
