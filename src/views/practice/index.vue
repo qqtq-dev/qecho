@@ -607,6 +607,8 @@ function clearAnswers() {
 
 function applySession(detail: PracticeDetail) {
   clearAnswers()
+  // 新练习/续练都算新开始：AI 面板复位，避免上一组的展开状态带到第一题、挂载即自动发首问
+  aiOpen.value = false
   session.value = detail.session
   questions.value = detail.questions
   for (const a of detail.answers) {
