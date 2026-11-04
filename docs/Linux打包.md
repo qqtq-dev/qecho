@@ -4,9 +4,9 @@ Windows 用 `build.ps1` 一条命令出 NSIS 安装包，Linux 这边情况不�
 
 | 产物 | 适用系统 | 是否自包含 |
 |---|---|---|
-| `Qecho_0.2.0_amd64.deb` | Ubuntu 22.04+、Debian 12+、深度、优麒麟 | 否，依赖系统 `libwebkit2gtk-4.1-0`、`libgtk-3-0`、`libayatana-appindicator3-1` |
-| `Qecho-0.2.0-1.x86_64.rpm` | 麒麟 V10（rpm 版）、统信 UOS（rpm 版）、Rocky/Fedora/CentOS 9+ | 否，同上 |
-| `Qecho_0.2.0_amd64.AppImage` | 任意 x86_64 桌面发行版 | 基本自包含，WebKitGTK 等 178 个库全部打进去了，约 86 MB；显卡库（`libGL` 等）仍需系统提供，见下文 |
+| `Qecho_0.2.5_amd64.deb` | Ubuntu 22.04+、Debian 12+、深度、优麒麟 | 否，依赖系统 `libwebkit2gtk-4.1-0`、`libgtk-3-0`、`libayatana-appindicator3-1` |
+| `Qecho-0.2.5-1.x86_64.rpm` | 麒麟 V10（rpm 版）、统信 UOS（rpm 版）、Rocky/Fedora/CentOS 9+ | 否，同上 |
+| `Qecho_0.2.5_amd64.AppImage` | 任意 x86_64 桌面发行版 | 基本自包含，WebKitGTK 等 178 个库全部打进去了，约 92 MB；显卡库（`libGL` 等）仍需系统提供，见下文 |
 
 普通用户优先给 AppImage（双击即用、不用装依赖），其次是 deb。
 
@@ -44,9 +44,9 @@ scripts/linux/build-in-container.sh appimage
 产物位置：
 
 ```
-src-tauri/target/release/bundle/deb/Qecho_0.2.0_amd64.deb
-src-tauri/target/release/bundle/rpm/Qecho-0.2.0-1.x86_64.rpm
-src-tauri/target/release/bundle/appimage/Qecho_0.2.0_amd64.AppImage   # 有代理走官方 bundler
+src-tauri/target/release/bundle/deb/Qecho_0.2.5_amd64.deb
+src-tauri/target/release/bundle/rpm/Qecho-0.2.5-1.x86_64.rpm
+src-tauri/target/release/bundle/appimage/Qecho_0.2.5_amd64.AppImage   # 有代理走官方 bundler
 Qecho-x86_64.AppImage                                               # 无代理退回手动方案
 ```
 
@@ -69,7 +69,7 @@ Downloading https://github.com/tauri-apps/binary-releases/releases/download/linu
 failed to bundle project: `io: Network is unreachable (os error 101)`
 ```
 
-但它的下载器认 `HTTP_PROXY` / `HTTPS_PROXY`（已实测）：**配了代理时 `build-package.sh appimage` 直接调官方 bundler**，产物在 `src-tauri/target/release/bundle/appimage/Qecho_0.2.0_amd64.AppImage`，约 86 MB，解包后 `usr/lib` 里有 178 个库（`libwebkit2gtk-4.1` 等都在），自包含。
+但它的下载器认 `HTTP_PROXY` / `HTTPS_PROXY`（已实测）：**配了代理时 `build-package.sh appimage` 直接调官方 bundler**，产物在 `src-tauri/target/release/bundle/appimage/Qecho_0.2.5_amd64.AppImage`，约 92 MB，解包后 `usr/lib` 里有 178 个库（`libwebkit2gtk-4.1` 等都在），自包含。
 
 没代理时才退回手动方案，产物是仓库根目录的 `Qecho-x86_64.AppImage`（约 92 MB）：
 
@@ -125,7 +125,7 @@ sudo apt install -y libgl1 libegl1 libgbm1
 
 如果补完 GL 后接着报 `cannot open display` 或 `Failed to connect to display`，说明这台机器没有图形界面（云主机常见），AppImage 不是适用场景，得配 X11 转发或装 VNC/桌面环境。
 
-rpm 系还有更省事的路：直接 `sudo dnf install ./Qecho-0.2.0-1.x86_64.rpm`，依赖交给包管理器自动补。前提是软件源里有 `webkit2gtk4.1`——RHEL 9.2+ / OpenCloudOS 9 有，CentOS 7、8 没有。
+rpm 系还有更省事的路：直接 `sudo dnf install ./Qecho-0.2.5-1.x86_64.rpm`，依赖交给包管理器自动补。前提是软件源里有 `webkit2gtk4.1`——RHEL 9.2+ / OpenCloudOS 9 有，CentOS 7、8 没有。
 
 ## 已知限制
 
