@@ -233,7 +233,7 @@
                   :min="1"
                   :max="candidateTotal || 99999"
                   :precision="0"
-                  placeholder="起始"
+                  placeholder="1"
                   class="range-input"
                 />
                 <span class="range-sep">—</span>
@@ -251,6 +251,7 @@
                 <template v-if="loadingCandidates">正在统计题数…</template>
                 <template v-else-if="candidateTotal > 0">
                   当前筛选共 {{ candidateTotal }} 道 · {{ rangeSummary }}
+                  <span v-if="!form.startSeq">（起始按第 1 题算）</span>
                 </template>
                 <template v-else>请先选择题库</template>
               </div>
