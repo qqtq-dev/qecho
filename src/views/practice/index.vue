@@ -198,13 +198,14 @@
                 <a-radio-button value="fixed">按题序</a-radio-button>
               </a-radio-group>
             </a-form-item>
-            <a-form-item v-if="form.order === 'fixed'" label="题序范围">
+            <a-form-item label="题序范围">
               <div class="range-row">
                 <a-input-number
                   v-model:value="form.startSeq"
                   :min="1"
                   :max="candidateTotal || 99999"
                   :precision="0"
+                  placeholder="起始"
                   class="range-input"
                 />
                 <span class="range-sep">—</span>
@@ -254,7 +255,13 @@
               <a-select v-model:value="form.difficulty" :options="difficultyOptions" style="width: 100%" />
             </a-form-item>
             <a-form-item v-if="form.order !== 'fixed'" label="题量">
-              <a-select v-model:value="form.count" :options="countOptions" style="width: 100%" />
+              <a-select
+                v-model:value="form.count"
+                :options="countOptions"
+                style="width: 100%"
+                @change="onCountChange"
+              />
+              <div v-if="pickSummary" class="range-hint muted">{{ pickSummary }}</div>
             </a-form-item>
             <a-form-item label="选项乱序">
               <a-switch v-model:checked="form.shuffleOptions" />
@@ -413,29 +420,7 @@ watch(
   },
 )
 
-// 按题序的默认范围与题量保持一致：起始 1、结束 = 题量（题量为“全部”时留空）
-watch(
-  () => form.order,
-  (order) => {
-    if (order !== 'fixed') return
-    if (form.endSeq === null || form.endSeq <= 0) {
-      form.startSeq = 1
-      form.endSeq = form.count > 0 ? form.count : null
-    }
-  },
-)
-
-watch(
-  () => form.count,
-  (count) => {
-    if (form.order !== 'fixed') return
-    if (form.startSeq === 1 && (form.endSeq === null || form.endSeq > 0)) {
-      form.endSeq = count > 0 ? count : null
-    }
-  },
-)
-
-// 题序范围摘要：显示实际会练到哪几道
+// 题序范围摘要：显示实际会练到哪几道；起始 1 + 末题留空视为“全库”
 const rangeSummary = computed(() => {
   const total = candidateTotal.value
   const start = Math.max(1, form.startSeq || 1)
@@ -443,11 +428,77 @@ const rangeSummary = computed(() => {
   const end = total > 0 ? Math.min(rawEnd || total, total) : rawEnd
   if (end < start) return '结束题号小于起始题号'
   const span = end - start + 1
-  if (total > 0 && end >= total && rawEnd === 0) {
-    return `第 ${start} 题到末题（共 ${span} 道）`
+  if (rawEnd === 0) {
+    return start <= 1 ? `全库 ${span} 道` : `第 ${start} 题到末题（共 ${span} 道）`
   }
   return `第 ${start}–${end} 题（共 ${span} 道）`
 })
+
+// 是否真的限定了范围（起始 1 + 末题留空 = 全库，不算）
+const rangeActive = computed(() => {
+  const rawEnd = form.endSeq && form.endSeq > 0 ? form.endSeq : 0
+  return Math.max(1, form.startSeq || 1) > 1 || rawEnd > 0
+})
+
+// 范围里实际有多少道（没限定范围时等于候选总数）
+const rangeSpan = computed(() => {
+  if (!rangeActive.value) return candidateTotal.value
+  const total = candidateTotal.value
+  const start = Math.max(1, form.startSeq || 1)
+  const rawEnd = form.endSeq && form.endSeq > 0 ? form.endSeq : 0
+  const end = total > 0 ? Math.min(rawEnd || total, total) : rawEnd
+  if (end < start) return 0
+  return end - start + 1
+})
+
+// 随机时实际会做多少道：题量选“全部”就是整段
+const pickCount = computed(() => {
+  const span = rangeSpan.value
+  if (form.count <= 0) return span
+  return span > 0 ? Math.min(form.count, span) : form.count
+})
+
+// 把“范围 + 题量”翻译成一句人话，免得用户自己算
+const pickSummary = computed(() => {
+  const total = candidateTotal.value
+  if (form.order === 'fixed' || total <= 0) return ''
+  const n = pickCount.value
+  if (n <= 0) return ''
+  const start = Math.max(1, form.startSeq || 1)
+  const rawEnd = form.endSeq && form.endSeq > 0 ? form.endSeq : 0
+  const end = Math.min(rawEnd || total, total)
+  if (!rangeActive.value) {
+    return form.count > 0 ? `从全库 ${total} 道中随机抽 ${n} 道` : `全库 ${total} 道全部打乱`
+  }
+  return form.count > 0
+    ? `从第 ${start}–${end} 题中随机抽 ${n} 道，不重复`
+    : `第 ${start}–${end} 题全部打乱，共 ${n} 道`
+})
+
+// 切到“按题序”时，若还没填范围，就用题量兜一个默认段，保持原来的直觉
+watch(
+  () => form.order,
+  (order) => {
+    if (order !== 'fixed' || rangeActive.value) return
+    form.startSeq = 1
+    form.endSeq = form.count > 0 ? form.count : null
+  },
+)
+
+// 用户亲手改过题量后就不再自动跟随范围
+let countTouched = false
+function onCountChange() {
+  countTouched = true
+}
+
+// 范围一填，题量默认切到“全部”（这段全做）；清空范围则回到 20 题
+watch(
+  () => [form.startSeq, form.endSeq].join('|'),
+  () => {
+    if (form.order !== 'random' || countTouched) return
+    form.count = rangeActive.value ? 0 : 20
+  },
+)
 
 // 上次同题库“按题序”练习的结束位置 + 1，用于一键接着往下练
 const nextRangeStart = computed(() => {
@@ -528,6 +579,10 @@ const countOptions = computed(() => {
     { label: '100 题', value: 100 },
     { label: '全部', value: 0 },
   ]
+  // “全部”在当前范围下就是整段，把实际道数标出来
+  if (rangeActive.value && rangeSpan.value > 0) {
+    options[options.length - 1].label = `全部（${rangeSpan.value} 道）`
+  }
   if (!options.some((o) => o.value === form.count)) {
     options.splice(options.length - 1, 0, { label: `${form.count} 题`, value: form.count })
   }
@@ -603,12 +658,12 @@ function formatDuration(seconds: number) {
 }
 
 function orderLabel(item: PracticeSession) {
-  if (item.order === 'random') return '随机'
-  if (item.rangeStart > 0) {
-    const end = item.rangeEnd > 0 ? item.rangeEnd : item.rangeStart + item.totalCount - 1
-    return `按题序 ${item.rangeStart}–${end}`
+  const start = item.rangeStart > 0 ? item.rangeStart : 0
+  const end = start > 0 ? (item.rangeEnd > 0 ? item.rangeEnd : start + item.totalCount - 1) : 0
+  if (item.order === 'random') {
+    return start > 0 ? `随机 · 第 ${start}–${end} 题` : '随机'
   }
-  return '按题序'
+  return start > 0 ? `按题序 ${start}–${end}` : '按题序'
 }
 
 function clearAnswers() {
@@ -688,7 +743,8 @@ async function removeSession(id: number) {
 
 async function start(source: 'bank' | 'wrong' = 'bank', bankIdsOverride?: number[]) {
   if (starting.value) return
-  const useRange = source === 'bank' && form.order === 'fixed'
+  // 题序范围对两种顺序都生效：按题序是顺序练这一段，随机是只在这段里抽题
+  const useRange = source === 'bank' && rangeActive.value
   if (useRange) {
     const start = Math.max(1, form.startSeq || 1)
     if (form.endSeq && form.endSeq > 0 && form.endSeq < start) {
@@ -700,8 +756,8 @@ async function start(source: 'bank' | 'wrong' = 'bank', bankIdsOverride?: number
   try {
     const res = await practiceApi.start({
       bankIds: source === 'wrong' ? bankIdsOverride : form.bankIds,
-      // 按题序时由题序范围决定题量，不再额外限制数量
-      count: source === 'wrong' || useRange ? 0 : form.count,
+      // 按题序时由题序范围决定题量；随机时由题量决定抽几道
+      count: source === 'wrong' || form.order === 'fixed' ? 0 : form.count,
       order: form.order,
       startSeq: useRange ? Math.max(1, form.startSeq || 1) : undefined,
       endSeq: useRange ? form.endSeq || 0 : undefined,

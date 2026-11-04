@@ -363,17 +363,64 @@ func TestPracticeRangeSkipsLeadingQuestions(t *testing.T) {
 		t.Fatalf("candidates = %d, err = %v, want 10", total, err)
 	}
 
+	// 随机 + 题序范围：只在范围内抽题，题量超过范围长度时以范围为准
 	random, items2, _, err := st.CreatePracticeSession(user.ID, PracticeInput{
 		BankIDs: []int64{bank.ID}, Order: "random", Count: 4, StartSeq: 5, EndSeq: 6,
 	})
 	if err != nil {
 		t.Fatalf("random create: %v", err)
 	}
-	if random.TotalCount != 4 || len(items2) != 4 {
-		t.Fatalf("random total=%d, want 4 (range must be ignored)", random.TotalCount)
+	if random.TotalCount != 2 || len(items2) != 2 {
+		t.Fatalf("random total=%d, want 2 (range 5-6 only has 2)", random.TotalCount)
 	}
-	if random.RangeStart != 0 || random.RangeEnd != 0 {
-		t.Fatalf("random range should be cleared: %+v", random)
+	for _, it := range items2 {
+		if it.ID != ids[4] && it.ID != ids[5] {
+			t.Fatalf("random picked question %d outside range 5-6", it.ID)
+		}
+	}
+	if random.RangeStart != 5 || random.RangeEnd != 6 {
+		t.Fatalf("random range = %d-%d, want 5-6", random.RangeStart, random.RangeEnd)
+	}
+
+	// 范围内抽样：抽 3 道去重，且全部落在第 3–6 题之间
+	sampled, items3, _, err := st.CreatePracticeSession(user.ID, PracticeInput{
+		BankIDs: []int64{bank.ID}, Order: "random", Count: 3, StartSeq: 3, EndSeq: 6,
+	})
+	if err != nil {
+		t.Fatalf("random sample create: %v", err)
+	}
+	if sampled.TotalCount != 3 || len(items3) != 3 {
+		t.Fatalf("random sample total=%d, want 3", sampled.TotalCount)
+	}
+	seen := map[int64]bool{}
+	for _, it := range items3 {
+		inside := false
+		for _, id := range ids[2:6] {
+			if it.ID == id {
+				inside = true
+			}
+		}
+		if !inside {
+			t.Fatalf("sampled question %d outside range 3-6", it.ID)
+		}
+		if seen[it.ID] {
+			t.Fatalf("sampled question %d duplicated", it.ID)
+		}
+		seen[it.ID] = true
+	}
+
+	// 全库随机（不带范围）仍按题量取，且不记范围
+	plainRandom, items4, _, err := st.CreatePracticeSession(user.ID, PracticeInput{
+		BankIDs: []int64{bank.ID}, Order: "random", Count: 4,
+	})
+	if err != nil {
+		t.Fatalf("plain random create: %v", err)
+	}
+	if plainRandom.TotalCount != 4 || len(items4) != 4 {
+		t.Fatalf("plain random total=%d, want 4", plainRandom.TotalCount)
+	}
+	if plainRandom.RangeStart != 0 || plainRandom.RangeEnd != 0 {
+		t.Fatalf("plain random should not record range: %+v", plainRandom)
 	}
 }
 

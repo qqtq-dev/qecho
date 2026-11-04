@@ -213,15 +213,15 @@ func normalizePracticeInput(in *PracticeInput) {
 	if in.Count < 0 {
 		in.Count = 0
 	}
-	// 题序范围只对“按题序”的题库练习有意义：随机顺序、错题复习、精确指定题目都不适用。
+	// 题序范围对题库练习的两种顺序都有效：按题序时表示顺序练这一段，
+	// 随机时表示“只在这段范围里抽题”。错题复习、精确指定题目、未选题库时不适用。
 	if in.StartSeq < 0 {
 		in.StartSeq = 0
 	}
 	if in.EndSeq < 0 {
 		in.EndSeq = 0
 	}
-	if in.Order != "fixed" || in.Source != "bank" || len(in.QuestionIDs) > 0 ||
-		len(in.BankIDs) == 0 {
+	if in.Source != "bank" || len(in.QuestionIDs) > 0 || len(in.BankIDs) == 0 {
 		in.StartSeq, in.EndSeq = 0, 0
 	} else if in.StartSeq < 1 {
 		in.StartSeq = 1
@@ -313,7 +313,7 @@ func (s *Store) CreatePracticeSession(userID int64, in PracticeInput) (*Practice
 		return nil, nil, false, fmt.Errorf("请选择题库")
 	}
 	offset, span := practiceRange(&in)
-	if in.EndSeq > 0 && in.EndSeq < in.StartSeq && in.Order == "fixed" {
+	if in.EndSeq > 0 && in.EndSeq < in.StartSeq {
 		return nil, nil, false, fmt.Errorf("结束题号不能小于起始题号")
 	}
 
@@ -330,19 +330,34 @@ func (s *Store) CreatePracticeSession(userID int64, in PracticeInput) (*Practice
 		limit = span
 	}
 
-	orderBy := " ORDER BY q.sort_order, q.id"
-	if in.Order == "random" {
-		orderBy = " ORDER BY RANDOM()"
-	}
 	fetchLimit := limit
 	if limit >= practiceMaxQuestions {
 		fetchLimit = practiceMaxQuestions + 1
 	}
-	query := "SELECT q.id FROM " + from + " WHERE " + where + orderBy + " LIMIT ?"
-	queryArgs := append(append([]any{}, args...), fetchLimit)
-	if offset > 0 {
-		query += " OFFSET ?"
-		queryArgs = append(queryArgs, offset)
+	var query string
+	var queryArgs []any
+	if in.Order == "random" && (offset > 0 || span > 0) {
+		// 随机 + 题序范围：先按题序切出这一段，再在段内打乱取样。
+		// 直接在整表上 ORDER BY RANDOM() 配 OFFSET 是在全局乱序里跳行，跟“范围”无关。
+		innerLimit := span
+		if innerLimit <= 0 {
+			innerLimit = -1 // SQLite 中负值表示不限行数
+		}
+		inner := "SELECT q.id AS id FROM " + from + " WHERE " + where +
+			" ORDER BY q.sort_order, q.id LIMIT ? OFFSET ?"
+		query = "SELECT id FROM (" + inner + ") ORDER BY RANDOM() LIMIT ?"
+		queryArgs = append(append([]any{}, args...), innerLimit, offset, fetchLimit)
+	} else {
+		orderBy := " ORDER BY q.sort_order, q.id"
+		if in.Order == "random" {
+			orderBy = " ORDER BY RANDOM()"
+		}
+		query = "SELECT q.id FROM " + from + " WHERE " + where + orderBy + " LIMIT ?"
+		queryArgs = append(append([]any{}, args...), fetchLimit)
+		if offset > 0 {
+			query += " OFFSET ?"
+			queryArgs = append(queryArgs, offset)
+		}
 	}
 	rows, err := s.DB.Query(query, queryArgs...)
 	if err != nil {
@@ -440,10 +455,15 @@ func (s *Store) CreatePracticeSession(userID int64, in PracticeInput) (*Practice
 		return nil, nil, false, err
 	}
 	id, _ := res.LastInsertId()
+	// 全库练习不记范围痕迹，避免列表里显示成“第 1–N 题”
+	rangeStart, rangeEnd := in.StartSeq, in.EndSeq
+	if rangeStart <= 1 && rangeEnd <= 0 {
+		rangeStart, rangeEnd = 0, 0
+	}
 	session := &PracticeSession{
 		ID: id, UserID: userID, BankID: bankID, BankName: bankName, Source: in.Source,
 		TotalCount: len(ids), OrderMode: in.Order, Status: "ongoing", LastSeq: 1,
-		ShuffleOptions: in.ShuffleOptions, RangeStart: in.StartSeq, RangeEnd: in.EndSeq,
+		ShuffleOptions: in.ShuffleOptions, RangeStart: rangeStart, RangeEnd: rangeEnd,
 		CreatedAt: now, UpdatedAt: now,
 	}
 	items, err := s.buildPracticeItems(ids, orders)
