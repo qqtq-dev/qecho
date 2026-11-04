@@ -16,7 +16,7 @@
             class="ai-bubble mine"
             :class="{ 'is-toggleable': turn.qOverflow }"
             :title="turn.qOverflow ? (turn.qOpen ? '点击收起' : '点击展开全文') : undefined"
-            @click="turn.qOverflow && toggleQuestion(turn)"
+            @click="turn.qOverflow && toggleQuestion(turn, idx)"
           >
             <div
               :ref="(el) => setQRef(el as HTMLElement | null, idx)"
@@ -180,10 +180,23 @@ function measureQuestions() {
   })
 }
 
-function toggleQuestion(turn: Turn) {
+// 展开/收起提问时按「气泡顶边在视口里的位置」做滚动补偿：
+// 高度突变时浏览器不会替我们保持视点，直接改 scrollTop 才不会看到内容整段跳走。
+function toggleQuestion(turn: Turn, idx: number) {
+  const box = scrollRef.value
+  const el = qEls.get(idx)
+  if (!box || !el) {
+    turn.qOpen = !turn.qOpen
+    return
+  }
+  const before = el.getBoundingClientRect().top
   turn.qOpen = !turn.qOpen
-  if (turn.qOpen) scrollToBottom()
-  else measureQuestions()
+  nextTick(() => {
+    const after = el.getBoundingClientRect().top
+    const delta = after - before
+    if (delta) box.scrollTop += delta
+    if (!turn.qOpen) measureQuestions()
+  })
 }
 
 function thinkLen(turn: Turn) {
@@ -425,7 +438,8 @@ watch(
 .ai-state.is-busy { background: #e6f4ff; border-color: #91caff; color: #0958d9; }
 .ai-state.is-done { background: #f6ffed; border-color: #b7eb8f; color: #389e0d; }
 .ai-state.is-error { background: #fff2f0; border-color: #ffccc7; color: #d4380d; }
-.ai-scroll { flex: 1; min-height: 0; overflow: auto; padding: 14px 14px 8px; }
+/* overflow-anchor: none —— 关掉浏览器自带的滚动锚定，展开/收起全由 toggleQuestion 补偿，避免双重调整 */
+.ai-scroll { flex: 1; min-height: 0; overflow: auto; overflow-anchor: none; padding: 14px 14px 8px; }
 
 .ai-turn { margin-bottom: 18px; }
 .ai-turn:last-child { margin-bottom: 6px; }
