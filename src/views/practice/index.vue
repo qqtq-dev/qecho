@@ -226,53 +226,57 @@
                 />
               </a-form-item>
             </div>
-            <a-form-item label="题序范围">
-              <div class="range-row">
-                <a-input-number
-                  v-model:value="form.startSeq"
-                  :min="1"
-                  :max="candidateTotal || 99999"
-                  :precision="0"
-                  placeholder="1"
-                  class="range-input"
-                />
-                <span class="range-sep">—</span>
-                <a-input-number
-                  v-model:value="form.endSeq"
-                  :min="form.startSeq || 1"
-                  :max="candidateTotal || 99999"
-                  :precision="0"
-                  placeholder="末题"
-                  class="range-input"
-                />
-                <span class="muted range-unit">题</span>
-              </div>
-              <div class="range-hint muted">
-                <template v-if="loadingCandidates">正在统计题数…</template>
-                <template v-else-if="candidateTotal > 0">
-                  当前筛选共 {{ candidateTotal }} 道 · {{ rangeSummary }}
-                  <span v-if="!form.startSeq">（起始按第 1 题算）</span>
-                </template>
-                <template v-else>请先选择题库</template>
-              </div>
-              <div v-if="filterActive" class="range-hint muted">
-                题号按上方筛选结果编号，改筛选会重新排
-              </div>
-              <div v-if="nextRangeStart" class="range-hint">
-                <a-button type="link" size="small" class="range-next" @click="applyNextRange">
-                  上次练到第 {{ nextRangeStart - 1 }} 题，从第 {{ nextRangeStart }} 题接着练
-                </a-button>
-              </div>
-            </a-form-item>
-            <a-form-item v-if="form.order !== 'fixed'" label="题量">
-              <a-select
-                v-model:value="form.count"
-                :options="countOptions"
-                style="width: 100%"
-                @change="onCountChange"
-              />
-              <div v-if="pickSummary" class="range-hint muted">{{ pickSummary }}</div>
-            </a-form-item>
+            <div class="form-row">
+              <a-form-item label="题序范围" class="field-range">
+                <div class="range-row">
+                  <a-input-number
+                    v-model:value="form.startSeq"
+                    :min="1"
+                    :max="candidateTotal || 99999"
+                    :precision="0"
+                    placeholder="1"
+                    class="range-input"
+                  />
+                  <span class="range-sep">—</span>
+                  <a-input-number
+                    v-model:value="form.endSeq"
+                    :min="form.startSeq || 1"
+                    :max="candidateTotal || 99999"
+                    :precision="0"
+                    placeholder="末题"
+                    class="range-input"
+                  />
+                  <span class="muted range-unit">题</span>
+                  <span v-if="form.order !== 'fixed'" class="count-field">
+                    <span class="muted count-label">题量</span>
+                    <a-select
+                      v-model:value="form.count"
+                      :options="countOptions"
+                      title="随机抽题的题量"
+                      class="count-select"
+                      @change="onCountChange"
+                    />
+                  </span>
+                </div>
+                <div class="range-hint muted">
+                  <template v-if="loadingCandidates">正在统计题数…</template>
+                  <template v-else-if="candidateTotal > 0">
+                    {{ rangeActive ? rangeSummary : `全部 ${candidateTotal} 道` }}
+                    <span v-if="!form.startSeq">（起始按第 1 题算）</span>
+                  </template>
+                  <template v-else>请先选择题库</template>
+                </div>
+                <div v-if="filterActive" class="range-hint muted">
+                  筛选后共 {{ candidateTotal }} 道，题号按筛选结果编号，改筛选会重新排
+                </div>
+                <div v-if="nextRangeStart" class="range-hint">
+                  <a-button type="link" size="small" class="range-next" @click="applyNextRange">
+                    上次练到第 {{ nextRangeStart - 1 }} 题，从第 {{ nextRangeStart }} 题接着练
+                  </a-button>
+                </div>
+                <div v-if="pickSummary" class="range-hint muted">{{ pickSummary }}</div>
+              </a-form-item>
+            </div>
             <a-form-item label="选项乱序">
               <a-switch v-model:checked="form.shuffleOptions" />
               <span class="muted switch-hint">同一组练习内顺序固定，续答不重新洗牌</span>
@@ -473,6 +477,8 @@ const pickCount = computed(() => {
 const pickSummary = computed(() => {
   const total = candidateTotal.value
   if (form.order === 'fixed' || total <= 0) return ''
+  // 题量选“全部”时范围摘要已经说清了整段，不重复占一行
+  if (form.count <= 0) return ''
   const n = pickCount.value
   if (n <= 0) return ''
   const start = Math.max(1, form.startSeq || 1)
@@ -598,7 +604,7 @@ const countOptions = computed(() => {
   ]
   // “全部”在当前范围下就是整段，把实际道数标出来
   if (rangeActive.value && rangeSpan.value > 0) {
-    options[options.length - 1].label = `全部（${rangeSpan.value} 道）`
+    options[options.length - 1].label = `全部 ${rangeSpan.value} 道`
   }
   if (!options.some((o) => o.value === form.count)) {
     options.splice(options.length - 1, 0, { label: `${form.count} 题`, value: form.count })
@@ -1146,13 +1152,22 @@ onUnmounted(() => {
 .kbd-hint { margin-top: 8px; font-size: 12px; text-align: right; }
 .result { margin-top: 0; }
 .switch-hint { margin-left: 10px; font-size: 12.5px; }
-.range-row { display: flex; align-items: center; gap: 6px; }
+.range-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 /* 难度与标签并排，省一行高度 */
 .form-row { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 24px; }
 .form-row :deep(.ant-form-item) { margin-bottom: 0; min-width: 0; }
 .form-row .field-narrow { flex: 0 0 38%; }
 .form-row .field-wide { flex: 1 1 auto; }
-.range-input { width: 88px; flex: none; }
+.form-row .field-range { flex: 1 1 auto; }
+/* 题量：标签竖排在下拉正上方，样式与表单标签（如“标签”“题序范围”）保持一致 */
+.count-field { position: relative; display: inline-flex; align-items: center; margin-left: 10px; flex: none; }
+.count-label {
+  position: absolute; left: 1px; bottom: calc(100% + 4px);
+  font-size: 14px; line-height: 1; color: var(--text);
+  white-space: nowrap; pointer-events: none;
+}
+.count-select { width: 128px; flex: none; }
+.range-input { width: 72px; flex: none; }
 .range-sep { color: var(--text2); }
 .range-unit { font-size: 12.5px; }
 .range-hint { margin-top: 4px; font-size: 12px; line-height: 1.5; }
