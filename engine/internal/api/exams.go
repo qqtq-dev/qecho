@@ -2,13 +2,17 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
+	"quizbox/engine/internal/exporter"
 	"quizbox/engine/internal/response"
 	"quizbox/engine/internal/store"
 )
@@ -194,6 +198,99 @@ func (s *Server) listExamAttempts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.OK(w, map[string]any{"items": items})
+}
+
+// examForManage 取考试并校验当前用户能否管理它。
+func (s *Server) examForManage(w http.ResponseWriter, r *http.Request) (*store.Exam, bool) {
+	id, ok := pathID(r, "id")
+	if !ok {
+		response.BadRequest(w, "考试编号无效")
+		return nil, false
+	}
+	exam, err := s.store.GetExam(id)
+	if err != nil {
+		response.NotFound(w, "考试不存在")
+		return nil, false
+	}
+	if !canManageExam(userFrom(r), exam.OwnerID) {
+		response.Forbidden(w, "没有权限查看该考试")
+		return nil, false
+	}
+	return exam, true
+}
+
+// exportExamResults 由桌面端调用：成绩表写入用户选择的路径。
+func (s *Server) exportExamResults(w http.ResponseWriter, r *http.Request) {
+	exam, ok := s.examForManage(w, r)
+	if !ok {
+		return
+	}
+	if !isLoopback(r.RemoteAddr) {
+		response.Forbidden(w, "只能在安装本软件的电脑上导出，浏览器访问请直接下载")
+		return
+	}
+	var in struct {
+		Path string `json:"path"`
+	}
+	if err := decodeJSON(r, &in); err != nil {
+		response.BadRequest(w, "请求格式不正确")
+		return
+	}
+	path := strings.TrimSpace(in.Path)
+	if path == "" {
+		response.BadRequest(w, "请选择保存位置")
+		return
+	}
+	if !strings.HasSuffix(strings.ToLower(path), ".xlsx") {
+		path += ".xlsx"
+	}
+	items, err := s.store.ListExamAttempts(exam.ID)
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	if len(items) == 0 {
+		response.BadRequest(w, "这场考试还没有人参加")
+		return
+	}
+	data, err := exporter.ExamResultsXLSX(*exam, items, time.Now())
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		response.BadRequest(w, "写入文件失败："+err.Error())
+		return
+	}
+	response.OK(w, map[string]any{"path": path, "count": len(items), "title": exam.Title})
+}
+
+// downloadExamResults 供浏览器 / 服务端部署时直接下载成绩表。
+func (s *Server) downloadExamResults(w http.ResponseWriter, r *http.Request) {
+	exam, ok := s.examForManage(w, r)
+	if !ok {
+		return
+	}
+	items, err := s.store.ListExamAttempts(exam.ID)
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	if len(items) == 0 {
+		response.BadRequest(w, "这场考试还没有人参加")
+		return
+	}
+	data, err := exporter.ExamResultsXLSX(*exam, items, time.Now())
+	if err != nil {
+		response.Internal(w, err)
+		return
+	}
+	fileName := safeFileName(exam.Title) + "-成绩.xlsx"
+	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(
+		`attachment; filename="exam-%d-results.xlsx"; filename*=UTF-8''%s`, exam.ID, url.PathEscape(fileName)))
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	_, _ = w.Write(data)
 }
 
 func (s *Server) shareInfo(w http.ResponseWriter, r *http.Request) {

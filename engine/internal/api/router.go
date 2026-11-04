@@ -124,6 +124,8 @@ func New(st *store.Store, version, dataDir, shutdownToken string, port int, desk
 	mux.HandleFunc("POST /api/v1/exams/{id}/close", s.auth(s.closeExam))
 	mux.HandleFunc("DELETE /api/v1/exams/{id}", s.auth(s.deleteExam))
 	mux.HandleFunc("GET /api/v1/exams/{id}/attempts", s.auth(s.listExamAttempts))
+	mux.HandleFunc("GET /api/v1/exams/{id}/attempts/export", s.auth(s.downloadExamResults))
+	mux.HandleFunc("POST /api/v1/exams/{id}/attempts/export", s.auth(s.exportExamResults))
 	mux.HandleFunc("GET /api/v1/share", s.auth(s.shareInfo))
 	mux.HandleFunc("PUT /api/v1/share", s.auth(s.updateShareSettings))
 

@@ -219,10 +219,27 @@
             </template>
           </template>
         </a-table>
-        <div v-if="attempts.length" class="result-actions">
-          <a-button @click="refreshResults">刷新</a-button>
-        </div>
       </a-spin>
+
+      <!-- 抽屉页脚：左汇总、右操作，固定在底部不随表格滚动 -->
+      <template #footer>
+        <div class="result-foot">
+          <span class="muted">
+            <template v-if="attempts.length">
+              共 {{ attempts.length }} 人参加 · 已交卷 {{ submittedTotal }} 人
+            </template>
+            <template v-else>暂无参与记录</template>
+          </span>
+          <a-space :size="8">
+            <a-button
+              :loading="exportingResults"
+              :disabled="!attempts.length"
+              @click="exportResults"
+            >导出 Excel</a-button>
+            <a-button @click="refreshResults">刷新</a-button>
+          </a-space>
+        </div>
+      </template>
     </a-drawer>
   </div>
 </template>
@@ -235,6 +252,7 @@ import dayjs, { type Dayjs } from 'dayjs'
 import PageHeader from '@/components/PageHeader.vue'
 import MetricTile from '@/components/MetricTile.vue'
 import { banksApi, type Bank } from '@/api/banks'
+import { isTauri } from '@/api/request'
 import { examsApi, type AttemptSummary, type Exam, type ShareInfo } from '@/api/exams'
 
 const router = useRouter()
@@ -465,6 +483,44 @@ async function refreshResults() {
   }
 }
 
+const exportingResults = ref(false)
+const submittedTotal = computed(
+  () => attempts.value.filter((a) => a.status === 'submitted').length,
+)
+
+function resultsFileName() {
+  const name = (resultsExam.value?.title ?? '考试').replace(/[\\/:*?"<>|]/g, '_').trim() || '考试'
+  return `${name}-成绩-${dayjs().format('YYYYMMDD')}.xlsx`
+}
+
+async function exportResults() {
+  if (!resultsExam.value || exportingResults.value) return
+  exportingResults.value = true
+  try {
+    const fileName = resultsFileName()
+    if (isTauri()) {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const path = await invoke<string | null>('pick_export_path', { fileName })
+      if (!path) return
+      const res = await examsApi.exportAttemptsTo(resultsExam.value.id, path)
+      message.success(`已导出 ${res.count} 条成绩到 ${res.path}`)
+      return
+    }
+    const blob = await examsApi.exportAttemptsFile(resultsExam.value.id)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = fileName
+    link.click()
+    URL.revokeObjectURL(url)
+    message.success('已开始下载')
+  } catch (err) {
+    message.error(`导出失败：${(err as Error).message || '请稍后重试'}`)
+  } finally {
+    exportingResults.value = false
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -507,7 +563,11 @@ onMounted(load)
   font-size: 12.5px;
 }
 .public-row { display: flex; gap: 8px; }
-.result-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
+/* 抽屉页脚：左汇总、右按钮，一行放下 */
+.result-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; text-align: left; font-size: 12.5px;
+}
 .score { font-weight: 700; color: #24945f; }
 .panel-body :deep(.ant-spin-nested-loading) { min-height: 40px; }
 </style>

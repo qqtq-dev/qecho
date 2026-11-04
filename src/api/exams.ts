@@ -59,6 +59,13 @@ export const examsApi = {
   remove: (id: number) => http.delete<unknown, void>(`/exams/${id}`),
   attempts: (id: number) =>
     http.get<unknown, { items: AttemptSummary[] }>(`/exams/${id}/attempts`),
+  exportAttemptsTo: (id: number, path: string) =>
+    http.post<unknown, { path: string; count: number; title: string }>(
+      `/exams/${id}/attempts/export`,
+      { path },
+    ),
+  exportAttemptsFile: (id: number) =>
+    http.get<unknown, Blob>(`/exams/${id}/attempts/export`, { responseType: 'blob' }),
   share: () => http.get<unknown, ShareInfo>('/share'),
   updateShare: (publicBaseUrl: string) =>
     http.put<unknown, { publicBaseUrl: string }>('/share', { publicBaseUrl }),
