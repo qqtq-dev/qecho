@@ -464,10 +464,14 @@ func parseRow(rec []string, header *headerInfo, number int) Row {
 		switch raw {
 		case "简单", "容易":
 			difficulty = 1
-		case "中等", "一般":
+		case "较易":
 			difficulty = 2
-		case "困难", "难":
+		case "中等", "一般":
 			difficulty = 3
+		case "较难":
+			difficulty = 4
+		case "困难", "难":
+			difficulty = 5
 		default:
 			if n, err := strconv.Atoi(raw); err == nil && n >= 1 && n <= 5 {
 				difficulty = n

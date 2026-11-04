@@ -41,7 +41,9 @@
         </a-select>
         <a-select v-model:value="filters.difficulty" style="width: 110px" @change="applyFilters">
           <a-select-option :value="0">全部难度</a-select-option>
-          <a-select-option v-for="d in 5" :key="d" :value="d">难度 {{ d }}</a-select-option>
+          <a-select-option v-for="d in DIFFICULTY_LEVELS" :key="d.value" :value="d.value">
+            {{ d.label }}
+          </a-select-option>
         </a-select>
         <a-select
           v-model:value="filters.tag"
@@ -298,7 +300,9 @@
           </a-form-item>
           <a-form-item label="难度">
             <a-select v-model:value="qForm.difficulty" style="width: 120px">
-              <a-select-option v-for="d in 5" :key="d" :value="d">难度 {{ d }}</a-select-option>
+              <a-select-option v-for="d in DIFFICULTY_LEVELS" :key="d.value" :value="d.value">
+                {{ d.label }}
+              </a-select-option>
             </a-select>
           </a-form-item>
         </div>
@@ -420,6 +424,7 @@ import BankSharingDrawer from '@/components/BankSharingDrawer.vue'
 import ImageUploadField from '@/components/ImageUploadField.vue'
 import { banksApi, type Bank, type ImportJob, type Question, type QuestionOption, type Tag, type TagImpact } from '@/api/banks'
 import { isTauri } from '@/api/request'
+import { DIFFICULTY_LEVELS, difficultyLabel } from '@/utils/difficulty'
 import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
@@ -459,8 +464,6 @@ const columns = computed(() => {
   return base
 })
 
-const DIFFICULTY_LABELS = ['', '很简单', '简单', '中等', '困难', '极难']
-const difficultyLabel = (v: number) => DIFFICULTY_LABELS[v] || DIFFICULTY_LABELS[3]
 const hasImage = (q: Question) => !!q.stemImage || q.options.some((o) => !!o.image)
 
 async function loadBank() {

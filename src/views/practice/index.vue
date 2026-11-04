@@ -375,6 +375,7 @@ import {
   type PracticeSummary,
 } from '@/api/practice'
 import { useWrongStore } from '@/stores/wrong'
+import { DIFFICULTY_FILTER_OPTIONS } from '@/utils/difficulty'
 
 const route = useRoute()
 const router = useRouter()
@@ -630,14 +631,7 @@ const countOptions = computed(() => {
   return options
 })
 
-const difficultyOptions = [
-  { label: '全部难度', value: 0 },
-  { label: '难度 1', value: 1 },
-  { label: '难度 2', value: 2 },
-  { label: '难度 3', value: 3 },
-  { label: '难度 4', value: 4 },
-  { label: '难度 5', value: 5 },
-]
+const difficultyOptions = DIFFICULTY_FILTER_OPTIONS
 
 const bankOptions = computed(() =>
   banks.value.map((b) => ({

@@ -4,7 +4,6 @@ package exporter
 import (
 	"fmt"
 	"math"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -97,7 +96,7 @@ func BankXLSX(questions []store.Question) ([]byte, error) {
 			row = append(row, c)
 		}
 		row = append(row, strings.Join(q.Answer, ""), q.Analysis,
-			strings.Join(q.Tags, "；"), strconv.Itoa(q.Difficulty), q.Source)
+			strings.Join(q.Tags, "；"), q.Difficulty, q.Source)
 
 		line := n + 2
 		cell := fmt.Sprintf("A%d", line)
