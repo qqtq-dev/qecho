@@ -199,34 +199,34 @@
                 <a-radio-button value="multiple">多选</a-radio-button>
               </a-radio-group>
             </a-form-item>
-            <a-form-item label="难度">
-              <a-select v-model:value="form.difficulty" :options="difficultyOptions" style="width: 100%" />
+            <a-form-item label="题目顺序">
+              <a-radio-group v-model:value="form.order">
+                <a-radio-button value="random">随机</a-radio-button>
+                <a-radio-button value="fixed">按题序</a-radio-button>
+              </a-radio-group>
             </a-form-item>
-            <a-form-item label="标签">
-              <a-select
-                v-model:value="form.tags"
-                mode="multiple"
-                placeholder="全部标签（可多选，匹配任一标签）"
-                :loading="loadingTags"
-                :options="tagOptions"
-                :max-tag-count="3"
-                allow-clear
-                :disabled="form.bankIds.length === 0"
-              />
-            </a-form-item>
+            <div class="form-row">
+              <a-form-item label="难度" class="field-narrow">
+                <a-select
+                  v-model:value="form.difficulty"
+                  :options="difficultyOptions"
+                  style="width: 100%"
+                />
+              </a-form-item>
+              <a-form-item label="标签" class="field-wide">
+                <a-select
+                  v-model:value="form.tags"
+                  mode="multiple"
+                  placeholder="全部标签（可多选，匹配任一标签）"
+                  :loading="loadingTags"
+                  :options="tagOptions"
+                  :max-tag-count="3"
+                  allow-clear
+                  :disabled="form.bankIds.length === 0"
+                />
+              </a-form-item>
+            </div>
             <a-form-item label="题序范围">
-              <div class="range-presets">
-                <a-button
-                  v-for="p in rangePresets"
-                  :key="p.value"
-                  size="small"
-                  :type="isPresetActive(p.value) ? 'primary' : 'default'"
-                  :disabled="p.value > 0 && candidateTotal > 0 && p.value > candidateTotal"
-                  @click="applyRangePreset(p.value)"
-                >
-                  {{ p.label }}
-                </a-button>
-              </div>
               <div class="range-row">
                 <a-input-number
                   v-model:value="form.startSeq"
@@ -262,12 +262,6 @@
                   上次练到第 {{ nextRangeStart - 1 }} 题，从第 {{ nextRangeStart }} 题接着练
                 </a-button>
               </div>
-            </a-form-item>
-            <a-form-item label="题目顺序">
-              <a-radio-group v-model:value="form.order">
-                <a-radio-button value="random">随机</a-radio-button>
-                <a-radio-button value="fixed">按题序</a-radio-button>
-              </a-radio-group>
             </a-form-item>
             <a-form-item v-if="form.order !== 'fixed'" label="题量">
               <a-select
@@ -546,26 +540,6 @@ function applyNextRange() {
 }
 
 // 范围的常用档位：前 N 题 / 全库，省得每次都敲数字
-const rangePresets = [
-  { label: '前 20', value: 20 },
-  { label: '前 50', value: 50 },
-  { label: '前 100', value: 100 },
-  { label: '全库', value: 0 },
-]
-
-function isPresetActive(value: number) {
-  if (value <= 0) return !rangeActive.value
-  return (form.startSeq || 1) <= 1 && form.endSeq === value
-}
-
-function applyRangePreset(value: number) {
-  const total = candidateTotal.value
-  form.startSeq = 1
-  form.endSeq = value > 0 ? (total > 0 ? Math.min(value, total) : value) : null
-  // 选了档位等于重新定范围，题量交回自动跟随
-  countTouched = false
-}
-
 // 是否加了筛选：题号是按筛选结果算的，得说清楚
 const filterActive = computed(
   () => form.type !== '' || form.difficulty > 0 || form.tags.length > 0,
@@ -1172,7 +1146,11 @@ onUnmounted(() => {
 .result { margin-top: 0; }
 .switch-hint { margin-left: 10px; font-size: 12.5px; }
 .range-row { display: flex; align-items: center; gap: 6px; }
-.range-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+/* 难度与标签并排，省一行高度 */
+.form-row { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 24px; }
+.form-row :deep(.ant-form-item) { margin-bottom: 0; min-width: 0; }
+.form-row .field-narrow { flex: 0 0 38%; }
+.form-row .field-wide { flex: 1 1 auto; }
 .range-input { width: 88px; flex: none; }
 .range-sep { color: var(--text2); }
 .range-unit { font-size: 12.5px; }
@@ -1187,6 +1165,8 @@ onUnmounted(() => {
 .recent-continue { padding-inline: 4px; }
 @media (max-width: 900px) {
   .grid { grid-template-columns: 1fr; }
+  .form-row { flex-wrap: wrap; gap: 0; }
+  .form-row .field-narrow { flex: 0 0 100%; margin-bottom: 16px !important; }
   .quiz-layout,
   .quiz-layout.ai-open { grid-template-columns: 1fr; grid-template-rows: auto; }
   /* 窄屏下面板纵向堆叠，AI 面板撑起足够高度 */
