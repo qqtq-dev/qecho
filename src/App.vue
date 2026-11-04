@@ -54,6 +54,8 @@ dayjs.locale('zh-cn')
   --scroll-thumb-hover: rgba(36, 148, 95, .6);
   --code-bg: #f1f3f2;
   --auth-bg: radial-gradient(circle at 18% 12%, #e6f2ec 0, #eef2f0 42%, #e9eeeb 100%);
+  /* 顶部导航栏高度：抽屉、顶部浮层统一让出这段空间 */
+  --topbar-h: 46px;
 }
 html.dark {
   --bg: #0f1216;

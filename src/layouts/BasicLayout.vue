@@ -321,7 +321,7 @@ async function resizeMain() {
 .layout { height: 100vh; display: flex; flex-direction: column; }
 
 .topbar {
-  height: 46px; flex: 0 0 46px;
+  height: var(--topbar-h); flex: 0 0 var(--topbar-h);
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 14px;
   background: var(--surface);
