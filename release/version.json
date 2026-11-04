@@ -1,8 +1,8 @@
 {
-  "version": "0.2.4",
+  "version": "0.2.5",
   "publishedAt": "2026-11-04",
-  "notes": "考试成绩可导出 Excel 成绩单（含得分、作答进度、开始/交卷时间与用时）；AI 答疑长题干展开后不再跳走；练习设置题量标签归位到下拉上方。",
-  "url": "https://gitee.com/qqtq/qecho-releases/releases/tag/v0.2.4",
-  "downloadUrl": "https://gitee.com/qqtq/qecho-releases/releases/tag/v0.2.4",
+  "notes": "答题参与者页支持外部文件覆盖，改文案与版式无需重装；服务器与桌面端均即时生效。",
+  "url": "https://gitee.com/qqtq/qecho-releases/releases/tag/v0.2.5",
+  "downloadUrl": "https://gitee.com/qqtq/qecho-releases/releases/tag/v0.2.5",
   "force": false
 }
