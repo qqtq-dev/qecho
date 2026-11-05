@@ -1070,9 +1070,15 @@ onUnmounted(() => {
 .dot.bad { background: var(--bad-soft); border-color: var(--bad-text); }
 .dot.mark { background: var(--mark-soft); border-color: var(--mark); }
 .q-grid {
-  flex: 1; min-height: 0; overflow: auto;
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(26px, 1fr));
+  flex: 1; min-height: 0;
+  overflow-y: auto; overflow-x: hidden;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(24px, 1fr));
   align-content: start; gap: 6px;
+  /* 滚动条：常驻预留宽度，出条前后列宽不跳动；
+     padding 给格子与滚动条之间留出间距，负 margin 把滚动条往面板右边推、不浪费空白。
+     最小列宽 24px 而非 26px：不同平台滚动条宽度不同（6–17px），留出余量避免少一列 */
+  padding-right: 8px; margin-right: -4px;
+  scrollbar-gutter: stable;
 }
 .q-cell {
   position: relative;
