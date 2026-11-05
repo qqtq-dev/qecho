@@ -1076,8 +1076,11 @@ onUnmounted(() => {
   align-content: start; gap: 6px;
   /* 滚动条：常驻预留宽度，出条前后列宽不跳动；
      padding 给格子与滚动条之间留出间距，负 margin 把滚动条往面板右边推、不浪费空白。
+     两者等值（8/8）互相抵消：盒子右移但内容区宽度不变，列宽与加 padding 前完全一致。
+     想再往右就把这对数值同步加大（如 10/10），列宽不受影响；
+     上限是面板 .answer-card 的 padding-right（12px），超出会顶出面板。
      最小列宽 24px 而非 26px：不同平台滚动条宽度不同（6–17px），留出余量避免少一列 */
-  padding-right: 8px; margin-right: -4px;
+  padding-right: 8px; margin-right: -8px;
   scrollbar-gutter: stable;
 }
 .q-cell {
