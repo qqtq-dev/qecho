@@ -17,7 +17,7 @@ from pathlib import Path
 
 import requests
 
-OWNER, REPO = "qqtq", "qecho-releases"
+OWNER, REPO = "qqtq", "qecho"
 API = f"https://gitee.com/api/v5/repos/{OWNER}/{REPO}"
 ROOT = Path(__file__).resolve().parent.parent
 DIST_LINUX = ROOT / "dist-linux"

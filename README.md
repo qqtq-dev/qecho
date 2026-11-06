@@ -9,9 +9,37 @@
 
 源码托管：Gitee [qqtq/qecho](https://gitee.com/qqtq/qecho)（主）· GitHub [qqtq-dev/qecho](https://github.com/qqtq-dev/qecho)（镜像）
 
+## 下载
+
+安装包与版本清单都在本仓库的 [Releases](https://gitee.com/qqtq/qecho/releases) 页（GitHub 镜像同步挂载）。
+
+| 平台 | 安装包 | 安装方式 |
+| --- | --- | --- |
+| Windows 安装版 | `Qecho_x.y.z_x64-setup.exe` | 双击安装，写 Program Files 与快捷方式，需 WebView2 运行时 |
+| Windows 免安装版 | `Qecho-x.y.z-x64-portable.zip` | 解压即用，不写注册表、免管理员权限 |
+| Debian / Ubuntu（glibc ≥ 2.39） | `Qecho_x.y.z_amd64.deb` | `sudo apt install ./...deb` |
+| Fedora / RHEL 10 / openEuler（glibc ≥ 2.39） | `Qecho-x.y.z-1.x86_64.rpm` | `sudo dnf install ./...rpm` |
+| 通用 Linux（glibc ≥ 2.39） | `Qecho-x.y.z-x86_64.AppImage` | `chmod +x` 后直接运行，WebKitGTK 依赖已打包 |
+| 服务端网页版（无 glibc 门槛） | `Qecho-x.y.z-web-linux-amd64.tar.gz` | 解压后 `sudo ./install.sh`，浏览器访问 |
+
+> Linux 桌面包在 Ubuntu 24.04 环境构建，二进制最高依赖 `GLIBC_2.39`。麒麟 V10、统信 UOS 20、RHEL 9、OpenCloudOS 9
+> 这类老基线装不上桌面包，请用服务端网页版（静态链接，无 glibc 门槛）。
+>
+> 每个发行版都附 `SHA256SUMS.txt`，`sha256sum -c SHA256SUMS.txt` 即可校验。
+
 ## 界面预览
 
+登录页，支持中英双语即时切换：
+
 ![Qecho 桌面版登录页](docs/images/windows-login.png)
+
+| 概览 | 题库管理 |
+| --- | --- |
+| ![概览](screens/overview.png) | ![题库管理](screens/banks.png) |
+| **练习（含 AI 答疑）** | **考试** |
+| ![练习](screens/practice-ai.png) | ![考试](screens/exams.png) |
+
+其余截图见 [`screens/`](screens)：练习、统计、数据备份、设置与智能助手。
 
 完整设计见 [docs/题鸣详细设计文档.md](docs/题鸣详细设计文档.md)，安装与操作说明见 [docs/使用手册.md](docs/使用手册.md)，发版与版本清单见 [docs/版本发布.md](docs/版本发布.md)，服务端部署见 [docs/服务端部署.md](docs/服务端部署.md)，Linux 桌面版打包见 [docs/Linux打包.md](docs/Linux打包.md)。
 
@@ -34,7 +62,7 @@
 - 题图：题干与选项图片直接上传，按 SHA-256 内容去重存于数据目录 `images/`，单张 ≤ 8 MB（PNG / JPEG / WebP / GIF）；练习、错题本与外联答题页支持缩略图与点击放大，文件缺失时显示占位卡片。题库详情页可把题图整体导出为 ZIP；Excel 导入导出以题干图片文件名表示题图，导入时选择题图文件即可按文件名自动关联，导出 ZIP 可直接作为下次导入的随包图片。
 - 智能答疑（可选）：练习作答后在解析区点「问 AI」，右侧答题卡让位给聊天面板（不遮挡窗口按钮），自动把该题发给 AI 分析（题干 + 选项，不含答案与解析）；聊天式布局（提问靠右 / 回答靠左），支持多轮追问、Markdown 渲染、停止生成、思考过程实时展示；**会话常驻**——收起面板不丢记录，输出中的回答后台继续写完，切题再切回来记录也能找回（最近 20 题）。两条通道**二选一生效**、配置独立保存：BIC-QA（数据库智能问答）或任意 OpenAI 兼容大模型（设置页内置阿里云百炼 · 通义千问 / DeepSeek / 智谱 GLM / Kimi / 硅基流动 / 阶跃星辰 / 基元律动 / OpenAI 八家快捷填充），引擎统一代理并把上游流归一化成 SSE 事件（`meta` / `thinking` / `delta` / `error` / `done`），面板标题显示当前生效的服务商；**凭据按账号隔离**，每人一份存于数据目录 `bicqa/user-<id>.json`（0600），不写数据库、不进备份、不回传界面；未配置或关闭时不会发起任何外部请求。默认走「简答」模式（约 200 字，一般 10–20 秒返回），可切「详答」。
 - 多语言：界面支持简体中文与 English，登录页右上角与设置页均可即时切换，不刷新页面；切换后组件库（Ant Design Vue）、日期格式（dayjs）与 `<html lang>` 一起跟着变。词条按语言懒加载，不打进首屏包。新增一门语言只需在 `src/i18n/locales/index.ts` 注册表里加一条、再放一个词条文件，页面代码不用改。词条类型由 `zh-CN` 推导（`satisfies MessageSchema`），漏译会在编译期报错。
-- 版本更新提示：顶栏铃铛读取公开的发布仓库 `gitee.com/qqtq/qecho-releases` 中的 `version.json`，与当前版本比对，有新版本时显示橙点与橙色卡片（版本号、更新摘要、当前版本与「查看更新」按钮，点击用系统默认浏览器打开下载页）。请求由引擎代拉（成功缓存 30 分钟，点开铃铛强制刷新；拉取失败静默处理，不弹错也不影响使用）。源码仓库已开源，发布仓库只放版本清单与安装包，发版流程见 [docs/版本发布.md](docs/版本发布.md)。
+- 版本更新提示：顶栏铃铛读取本仓库 `release/version.json`（GitHub 镜像优先，Gitee 回退），与当前版本比对，有新版本时显示橙点与橙色卡片（版本号、更新摘要、当前版本与「查看更新」按钮，点击用系统默认浏览器打开下载页）。请求由引擎代拉（成功缓存 30 分钟，点开铃铛强制刷新；拉取失败静默处理，不弹错也不影响使用）。源码与安装包同在本仓库，发版流程见 [docs/版本发布.md](docs/版本发布.md)。
 - 网页版部署：同一引擎加 `--host/--port/--web-dir` 即可托管网页版，自带 gzip 压缩、哈希资源长缓存、`ETag`/304 与 `206` 断点续传，首屏传输量未压缩约 1.63 MB，开 gzip 后约 600 KB；支持 systemd 与 Nginx HTTPS，详见 [docs/服务端部署.md](docs/服务端部署.md) 与下文「静态资源托管」。
 
 ## 开发运行

@@ -12,12 +12,12 @@ import (
 	"quizbox/engine/internal/response"
 )
 
-// 版本清单按顺序从下列地址获取：优先 GitHub（读主仓库 release/version.json），
-// 失败后回退 Gitee 发布仓库，兼顾境内外网络环境。命中任意一个即成功。
+// 版本清单按顺序从下列地址获取：优先 GitHub 镜像（读主仓库 release/version.json），
+// 失败后回退 Gitee 主仓库，兼顾境内外网络环境。命中任意一个即成功。
 // 想换地址（例如改放自有服务器）时设置环境变量 QUIZBOX_UPDATE_URL 即可，不用重新编译。
 const (
 	githubUpdateManifestURL = "https://raw.githubusercontent.com/qqtq-dev/qecho/main/release/version.json"
-	giteeUpdateManifestURL  = "https://gitee.com/qqtq/qecho-releases/raw/master/version.json"
+	giteeUpdateManifestURL  = "https://gitee.com/qqtq/qecho/raw/main/release/version.json"
 	defaultReleasePageURL   = "https://github.com/qqtq-dev/qecho/releases"
 	updateSuccessTTL        = 30 * time.Minute
 	updateFailureTTL        = 5 * time.Minute
