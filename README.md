@@ -7,11 +7,11 @@
 >
 > 两种形态功能一致；桌面版另有系统托盘、系统保存对话框、防火墙放行等本机集成。
 
-源码托管：Gitee [qqtq/qecho](https://gitee.com/qqtq/qecho)（主）· GitHub [qqtq-dev/qecho](https://github.com/qqtq-dev/qecho)（镜像）
+源码托管：GitHub [qqtq-dev/qecho](https://github.com/qqtq-dev/qecho)（主）· Gitee [qqtq/qecho](https://gitee.com/qqtq/qecho)（镜像）
 
 ## 下载
 
-安装包与版本清单都在本仓库的 [Releases](https://gitee.com/qqtq/qecho/releases) 页（GitHub 镜像同步挂载）。
+安装包与版本清单都在 GitHub 主仓库的 [Releases](https://github.com/qqtq-dev/qecho/releases) 页（Gitee 镜像同步挂载）。
 
 | 平台 | 安装包 | 安装方式 |
 | --- | --- | --- |

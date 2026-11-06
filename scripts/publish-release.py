@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""把一次构建的安装包发布到 Gitee 公开仓库的发行版里。
+"""把一次构建的安装包发布到 Gitee 镜像仓库的发行版里（主发行版先在 GitHub 传，本脚本用于同步镜像）。
 
 用法：
     export GITEE_TOKEN=<私人令牌>        # Gitee → 设置 → 私人令牌，勾 projects
