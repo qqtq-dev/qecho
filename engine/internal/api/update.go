@@ -12,16 +12,24 @@ import (
 	"quizbox/engine/internal/response"
 )
 
-// 版本清单放在独立的公开仓库里，主仓库保持私有。
+// 版本清单按顺序从下列地址获取：优先 GitHub（读主仓库 release/version.json），
+// 失败后回退 Gitee 发布仓库，兼顾境内外网络环境。命中任意一个即成功。
 // 想换地址（例如改放自有服务器）时设置环境变量 QUIZBOX_UPDATE_URL 即可，不用重新编译。
 const (
-	defaultUpdateManifestURL = "https://gitee.com/qqtq/qecho-releases/raw/master/version.json"
-	defaultReleasePageURL    = "https://gitee.com/qqtq/qecho-releases"
-	updateSuccessTTL         = 30 * time.Minute
-	updateFailureTTL         = 5 * time.Minute
-	updateTimeout            = 8 * time.Second
-	updateMaxBytes           = 64 << 10
+	githubUpdateManifestURL = "https://raw.githubusercontent.com/qqtq-dev/qecho/main/release/version.json"
+	giteeUpdateManifestURL  = "https://gitee.com/qqtq/qecho-releases/raw/master/version.json"
+	defaultReleasePageURL   = "https://github.com/qqtq-dev/qecho/releases"
+	updateSuccessTTL        = 30 * time.Minute
+	updateFailureTTL        = 5 * time.Minute
+	updateTimeout           = 8 * time.Second
+	updateMaxBytes          = 64 << 10
 )
+
+// defaultUpdateManifestURLs 按优先级排列的版本清单地址。
+var defaultUpdateManifestURLs = []string{
+	githubUpdateManifestURL,
+	giteeUpdateManifestURL,
+}
 
 // updateManifest 对应公开仓库里的 version.json。
 type updateManifest struct {
@@ -39,11 +47,12 @@ type updateSnapshot struct {
 	err      error
 }
 
-func updateManifestURL() string {
+// updateManifestURLs 返回实际使用的清单地址列表；设置 QUIZBOX_UPDATE_URL 时只走该地址。
+func updateManifestURLs() []string {
 	if v := strings.TrimSpace(os.Getenv("QUIZBOX_UPDATE_URL")); v != "" {
-		return v
+		return []string{v}
 	}
-	return defaultUpdateManifestURL
+	return defaultUpdateManifestURLs
 }
 
 // checkUpdate 返回当前版本与远端最新版本，供顶栏铃铛展示。
@@ -112,7 +121,15 @@ func (s *Server) fetchUpdateManifest(force bool) (updateManifest, error) {
 		}
 	}
 
-	manifest, err := requestUpdateManifest(updateManifestURL())
+	// 逐个源尝试：GitHub 优先，失败回退 Gitee；全部失败才返回错误。
+	var manifest updateManifest
+	var err error
+	for _, endpoint := range updateManifestURLs() {
+		manifest, err = requestUpdateManifest(endpoint)
+		if err == nil {
+			break
+		}
+	}
 	s.updateSnap = &updateSnapshot{at: time.Now(), manifest: manifest, err: err}
 	return manifest, err
 }
@@ -125,7 +142,7 @@ func requestUpdateManifest(endpoint string) (updateManifest, error) {
 		return manifest, err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "Qecho-Updater/1.0 (+https://gitee.com/qqtq/qecho-releases)")
+	req.Header.Set("User-Agent", "Qecho-Updater/1.0 (+https://github.com/qqtq-dev/qecho)")
 
 	client := &http.Client{
 		Timeout: updateTimeout,
