@@ -4,9 +4,14 @@ Windows 用 `build.ps1` 一条命令出 NSIS 安装包，Linux 这边情况不�
 
 | 产物 | 适用系统 | 是否自包含 |
 |---|---|---|
-| `Qecho_0.2.6_amd64.deb` | Ubuntu 22.04+、Debian 12+、深度、优麒麟 | 否，依赖系统 `libwebkit2gtk-4.1-0`、`libgtk-3-0`、`libayatana-appindicator3-1` |
-| `Qecho-0.2.6-1.x86_64.rpm` | 麒麟 V10（rpm 版）、统信 UOS（rpm 版）、Rocky/Fedora/CentOS 9+ | 否，同上 |
-| `Qecho_0.2.6_amd64.AppImage` | 任意 x86_64 桌面发行版 | 基本自包含，WebKitGTK 等 178 个库全部打进去了，约 92 MB；显卡库（`libGL` 等）仍需系统提供，见下文 |
+| `Qecho_0.2.6_amd64.deb` | Ubuntu 24.04+、Debian 13+ | 否，依赖系统 `libwebkit2gtk-4.1-0`、`libgtk-3-0`、`libayatana-appindicator3-1` |
+| `Qecho-0.2.6-1.x86_64.rpm` | Fedora 40+、RHEL 10+、openEuler 24.03+ | 否，同上 |
+| `Qecho-0.2.6-x86_64.AppImage` | 任意 x86_64 桌面发行版 | 基本自包含，WebKitGTK 等 178 个库全部打进去了，约 92 MB；显卡库（`libGL` 等）仍需系统提供，见下文 |
+
+> **三个包都要求目标机 glibc ≥ 2.39**。二进制在 Ubuntu 24.04 容器里编译，`objdump -p` 可见最高符号为
+> `GLIBC_2.39`。麒麟 V10（2.28）、统信 UOS 20（2.31）、RHEL 9 / OpenCloudOS 9（2.34）都装不上，
+> 这类系统请改发服务端网页版包（静态链接，无 glibc 门槛）。若要覆盖老基线，需要在 Debian 12
+> 或 RHEL 9 容器里另编一份，代价是 webkit2gtk 只能用 4.0（Tauri 2 不支持）。
 
 普通用户优先给 AppImage（双击即用、不用装依赖），其次是 deb。
 
@@ -125,7 +130,7 @@ sudo apt install -y libgl1 libegl1 libgbm1
 
 如果补完 GL 后接着报 `cannot open display` 或 `Failed to connect to display`，说明这台机器没有图形界面（云主机常见），AppImage 不是适用场景，得配 X11 转发或装 VNC/桌面环境。
 
-rpm 系还有更省事的路：直接 `sudo dnf install ./Qecho-0.2.6-1.x86_64.rpm`，依赖交给包管理器自动补。前提是软件源里有 `webkit2gtk4.1`——RHEL 9.2+ / OpenCloudOS 9 有，CentOS 7、8 没有。
+rpm 系还有更省事的路：直接 `sudo dnf install ./Qecho-0.2.6-1.x86_64.rpm`，依赖交给包管理器自动补。前提是软件源里有 `webkit2gtk4.1`——Fedora 40+ / RHEL 10 / openEuler 24.03+ 有，RHEL 9 系、OpenCloudOS 9 的源里没有 4.1，且 glibc 也只有 2.34，装不上。
 
 ## 已知限制
 
@@ -138,7 +143,7 @@ sudo apt install -y libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-1   
 sudo dnf install -y webkit2gtk4.1 gtk3 libayatana-appindicator-gtk3            # rpm 系
 ```
 
-**麒麟 / 统信要注意包类型**。这两家都有 deb 版和 rpm 版系统，发之前确认用户的系统版本，别给麒麟 V10 SP1（deb）发 rpm。
+**麒麟 / 统信目前只能发网页版**。这两家的 V10 / UOS 20 基线是 glibc 2.28~2.31，桌面端三个包都跑不起来（见文首的 glibc 说明）。真要出桌面端，得在对应系统的容器里另编一套，且 webkit2gtk 4.1 在麒麟 V10 SP1 上要手动补源。
 
 ## 版本号
 
