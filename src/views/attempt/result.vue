@@ -1,18 +1,18 @@
 <template>
   <div class="attempt">
     <header class="attempt-bar" data-tauri-drag-region>
-      <button class="back" @click="exit">← 返回</button>
-      <span class="title">答题结果</span>
+      <button class="back" @click="exit">{{ $t('attempt.back') }}</button>
+      <span class="title">{{ $t('attempt.resultTitle') }}</span>
       <WindowControls />
     </header>
     <main class="attempt-body">
       <a-result
         status="info"
-        title="暂无成绩"
-        sub-title="成绩页需要一次已提交的练习或考试，答题流程将在下一阶段接入。"
+        :title="$t('attempt.noScoreTitle')"
+        :sub-title="$t('attempt.noScoreDesc')"
       >
         <template #extra>
-          <a-button type="primary" @click="exit">返回概览</a-button>
+          <a-button type="primary" @click="exit">{{ $t('attempt.backOverview') }}</a-button>
         </template>
       </a-result>
     </main>

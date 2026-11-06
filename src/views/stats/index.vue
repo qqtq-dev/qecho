@@ -1,27 +1,33 @@
 <template>
   <div class="page">
-    <PageHeader title="统计" subtitle="答题量、正确率与练习趋势">
+    <PageHeader :title="$t('stats.title')" :subtitle="$t('stats.subtitle')">
       <template #actions>
         <a-segmented v-model:value="range" :options="ranges" />
       </template>
     </PageHeader>
 
     <div class="metrics">
-      <MetricTile label="答题总数" :value="stats?.answeredTotal ?? 0" :hint="rangeHint" />
-      <MetricTile label="正确率" :value="accuracyText" :hint="accuracyHint" />
-      <MetricTile label="练习次数" :value="stats?.practiceCount ?? 0" hint="按练习创建时间统计" />
-      <MetricTile label="考试次数" :value="stats?.examCount ?? 0" :hint="examHint" />
+      <MetricTile :label="$t('stats.metricAnswered')" :value="stats?.answeredTotal ?? 0" :hint="rangeHint" />
+      <MetricTile :label="$t('stats.metricAccuracy')" :value="accuracyText" :hint="accuracyHint" />
+      <MetricTile
+        :label="$t('stats.metricPractice')"
+        :value="stats?.practiceCount ?? 0"
+        :hint="$t('stats.metricPracticeHint')"
+      />
+      <MetricTile :label="$t('stats.metricExam')" :value="stats?.examCount ?? 0" :hint="examHint" />
     </div>
 
     <section class="panel">
       <div class="panel-head">
-        <h3>正确率趋势</h3>
-        <span class="muted">柱=答题量 · 线=正确率 · 按天汇总</span>
+        <h3>{{ $t('stats.trend') }}</h3>
+        <span class="muted">{{ $t('stats.trendDesc') }}</span>
       </div>
       <div class="panel-body chart-body">
         <a-spin v-if="!stats" />
-        <a-empty v-else-if="!hasData" description="这段时间还没有答题记录">
-          <a-button type="primary" ghost @click="router.push('/practice')">去练习</a-button>
+        <a-empty v-else-if="!hasData" :description="$t('stats.noRecords')">
+          <a-button type="primary" ghost @click="router.push('/practice')">
+            {{ $t('stats.goPractice') }}
+          </a-button>
         </a-empty>
         <div v-show="hasData" ref="chartEl" class="chart" />
       </div>
@@ -29,11 +35,11 @@
 
     <section class="panel">
       <div class="panel-head">
-        <h3>题库正确率</h3>
-        <span class="muted">练习与考试合计</span>
+        <h3>{{ $t('stats.bankAccuracy') }}</h3>
+        <span class="muted">{{ $t('stats.bankAccuracyDesc') }}</span>
       </div>
       <div class="panel-body bank-body" :class="{ empty: stats && !banks.length }">
-        <a-empty v-if="stats && !banks.length" description="暂无题库维度数据" />
+        <a-empty v-if="stats && !banks.length" :description="$t('stats.noBankData')" />
         <ul v-else class="bank-list">
           <li v-for="bank in banks" :key="bank.bankId">
             <div class="bl-top">
@@ -43,7 +49,9 @@
             <div class="bl-bar">
               <span :style="{ width: rateOf(bank.correct, bank.answered) + '%' }" />
             </div>
-            <div class="bl-meta">共 {{ bank.answered }} 题 · 答对 {{ bank.correct }} 题</div>
+            <div class="bl-meta">
+              {{ $t('stats.bankMeta', { answered: bank.answered, correct: bank.correct }) }}
+            </div>
           </li>
         </ul>
       </div>
@@ -51,11 +59,11 @@
 
     <section class="panel">
       <div class="panel-head">
-        <h3>标签正确率</h3>
-        <span class="muted">找薄弱知识点 · 练习与考试合计</span>
+        <h3>{{ $t('stats.tagAccuracy') }}</h3>
+        <span class="muted">{{ $t('stats.tagAccuracyDesc') }}</span>
       </div>
       <div class="panel-body bank-body" :class="{ empty: loaded && !tags.length }">
-        <a-empty v-if="loaded && !tags.length" description="暂无标签维度数据，给题目打上标签后即可统计" />
+        <a-empty v-if="loaded && !tags.length" :description="$t('stats.noTagData')" />
         <ul v-else class="bank-list">
           <li v-for="tag in tags" :key="tag.tagId">
             <div class="bl-top">
@@ -70,7 +78,9 @@
                 :style="{ width: rateOf(tag.correct, tag.answered) + '%' }"
               />
             </div>
-            <div class="bl-meta">共 {{ tag.answered }} 题 · 答对 {{ tag.correct }} 题</div>
+            <div class="bl-meta">
+              {{ $t('stats.bankMeta', { answered: tag.answered, correct: tag.correct }) }}
+            </div>
           </li>
         </ul>
       </div>
@@ -81,6 +91,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import * as echarts from 'echarts/core'
 import { BarChart, LineChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
@@ -92,14 +103,15 @@ import { isDark } from '@/theme'
 
 echarts.use([BarChart, LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
 
+const { t, locale } = useI18n()
 const router = useRouter()
 const range = ref<'7d' | '30d' | 'all'>('7d')
-const ranges = [
-  { label: '近 7 天', value: '7d' },
-  { label: '近 30 天', value: '30d' },
-  { label: '全部', value: 'all' },
-]
-const rangeHint = computed(() => ranges.find((r) => r.value === range.value)?.label ?? '')
+const ranges = computed(() => [
+  { label: t('stats.range7d'), value: '7d' },
+  { label: t('stats.range30d'), value: '30d' },
+  { label: t('stats.rangeAll'), value: 'all' },
+])
+const rangeHint = computed(() => ranges.value.find((r) => r.value === range.value)?.label ?? '')
 
 const stats = ref<Stats | null>(null)
 const tags = ref<StatsTag[]>([])
@@ -115,14 +127,17 @@ const accuracyText = computed(() => {
 
 const accuracyHint = computed(() => {
   const data = stats.value
-  if (!data || data.answeredTotal === 0) return '完成练习或考试后生成'
-  return `答对 ${data.correctTotal} / ${data.answeredTotal} 题`
+  if (!data || data.answeredTotal === 0) return t('stats.accuracyEmpty')
+  return t('stats.accuracyHint', { correct: data.correctTotal, answered: data.answeredTotal })
 })
 
 const examHint = computed(() => {
   const data = stats.value
-  if (!data || data.examScoredCount === 0) return '暂无交卷记录'
-  return `已交卷 ${data.examCount} 份 · 平均 ${data.examAverageScore.toFixed(1)} 分`
+  if (!data || data.examScoredCount === 0) return t('stats.examEmpty')
+  return t('stats.examHint', {
+    count: data.examCount,
+    avg: data.examAverageScore.toFixed(1),
+  })
 })
 
 function rateOf(correct: number, answered: number) {
@@ -157,7 +172,7 @@ function chartOption() {
       itemHeight: 10,
       itemGap: 14,
       textStyle: { color: p.text, fontSize: 11 },
-      data: ['答题量', '正确率'],
+      data: [t('stats.legendAnswered'), t('stats.legendAccuracy')],
     },
     tooltip: {
       trigger: 'axis',
@@ -175,7 +190,12 @@ function chartOption() {
         const point = trend[idx]
         if (!point) return ''
         const rate = point.answered ? `${Math.round((point.correct / point.answered) * 100)}%` : '—'
-        return `${point.date}<br/>答题 ${point.answered} 题<br/>答对 ${point.correct} 题<br/>正确率 ${rate}`
+        return [
+          point.date,
+          t('stats.tooltipAnswered', { n: point.answered }),
+          t('stats.tooltipCorrect', { n: point.correct }),
+          t('stats.tooltipRate', { rate }),
+        ].join('<br/>')
       },
     },
     xAxis: {
@@ -202,14 +222,14 @@ function chartOption() {
     ],
     series: [
       {
-        name: '答题量',
+        name: t('stats.legendAnswered'),
         type: 'bar',
         data: trend.map((d) => d.answered),
         barMaxWidth: 18,
         itemStyle: { color: p.bar, borderRadius: [3, 3, 0, 0] },
       },
       {
-        name: '正确率',
+        name: t('stats.legendAccuracy'),
         type: 'line',
         yAxisIndex: 1,
         data: trend.map((d) => (d.answered ? Math.round((d.correct / d.answered) * 100) : null)),
@@ -248,7 +268,7 @@ function onResize() {
 }
 
 watch(range, load)
-watch([stats, isDark], renderChart)
+watch([stats, isDark, locale], renderChart)
 
 onMounted(() => {
   load()

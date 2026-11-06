@@ -12,6 +12,7 @@
 </template>
 
 <script setup lang="ts">
+import { translate } from '@/i18n'
 import { computed } from 'vue'
 import { resolveImageUrl } from '@/api/request'
 
@@ -38,7 +39,7 @@ const fallback = computed(() => {
   const width = props.thumb ? 72 : 320
   const height = props.thumb ? 72 : 180
   const fontSize = props.thumb ? 10 : 14
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#f4f6f5"/><text x="50%" y="47%" font-size="${fontSize}" fill="#8a938e" text-anchor="middle">图片缺失</text><text x="50%" y="${props.thumb ? 68 : 64}%" font-size="${props.thumb ? 8 : 11}" fill="#a5ada9" text-anchor="middle">${escapeXml(label)}</text></svg>`
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#f4f6f5"/><text x="50%" y="47%" font-size="${fontSize}" fill="#8a938e" text-anchor="middle">${escapeXml(translate('image.missing'))}</text><text x="50%" y="${props.thumb ? 68 : 64}%" font-size="${props.thumb ? 8 : 11}" fill="#a5ada9" text-anchor="middle">${escapeXml(label)}</text></svg>`
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
 })
 </script>

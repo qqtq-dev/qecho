@@ -1,31 +1,35 @@
 <template>
   <div class="page">
-    <PageHeader title="题库管理" subtitle="维护本机题库与题目，考试按题库抽题">
+    <PageHeader :title="$t('banks.title')" :subtitle="$t('banks.subtitle')">
       <template #actions>
-        <a-tooltip :title="auth.mayExportImport ? '' : '管理员未开放导出与导入题库的权限'">
-          <a-button :disabled="!auth.mayExportImport" @click="importOpen = true">导入题库</a-button>
+        <a-tooltip :title="auth.mayExportImport ? '' : $t('banks.noImportPermission')">
+          <a-button :disabled="!auth.mayExportImport" @click="importOpen = true">
+            {{ $t('banks.import') }}
+          </a-button>
         </a-tooltip>
-        <a-tooltip :title="auth.mayCreateBank ? '' : '管理员未开放新建题库的权限'">
-          <a-button type="primary" :disabled="!auth.mayCreateBank" @click="openCreate">新建题库</a-button>
+        <a-tooltip :title="auth.mayCreateBank ? '' : $t('banks.noCreatePermission')">
+          <a-button type="primary" :disabled="!auth.mayCreateBank" @click="openCreate">
+            {{ $t('banks.create') }}
+          </a-button>
         </a-tooltip>
       </template>
     </PageHeader>
 
     <section class="panel">
       <div class="panel-head">
-        <h3>题库</h3>
-        <span class="muted">共 {{ banks.length }} 个</span>
+        <h3>{{ $t('banks.list') }}</h3>
+        <span class="muted">{{ $t('banks.count', { n: banks.length }) }}</span>
       </div>
       <div class="panel-body" :class="{ 'empty-state': !loading && banks.length === 0 }">
         <a-spin :spinning="loading">
-          <a-empty v-if="!loading && banks.length === 0" description="还没有题库">
+          <a-empty v-if="!loading && banks.length === 0" :description="$t('banks.empty')">
             <a-button
               v-if="auth.mayCreateBank"
               type="primary"
               ghost
               @click="openCreate"
             >
-              新建题库
+              {{ $t('banks.create') }}
             </a-button>
           </a-empty>
           <a-table
@@ -43,38 +47,40 @@
                 <div v-if="record.description" class="muted ellipsis">{{ record.description }}</div>
               </template>
               <template v-else-if="column.key === 'questionCount'">
-                <a-tag color="green">{{ record.questionCount }} 道</a-tag>
+                <a-tag color="green">{{ $t('banks.questionCount', { n: record.questionCount }) }}</a-tag>
               </template>
               <template v-else-if="column.key === 'practice'">
                 <span v-if="record.answeredCount > 0" class="mono">{{ formatRate(record.correctRate) }}</span>
                 <span v-else class="muted">—</span>
               </template>
               <template v-else-if="column.key === 'answered'">
-                <span v-if="record.answeredCount > 0">{{ record.answeredCount }} 次</span>
+                <span v-if="record.answeredCount > 0">
+                  {{ $t('banks.answeredTimes', { n: record.answeredCount }) }}
+                </span>
                 <span v-else class="muted">—</span>
               </template>
               <template v-else-if="column.key === 'lastPracticedAt'">
                 <span class="muted">{{ formatTime(record.lastPracticedAt) }}</span>
               </template>
               <template v-else-if="column.key === 'owner'">
-                <a-tag v-if="record.isPublic" color="blue">公共</a-tag>
+                <a-tag v-if="record.isPublic" color="blue">{{ $t('banks.ownerPublic') }}</a-tag>
                 <span v-else-if="record.ownerName">{{ record.ownerName }}</span>
                 <span v-else class="muted">—</span>
               </template>
               <template v-else-if="column.key === 'access'">
-                <a-tag v-if="record.memberLevel === 'owner'" color="green">所有者</a-tag>
-                <a-tag v-else-if="record.memberLevel === 'admin'" color="purple">管理员</a-tag>
-                <a-tag v-else-if="record.memberLevel === 'editor'" color="blue">共享 · 可编辑</a-tag>
-                <a-tag v-else-if="record.memberLevel === 'viewer'">共享 · 只读</a-tag>
-                <a-tag v-else-if="record.visibility === 'public'" color="cyan">公开 · 只读</a-tag>
-                <a-tag v-else>只读</a-tag>
+                <a-tag v-if="record.memberLevel === 'owner'" color="green">{{ $t('banks.accessOwner') }}</a-tag>
+                <a-tag v-else-if="record.memberLevel === 'admin'" color="purple">{{ $t('banks.accessAdmin') }}</a-tag>
+                <a-tag v-else-if="record.memberLevel === 'editor'" color="blue">{{ $t('banks.accessEditor') }}</a-tag>
+                <a-tag v-else-if="record.memberLevel === 'viewer'">{{ $t('banks.accessViewer') }}</a-tag>
+                <a-tag v-else-if="record.visibility === 'public'" color="cyan">{{ $t('banks.accessPublic') }}</a-tag>
+                <a-tag v-else>{{ $t('banks.accessReadonly') }}</a-tag>
               </template>
               <template v-else-if="column.key === 'updatedAt'">
                 <span class="muted">{{ formatTime(record.updatedAt) }}</span>
               </template>
               <template v-else-if="column.key === 'actions'">
                 <a-space :size="2">
-                  <a-button type="link" size="small" @click="router.push(`/banks/${record.id}`)">题目</a-button>
+                  <a-button type="link" size="small" @click="router.push(`/banks/${record.id}`)">{{ $t('banks.questions') }}</a-button>
                   <template v-if="record.canManage">
                     <a-button
                       v-if="!record.isPublic"
@@ -82,20 +88,20 @@
                       size="small"
                       @click="openSharing(record)"
                     >
-                      共享
+                      {{ $t('banks.share') }}
                     </a-button>
-                    <a-button type="link" size="small" @click="openEdit(record)">编辑</a-button>
+                    <a-button type="link" size="small" @click="openEdit(record)">{{ $t('banks.edit') }}</a-button>
                     <a-popconfirm
-                      title="删除后该题库的题目也会一并移除，确定吗？"
-                      ok-text="删除"
-                      cancel-text="取消"
+                      :title="$t('banks.removeConfirm')"
+                      :ok-text="$t('banks.remove')"
+                      :cancel-text="$t('common.cancel')"
                       @confirm="removeBank(record)"
                     >
-                      <a-button type="link" size="small" danger>删除</a-button>
+                      <a-button type="link" size="small" danger>{{ $t('banks.remove') }}</a-button>
                     </a-popconfirm>
                   </template>
-                  <a-tag v-else-if="record.canEdit" color="blue">可编辑题目</a-tag>
-                  <span v-else class="muted readonly">只读</span>
+                  <a-tag v-else-if="record.canEdit" color="blue">{{ $t('banks.canEditQuestions') }}</a-tag>
+                  <span v-else class="muted readonly">{{ $t('banks.accessReadonly') }}</span>
                 </a-space>
               </template>
             </template>
@@ -106,27 +112,27 @@
 
     <a-modal
       v-model:open="modalOpen"
-      :title="editing ? '编辑题库' : '新建题库'"
+      :title="editing ? $t('banks.editTitle') : $t('banks.createTitle')"
       :confirm-loading="saving"
-      ok-text="保存"
-      cancel-text="取消"
+      :ok-text="$t('common.save')"
+      :cancel-text="$t('common.cancel')"
       :width="460"
       @ok="saveBank"
     >
       <a-form layout="vertical">
-        <a-form-item label="题库名称" required>
-          <a-input v-model:value="form.name" :maxlength="60" placeholder="例如：2026 安全规程题库" />
+        <a-form-item :label="$t('banks.name')" required>
+          <a-input v-model:value="form.name" :maxlength="60" :placeholder="$t('banks.namePlaceholder')" />
         </a-form-item>
-        <a-form-item v-if="auth.isAdmin && !editing" label="公共题库">
+        <a-form-item v-if="auth.isAdmin && !editing" :label="$t('banks.publicBank')">
           <a-switch v-model:checked="form.public" />
-          <span class="muted switch-hint">开启后作为公共题库，所有登录用户都能看到并使用</span>
+          <span class="muted switch-hint">{{ $t('banks.publicHint') }}</span>
         </a-form-item>
-        <a-form-item label="说明">
+        <a-form-item :label="$t('banks.description')">
           <a-textarea
             v-model:value="form.description"
             :rows="3"
             :maxlength="200"
-            placeholder="可选，方便区分题库用途"
+            :placeholder="$t('banks.descriptionPlaceholder')"
           />
         </a-form-item>
       </a-form>
@@ -148,8 +154,9 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { message } from 'ant-design-vue'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/PageHeader.vue'
@@ -158,6 +165,7 @@ import BankSharingDrawer from '@/components/BankSharingDrawer.vue'
 import { useAuthStore } from '@/stores/auth'
 import { banksApi, type Bank } from '@/api/banks'
 
+const { t } = useI18n()
 const router = useRouter()
 const auth = useAuthStore()
 const banks = ref<Bank[]>([])
@@ -182,32 +190,32 @@ function accessKey(bank: Bank): AccessKey {
   return 'readonly'
 }
 
-const accessFilters = [
-  { text: '所有者', value: 'owner' },
-  { text: '管理员', value: 'admin' },
-  { text: '共享 · 可编辑', value: 'editor' },
-  { text: '共享 · 只读', value: 'viewer' },
-  { text: '公开 · 只读', value: 'public' },
-  { text: '只读', value: 'readonly' },
-]
+const accessFilters = computed(() => [
+  { text: t('banks.accessOwner'), value: 'owner' },
+  { text: t('banks.accessAdmin'), value: 'admin' },
+  { text: t('banks.accessEditor'), value: 'editor' },
+  { text: t('banks.accessViewer'), value: 'viewer' },
+  { text: t('banks.accessPublic'), value: 'public' },
+  { text: t('banks.accessReadonly'), value: 'readonly' },
+])
 
-const columns = [
-  { title: '题库', key: 'name', dataIndex: 'name' },
-  { title: '题目数', key: 'questionCount', dataIndex: 'questionCount', width: 100 },
-  { title: '正确率', key: 'practice', width: 100 },
-  { title: '作答次数', key: 'answered', width: 100 },
-  { title: '最近练习', key: 'lastPracticedAt', width: 150 },
-  { title: '归属', key: 'owner', width: 110 },
+const columns = computed(() => [
+  { title: t('banks.colName'), key: 'name', dataIndex: 'name' },
+  { title: t('banks.colQuestionCount'), key: 'questionCount', dataIndex: 'questionCount', width: 100 },
+  { title: t('banks.colAccuracy'), key: 'practice', width: 100 },
+  { title: t('banks.colAnswered'), key: 'answered', width: 100 },
+  { title: t('banks.colLastPractice'), key: 'lastPracticedAt', width: 150 },
+  { title: t('banks.colOwner'), key: 'owner', width: 110 },
   {
-    title: '我的权限',
+    title: t('banks.colAccess'),
     key: 'access',
     width: 130,
-    filters: accessFilters,
+    filters: accessFilters.value,
     onFilter: (value: unknown, record: Bank) => accessKey(record) === value,
   },
-  { title: '更新时间', key: 'updatedAt', dataIndex: 'updatedAt', width: 160 },
-  { title: '操作', key: 'actions', width: 230 },
-]
+  { title: t('banks.colUpdated'), key: 'updatedAt', dataIndex: 'updatedAt', width: 160 },
+  { title: t('banks.colActions'), key: 'actions', width: 230 },
+])
 
 function formatRate(rate: number) {
   return `${(Math.round(rate * 1000) / 10).toFixed(1)}%`
@@ -230,7 +238,7 @@ async function load() {
 
 function openCreate() {
   if (!auth.mayCreateBank) {
-    message.warning('管理员未开放新建题库的权限')
+    message.warning(t('banks.noCreatePermission'))
     return
   }
   editing.value = null
@@ -256,21 +264,21 @@ function openSharing(bank: Bank) {
 async function saveBank() {
   const name = form.name.trim()
   if (!name) {
-    message.warning('请填写题库名称')
+    message.warning(t('banks.msg.nameRequired'))
     return
   }
   saving.value = true
   try {
     if (editing.value) {
       await banksApi.update(editing.value.id, { name, description: form.description.trim() })
-      message.success('题库已更新')
+      message.success(t('banks.msg.updated'))
     } else {
       await banksApi.create({
         name,
         description: form.description.trim(),
         public: auth.isAdmin && form.public,
       })
-      message.success('题库已创建')
+      message.success(t('banks.msg.created'))
     }
     modalOpen.value = false
     await load()
@@ -281,7 +289,7 @@ async function saveBank() {
 
 async function removeBank(bank: Bank) {
   await banksApi.remove(bank.id)
-  message.success('题库已删除')
+  message.success(t('banks.msg.deleted'))
   await load()
 }
 

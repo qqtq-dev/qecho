@@ -7,25 +7,34 @@
             <span class="logo-mark">Q</span>
             <span class="brand-name">Qecho</span>
           </div>
-          <h2 class="hero">题库导入、随机练习、在线考试全都有<br />一个应用全部搞定</h2>
+          <h2 class="hero">{{ $t('auth.heroLine1') }}<br />{{ $t('auth.heroLine2') }}</h2>
           <p class="side-desc">
-            Excel 批量导入题库，按题型、难度、标签筛选组卷；随机练习逐题判分，错题自动收录、连对自动移出；局域网在线考试连手机就能答。数据全部保存在本机，离线也能用。
+            {{ $t('auth.heroDesc') }}
           </p>
           <p class="side-desc">
-            题库、题图与练习记录都可整体导出，换台电脑导入即可接着练习。
+            {{ $t('auth.heroDesc2') }}
           </p>
           <div class="chips">
-            <span>题库导入</span>
-            <span>随机练习</span>
-            <span>错题本</span>
-            <span>在线考试</span>
+            <span>{{ $t('auth.chipImport') }}</span>
+            <span>{{ $t('auth.chipPractice') }}</span>
+            <span>{{ $t('auth.chipWrong') }}</span>
+            <span>{{ $t('auth.chipExam') }}</span>
           </div>
         </div>
-        <p class="side-foot">© 2026 Qecho · 柒柒天晴</p>
+        <p class="side-foot">{{ $t('app.copyright') }}</p>
       </aside>
 
       <section class="main">
         <WindowControls class="win-controls" :maximize="false" />
+        <!-- 登录前也能换语言：英文用户不必先登录再找设置 -->
+        <a-select
+          v-model:value="lang"
+          :options="localeOptions"
+          size="small"
+          :bordered="false"
+          :dropdown-match-select-width="false"
+          class="lang-pick"
+        />
         <div class="main-inner">
           <div class="head">
             <h1><slot name="title" /></h1>
@@ -34,17 +43,25 @@
           <slot />
           <div v-if="$slots.footer" class="foot"><slot name="footer" /></div>
         </div>
-        <p class="main-foot">© 2026 Qecho · 柒柒天晴</p>
+        <p class="main-foot">{{ $t('app.copyright') }}</p>
       </section>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import WindowControls from '@/components/WindowControls.vue'
+import { localeCode, localeOptions, setLocale } from '@/i18n'
 
 const isTauri = !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
+
+const lang = computed({
+  get: () => localeCode.value,
+  set: (v: string) => {
+    void setLocale(v)
+  },
+})
 
 onMounted(async () => {
   if (!isTauri) return
@@ -170,6 +187,17 @@ onMounted(async () => {
   right: 14px;
   color: var(--text2);
 }
+.lang-pick {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: auto;
+  min-width: 0;
+  font-size: 12.5px;
+}
+.lang-pick :deep(.ant-select-selector) { padding-left: 6px !important; }
+/* 桌面端右上角有最小化/关闭按钮，语言选择往左让开，避免叠在一起 */
+.auth-page.is-desktop .lang-pick { right: 84px; }
 .win-controls :deep(.wc:hover) { background: var(--hover); }
 .win-controls :deep(.wc.close:hover) { background: #dc2626; color: #fff; }
 .main-inner { width: 100%; max-width: 340px; }

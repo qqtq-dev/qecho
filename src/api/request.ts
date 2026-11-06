@@ -1,5 +1,6 @@
 import axios, { type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
 import { message } from 'ant-design-vue'
+import { translate } from '@/i18n'
 
 declare module 'axios' {
   export interface AxiosRequestConfig {
@@ -69,7 +70,7 @@ http.interceptors.request.use((config) => {
 const unwrap = (resp: AxiosResponse): any => {
   const body = resp.data as ApiEnvelope
   if (body && typeof body.code === 'number' && body.code !== 0) {
-    if (resp.config.silent !== true) message.error(body.message || '请求失败')
+    if (resp.config.silent !== true) message.error(body.message || translate('error.requestFailed'))
     return Promise.reject(new Error(body.message))
   }
   return body && body.data !== undefined ? body.data : body
@@ -82,7 +83,7 @@ async function silentLogin(): Promise<string> {
     { timeout: 5000 },
   )
   const token = resp.data?.data?.token
-  if (!token) throw new Error('本机登录失败')
+  if (!token) throw new Error(translate('error.localLoginFailed'))
   localStorage.setItem(TOKEN_KEY, token)
   return token
 }
@@ -97,11 +98,11 @@ http.interceptors.response.use(
     if (resp?.status === 401) {
       const url: string = resp?.config?.url ?? ''
       if (url.includes('/auth/login') || url.includes('/auth/register')) {
-        if (!silent) message.error(apiMessage || '登录失败')
+        if (!silent) message.error(apiMessage || translate('error.loginFailed'))
       } else if (!isTauri()) {
         setToken('')
         if (!location.hash.startsWith('#/login')) location.hash = '#/login'
-        if (!silent) message.error(apiMessage || '登录已过期，请重新登录')
+        if (!silent) message.error(apiMessage || translate('error.sessionExpired'))
       } else {
         const cfg = error.config as (InternalAxiosRequestConfig & { __retried?: boolean }) | undefined
         if (cfg && !cfg.__retried) {
@@ -115,10 +116,10 @@ http.interceptors.response.use(
             localStorage.removeItem(TOKEN_KEY)
           }
         }
-        if (!silent) message.error('本地服务连接失败，请重启应用')
+        if (!silent) message.error(translate('error.engineDown'))
       }
     } else if (!silent) {
-      message.error(apiMessage || error?.message || '网络错误（引擎未启动？）')
+      message.error(apiMessage || error?.message || translate('error.network'))
     }
     return Promise.reject(error)
   },

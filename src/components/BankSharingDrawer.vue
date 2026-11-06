@@ -2,7 +2,7 @@
   <a-drawer
     :open="open"
     :width="540"
-    title="共享题库"
+    :title="$t('sharing.title')"
     placement="right"
     destroy-on-close
     @close="close"
@@ -10,30 +10,26 @@
     <a-spin :spinning="loading">
       <template v-if="state">
         <div class="head">
-          <div class="bank-name">{{ bankName || '题库' }}</div>
-          <div class="muted">所有者：{{ state.ownerName || '—' }}</div>
+          <div class="bank-name">{{ bankName || $t('sharing.bankFallback') }}</div>
+          <div class="muted">{{ $t('sharing.owner', { name: state.ownerName || '—' }) }}</div>
         </div>
 
         <a-divider class="divider" />
 
         <div class="block">
-          <div class="block-title">可见范围</div>
+          <div class="block-title">{{ $t('sharing.visibility') }}</div>
           <a-radio-group
             :value="state.visibility"
             :disabled="busy"
             button-style="solid"
             @change="onVisibilityChange"
           >
-            <a-radio-button value="private">仅共享成员</a-radio-button>
-            <a-radio-button value="public">所有登录用户（只读）</a-radio-button>
+            <a-radio-button value="private">{{ $t('sharing.privateOnly') }}</a-radio-button>
+            <a-radio-button value="public">{{ $t('sharing.publicRead') }}</a-radio-button>
           </a-radio-group>
           <p class="hint">
-            <template v-if="state.visibility === 'public'">
-              全部登录用户都能看到并练习这个题库，但只有你与共享成员可以修改内容。
-            </template>
-            <template v-else>
-              只有你与下方共享成员能看到这个题库。
-            </template>
+            <template v-if="state.visibility === 'public'">{{ $t('sharing.publicHint') }}</template>
+            <template v-else>{{ $t('sharing.privateHint') }}</template>
           </p>
         </div>
 
@@ -41,12 +37,12 @@
 
         <div class="block">
           <div class="block-title">
-            共享成员
-            <span class="muted">共 {{ state.members.length }} 人</span>
+            {{ $t('sharing.members') }}
+            <span class="muted">{{ $t('sharing.memberCount', { n: state.members.length }) }}</span>
           </div>
           <a-empty
             v-if="!state.members.length"
-            description="还没有共享给任何人"
+            :description="$t('sharing.noMembers')"
             :image="false"
           />
           <a-table
@@ -69,18 +65,18 @@
                   :disabled="busy"
                   @change="(value: string) => onLevelChange(record, value)"
                 >
-                  <a-select-option value="viewer">只读</a-select-option>
-                  <a-select-option value="editor">可编辑</a-select-option>
+                  <a-select-option value="viewer">{{ $t('sharing.viewer') }}</a-select-option>
+                  <a-select-option value="editor">{{ $t('sharing.editor') }}</a-select-option>
                 </a-select>
               </template>
               <template v-else-if="column.key === 'actions'">
                 <a-popconfirm
-                  :title="`取消与 ${record.username} 的共享？`"
-                  ok-text="取消共享"
-                  cancel-text="保留"
+                  :title="$t('sharing.removeConfirm', { name: record.username })"
+                  :ok-text="$t('sharing.removeOk')"
+                  :cancel-text="$t('sharing.keep')"
                   @confirm="removeMember(record)"
                 >
-                  <a-button type="link" size="small" danger>移除</a-button>
+                  <a-button type="link" size="small" danger>{{ $t('sharing.remove') }}</a-button>
                 </a-popconfirm>
               </template>
             </template>
@@ -94,19 +90,19 @@
               :options="options"
               :loading="searching"
               :not-found-content="searchHint || undefined"
-              placeholder="输入用户名搜索（至少 2 个字符）"
+              :placeholder="$t('sharing.searchPlaceholder')"
               style="flex: 1; min-width: 0"
               @search="onSearch"
             />
             <a-select v-model:value="pickLevel" style="width: 104px">
-              <a-select-option value="viewer">只读</a-select-option>
-              <a-select-option value="editor">可编辑</a-select-option>
+              <a-select-option value="viewer">{{ $t('sharing.viewer') }}</a-select-option>
+              <a-select-option value="editor">{{ $t('sharing.editor') }}</a-select-option>
             </a-select>
             <a-button type="primary" :loading="busy" :disabled="!pickUserId" @click="addMember">
-              添加
+              {{ $t('sharing.add') }}
             </a-button>
           </div>
-          <p class="hint">可编辑的成员能增删改题目与导入题目，但不能改题库信息、删除题库或管理标签。</p>
+          <p class="hint">{{ $t('sharing.editorHint') }}</p>
         </div>
       </template>
     </a-spin>
@@ -114,7 +110,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { message } from 'ant-design-vue'
 import { banksApi, type BankSharing } from '@/api/banks'
 import { usersApi } from '@/api/users'
@@ -130,6 +127,8 @@ const emit = defineEmits<{
   (e: 'update:open', value: boolean): void
 }>()
 
+const { t } = useI18n()
+
 const state = ref<BankSharing | null>(null)
 const loading = ref(false)
 const busy = ref(false)
@@ -139,11 +138,11 @@ const pickUserId = ref<number | undefined>(undefined)
 const pickLevel = ref<'viewer' | 'editor'>('viewer')
 const options = ref<{ value: number; label: string; disabled?: boolean }[]>([])
 
-const columns = [
-  { title: '成员', key: 'username', dataIndex: 'username' },
-  { title: '权限', key: 'level', width: 130 },
+const columns = computed(() => [
+  { title: t('sharing.colMember'), key: 'username', dataIndex: 'username' },
+  { title: t('sharing.colLevel'), key: 'level', width: 130 },
   { title: '', key: 'actions', width: 80 },
-]
+])
 
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -158,7 +157,7 @@ async function load() {
   try {
     state.value = await banksApi.sharing(props.bankId)
   } catch (err) {
-    message.error((err as Error)?.message || '读取共享设置失败')
+    message.error((err as Error)?.message || t('sharing.msg.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -170,9 +169,11 @@ async function onVisibilityChange(event: unknown) {
   busy.value = true
   try {
     apply(await banksApi.updateSharing(props.bankId, value as 'private' | 'public'))
-    message.success(value === 'public' ? '已对所有登录用户开放（只读）' : '已改为仅共享成员可见')
+    message.success(
+      value === 'public' ? t('sharing.msg.openedPublic') : t('sharing.msg.changedPrivate'),
+    )
   } catch (err) {
-    message.error((err as Error)?.message || '保存失败')
+    message.error((err as Error)?.message || t('sharing.msg.saveFailed'))
     await load()
   } finally {
     busy.value = false
@@ -184,9 +185,9 @@ async function onLevelChange(record: { userId: number }, level: string) {
   busy.value = true
   try {
     apply(await banksApi.saveMember(props.bankId, record.userId, level as 'viewer' | 'editor'))
-    message.success('权限已更新')
+    message.success(t('sharing.msg.permissionsSaved'))
   } catch (err) {
-    message.error((err as Error)?.message || '保存失败')
+    message.error((err as Error)?.message || t('sharing.msg.saveFailed'))
     await load()
   } finally {
     busy.value = false
@@ -198,11 +199,11 @@ async function addMember() {
   busy.value = true
   try {
     apply(await banksApi.saveMember(props.bankId, pickUserId.value, pickLevel.value))
-    message.success('已添加共享成员')
+    message.success(t('sharing.msg.memberAdded'))
     pickUserId.value = undefined
     options.value = []
   } catch (err) {
-    message.error((err as Error)?.message || '添加失败')
+    message.error((err as Error)?.message || t('sharing.msg.addFailed'))
   } finally {
     busy.value = false
   }
@@ -213,9 +214,9 @@ async function removeMember(record: { userId: number; username: string }) {
   busy.value = true
   try {
     apply(await banksApi.removeMember(props.bankId, record.userId))
-    message.success(`已取消与 ${record.username} 的共享`)
+    message.success(t('sharing.msg.memberRemoved', { name: record.username }))
   } catch (err) {
-    message.error((err as Error)?.message || '操作失败')
+    message.error((err as Error)?.message || t('sharing.msg.actionFailed'))
   } finally {
     busy.value = false
   }
@@ -228,7 +229,7 @@ function onSearch(keyword: string) {
   if (key.length < 2) {
     options.value = []
     searching.value = false
-    searchHint.value = key ? '请至少输入 2 个字符' : ''
+    searchHint.value = key ? t('sharing.searchHint') : ''
     return
   }
   searchHint.value = ''
@@ -241,7 +242,7 @@ function onSearch(keyword: string) {
         .filter((u) => u.role !== 'admin')
         .map((u) => ({
           value: u.id,
-          label: taken.has(u.id) ? `${u.username}（已共享）` : u.username,
+          label: taken.has(u.id) ? t('sharing.memberShared', { name: u.username }) : u.username,
           disabled: taken.has(u.id),
         }))
     } catch {

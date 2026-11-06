@@ -1,52 +1,52 @@
 <template>
   <AuthShell>
-    <template #title>注册账号</template>
-    <template #subtitle>注册成功后自动登录，首个账号将成为管理员</template>
+    <template #title>{{ $t('auth.registerTitle') }}</template>
+    <template #subtitle>{{ $t('auth.registerSub') }}</template>
 
     <a-form layout="vertical" class="form" @submit.prevent="submit">
-      <a-form-item label="用户名">
+      <a-form-item :label="$t('auth.username')">
         <a-input
           v-model:value="username"
-          placeholder="2–20 位字母、数字、汉字或 _ . -"
+          :placeholder="$t('auth.usernameRule')"
           autocomplete="username"
           :maxlength="20"
         >
           <template #prefix><UserRound :size="15" /></template>
         </a-input>
       </a-form-item>
-      <a-form-item label="密码">
+      <a-form-item :label="$t('auth.password')">
         <a-input-password
           v-model:value="password"
-          placeholder="至少 8 位"
+          :placeholder="$t('auth.passwordRule')"
           autocomplete="new-password"
           @press-enter="submit"
         >
           <template #prefix><LockKeyhole :size="15" /></template>
         </a-input-password>
       </a-form-item>
-      <a-form-item label="验证码">
+      <a-form-item :label="$t('auth.captcha')">
         <div class="captcha-row">
           <a-input
             v-model:value="captchaAnswer"
-            placeholder="输入右侧字符"
+            :placeholder="$t('auth.captchaPlaceholder')"
             :maxlength="4"
             autocomplete="off"
             @press-enter="submit"
           >
             <template #prefix><ShieldCheck :size="15" /></template>
           </a-input>
-          <button type="button" class="captcha-box" title="看不清？点击换一张" @click="loadCaptcha">
-            <img v-if="captcha" :src="captcha.image" alt="图片验证码" />
-            <span v-else class="captcha-loading">加载中</span>
+          <button type="button" class="captcha-box" :title="$t('auth.captchaRefresh')" @click="loadCaptcha">
+            <img v-if="captcha" :src="captcha.image" :alt="$t('auth.captchaAlt')" />
+            <span v-else class="captcha-loading">{{ $t('auth.captchaLoading') }}</span>
           </button>
         </div>
       </a-form-item>
       <div class="actions">
         <button type="submit" class="action">
-          {{ loading ? '注册中…' : '注 册' }}
+          {{ loading ? $t('auth.registerLoading') : $t('auth.register') }}
         </button>
         <button type="button" class="action" @click="router.push('/login')">
-          返回登录
+          {{ $t('auth.backToLogin') }}
         </button>
       </div>
     </a-form>
@@ -56,6 +56,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { message } from 'ant-design-vue'
 import { LockKeyhole, ShieldCheck, UserRound } from 'lucide-vue-next'
 import AuthShell from './AuthShell.vue'
@@ -64,6 +65,7 @@ import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const auth = useAuthStore()
+const { t } = useI18n()
 
 const username = ref('')
 const password = ref('')
@@ -91,11 +93,11 @@ async function loadCaptcha() {
 async function submit() {
   if (loading.value) return
   if (!captcha.value) {
-    message.warning('验证码加载失败，请点击图片刷新')
+    message.warning(t('auth.captchaFailed'))
     return
   }
   if (!canSubmit.value) {
-    message.warning('请填写用户名、密码和图片验证码')
+    message.warning(t('auth.fillAll'))
     return
   }
   loading.value = true
@@ -106,7 +108,7 @@ async function submit() {
       captchaId: captcha.value.id,
       captchaAnswer: captchaAnswer.value.trim(),
     })
-    message.success('注册成功，已自动登录')
+    message.success(t('auth.registerOk'))
     router.replace('/dashboard')
   } catch {
     await loadCaptcha()
@@ -177,4 +179,6 @@ onMounted(loadCaptcha)
   transition: background 0.15s;
 }
 .action:hover { background: #1f8756; }
+/* 字距只为「注 册」这种两字按钮拉开；:lang 按 <html lang> 生效，多语言都适用 */
+.action:lang(en) { letter-spacing: 0.2px; }
 </style>

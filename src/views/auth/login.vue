@@ -1,25 +1,25 @@
 <template>
   <AuthShell>
-    <template #title>账号登录</template>
+    <template #title>{{ $t('auth.loginTitle') }}</template>
     <template #subtitle>
-      {{ isDesktop ? '本机账号默认免密码，直接登录即可' : '登录后可管理题库、发起练习与考试' }}
+      {{ isDesktop ? $t('auth.loginSubDesktop') : $t('auth.loginSubWeb') }}
     </template>
 
     <a-form layout="vertical" class="form" @submit.prevent="submit">
-      <a-form-item label="用户名">
+      <a-form-item :label="$t('auth.username')">
         <a-input
           v-model:value="username"
-          :placeholder="isDesktop ? '本机账号 local' : '请输入用户名'"
+          :placeholder="isDesktop ? $t('auth.placeholderLocalUser') : $t('auth.placeholderUser')"
           autocomplete="username"
           :maxlength="20"
         >
           <template #prefix><UserRound :size="15" /></template>
         </a-input>
       </a-form-item>
-      <a-form-item label="密码">
+      <a-form-item :label="$t('auth.password')">
         <a-input-password
           v-model:value="password"
-          :placeholder="isDesktop ? '本机可留空' : '请输入密码'"
+          :placeholder="isDesktop ? $t('auth.placeholderLocalPwd') : $t('auth.placeholderPwd')"
           autocomplete="current-password"
           @press-enter="submit"
         >
@@ -33,13 +33,13 @@
         class="submit"
         :loading="loading"
       >
-        {{ loading ? '登录中…' : '登 录' }}
+        {{ loading ? $t('auth.loginLoading') : $t('auth.login') }}
       </a-button>
 
       <div class="tip">
-        <template v-if="isDesktop">本机模式 · 账号数据保存在这台电脑</template>
+        <template v-if="isDesktop">{{ $t('auth.desktopTip') }}</template>
         <template v-else>
-          还没有账号？<router-link to="/register">立即注册</router-link>，注册需填写图片验证码。
+          {{ $t('auth.noAccount') }}<router-link to="/register">{{ $t('auth.registerLink') }}</router-link>{{ $t('auth.noAccountTail') }}
         </template>
       </div>
     </a-form>
@@ -49,6 +49,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { message } from 'ant-design-vue'
 import { LockKeyhole, UserRound } from 'lucide-vue-next'
 import AuthShell from './AuthShell.vue'
@@ -58,6 +59,7 @@ import { isTauri } from '@/api/request'
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const { t } = useI18n()
 
 // 桌面壳之外，开发时用浏览器直连本机引擎（vite dev server 代理到 127.0.0.1:54310）
 // 也是本机账号：引擎以 --desktop 启动时同样允许 local 空密码登录，这里放宽提交校验。
@@ -73,14 +75,14 @@ const canSubmit = computed(() => !!username.value.trim() && (!!password.value ||
 
 async function submit() {
   if (!canSubmit.value) {
-    message.warning(isDesktop ? '请输入用户名' : '请输入用户名和密码')
+    message.warning(isDesktop ? t('auth.needUsername') : t('auth.needUsernamePwd'))
     return
   }
   if (loading.value) return
   loading.value = true
   try {
     await auth.login(username.value.trim(), password.value)
-    message.success('登录成功')
+    message.success(t('auth.loginOk'))
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/dashboard'
     router.replace(redirect)
   } catch {
@@ -142,5 +144,9 @@ async function submit() {
 .tip a {
   color: var(--primary);
   font-weight: 600;
+  /* 中文标点自带间距，英文「?」后面需要补一点，两种语言都自然 */
+  margin-left: 3px;
 }
+/* 字距只为「登 录」这种两字按钮拉开；:lang 按 <html lang> 生效，多语言都适用 */
+.form :deep(.submit:lang(en)) { letter-spacing: 0.2px; }
 </style>

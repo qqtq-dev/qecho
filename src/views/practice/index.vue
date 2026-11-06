@@ -1,8 +1,10 @@
 <template>
   <div class="page" :class="{ 'page-quiz': !!session }">
-    <PageHeader title="练习" subtitle="按题库、标签、题型与难度组卷，作答即时判分并自动保存进度">
+    <PageHeader :title="$t('practice.title')" :subtitle="$t('practice.subtitle')">
       <template #actions>
-        <a-button v-if="!session" type="primary" :loading="starting" @click="start()">开始练习</a-button>
+        <a-button v-if="!session" type="primary" :loading="starting" @click="start()">
+          {{ $t('practice.start') }}
+        </a-button>
       </template>
     </PageHeader>
 
@@ -11,18 +13,21 @@
         <section class="panel quiz">
           <div class="quiz-head">
             <div>
-              <a-tag v-if="session.source === 'wrong'" color="red">错题复习</a-tag>
+              <a-tag v-if="session.source === 'wrong'" color="red">{{ $t('practice.wrongReview') }}</a-tag>
               <a-tag v-else color="green">{{ session.bankName }}</a-tag>
-              <span class="muted">第 {{ index + 1 }} / {{ session.totalCount }} 题</span>
-              <span class="muted progress-hint">已答 {{ answeredCount }}</span>
+              <span class="muted">
+                {{ $t('practice.progress', { current: index + 1, total: session.totalCount }) }}
+              </span>
+              <span class="muted progress-hint">{{ $t('practice.answeredBadge', { n: answeredCount }) }}</span>
             </div>
             <div class="head-right">
-              <a-tooltip v-if="current" :title="isMarked ? '取消标记' : '标记本题'" placement="bottomRight">
+              <a-tooltip v-if="current" :title="isMarked ? $t('practice.unmark') : $t('practice.mark')"
+                placement="bottomRight">
                 <a-button
                   size="small"
                   class="mark-btn"
                   :class="{ marked: isMarked }"
-                  :aria-label="isMarked ? '取消标记' : '标记本题'"
+                  :aria-label="isMarked ? $t('practice.unmark') : $t('practice.mark')"
                   :aria-pressed="isMarked"
                   @click="toggleMark"
                 >
@@ -34,7 +39,7 @@
 
           <template v-if="current">
             <div ref="bodyRef" class="quiz-body">
-              <div class="q-type">{{ current.type === 'multiple' ? '多选题' : '单选题' }}</div>
+              <div class="q-type">{{ current.type === 'multiple' ? $t('practice.multiple') : $t('practice.single') }}</div>
               <div class="q-stem">{{ current.stem }}</div>
               <QuestionImage v-if="current.stemImage" :name="current.stemImage" class="q-img" />
 
@@ -61,13 +66,13 @@
                   :disabled="chosen.length === 0"
                   @click="submitAnswer"
                 >
-                  确认答案
+                  {{ $t('practice.confirmAnswer') }}
                 </a-button>
               </div>
 
               <div class="analysis-box">
                 <div class="analysis-head">
-                  <div class="analysis-title">解析</div>
+                  <div class="analysis-title">{{ $t('practice.analysis') }}</div>
                   <!-- 未配置（配置读取完成且 ready=false）时在按钮原位显示引导；null=还在读取，不闪 -->
                   <a-button
                     v-if="aiReady === false"
@@ -75,7 +80,7 @@
                     class="ai-setup-hint"
                     @click="router.push('/settings')"
                   >
-                    配置 AI 答疑 →
+                    {{ $t('practice.setupAi') }}
                   </a-button>
                   <!-- 面板开着时按钮常驻，保证任何时刻都能收起；没开面板才要求先作答 -->
                   <a-button
@@ -85,33 +90,35 @@
                     @click="aiOpen = !aiOpen"
                   >
                     <template #icon><Sparkles :size="12" /></template>
-                    {{ aiOpen ? '收起 AI' : '问 AI' }}
+                    {{ aiOpen ? $t('practice.collapseAi') : $t('practice.askAi') }}
                   </a-button>
                 </div>
                 <template v-if="currentAnswer">
                   <div v-if="currentAnswer.result.analysis" class="analysis-text">{{ currentAnswer.result.analysis }}</div>
-                  <div v-else class="muted">本题暂无解析</div>
+                  <div v-else class="muted">{{ $t('practice.noAnalysis') }}</div>
                 </template>
-                <div v-else class="muted">作答后显示解析</div>
+                <div v-else class="muted">{{ $t('practice.analysisAfter') }}</div>
               </div>
             </div>
 
             <div class="quiz-actions">
               <a-space>
-                <a-button :disabled="index === 0" @click="go(index - 1)">上一题</a-button>
-                <a-button :disabled="index >= session.totalCount - 1" @click="go(index + 1)">下一题</a-button>
+                <a-button :disabled="index === 0" @click="go(index - 1)">{{ $t('practice.prev') }}</a-button>
+                <a-button :disabled="index >= session.totalCount - 1" @click="go(index + 1)">
+                  {{ $t('practice.next') }}
+                </a-button>
               </a-space>
               <a-popconfirm
-                :title="`确定完成练习？已答 ${answeredCount} / ${session.totalCount} 题`"
-                ok-text="完成"
-                cancel-text="继续作答"
+                :title="$t('practice.finishConfirm', { answered: answeredCount, total: session.totalCount })"
+                :ok-text="$t('practice.finishOk')"
+                :cancel-text="$t('practice.continueAnswering')"
                 @confirm="finish"
               >
-                <a-button type="primary">完成练习</a-button>
+                <a-button type="primary">{{ $t('practice.finish') }}</a-button>
               </a-popconfirm>
             </div>
             <div class="kbd-hint muted">
-              快捷键：A–H / 1–8 选择选项 · Enter 确认或下一题 · ← → 切换题目
+              {{ $t('practice.kbdHint') }}
             </div>
           </template>
         </section>
@@ -120,14 +127,14 @@
           <!-- 两个面板常驻挂载（v-show），AI 会话不因收起而丢；流式回答收起后继续走 -->
           <div v-show="!aiOpen" class="answer-card">
             <div class="side-head">
-              <h3>答题卡</h3>
+              <h3>{{ $t('practice.answerCard') }}</h3>
               <span class="muted">{{ answeredCount }} / {{ session.totalCount }}</span>
             </div>
             <div class="side-legend">
-              <span><i class="dot ok"></i>答对</span>
-              <span><i class="dot bad"></i>答错</span>
-              <span><i class="dot none"></i>未答</span>
-              <span><i class="dot mark"></i>标记</span>
+              <span><i class="dot ok"></i>{{ $t('practice.legendOk') }}</span>
+              <span><i class="dot bad"></i>{{ $t('practice.legendBad') }}</span>
+              <span><i class="dot none"></i>{{ $t('practice.legendNone') }}</span>
+              <span><i class="dot mark"></i>{{ $t('practice.legendMark') }}</span>
             </div>
             <div class="q-grid">
               <button
@@ -141,7 +148,7 @@
                 {{ i + 1 }}
               </button>
             </div>
-            <div class="side-foot muted">答对 {{ correctCount }} 题</div>
+            <div class="side-foot muted">{{ $t('practice.correctCount', { n: correctCount }) }}</div>
           </div>
           <AiChatPanel
             v-show="aiOpen"
@@ -160,14 +167,24 @@
       <section class="panel result">
         <a-result
           status="success"
-          :title="`本组练习完成：答对 ${summary.correctCount} / ${summary.totalCount} 题`"
-          :sub-title="`用时 ${formatDuration(summary.durationSec)} · 错题本当前待复习 ${wrongStore.stats.pending} 道`"
+          :title="
+            $t('practice.resultTitle', {
+              correct: summary.correctCount,
+              total: summary.totalCount,
+            })
+          "
+          :sub-title="
+            $t('practice.resultSub', {
+              duration: formatDuration(summary.durationSec),
+              pending: wrongStore.stats.pending,
+            })
+          "
         >
           <template #extra>
             <a-space>
-              <a-button type="primary" @click="start()">再来一组</a-button>
-              <a-button @click="backToSettings">调整设置</a-button>
-              <a-button @click="router.push('/wrong')">查看错题本</a-button>
+              <a-button type="primary" @click="start()">{{ $t('practice.again') }}</a-button>
+              <a-button @click="backToSettings">{{ $t('practice.adjust') }}</a-button>
+              <a-button @click="router.push('/wrong')">{{ $t('practice.viewWrong') }}</a-button>
             </a-space>
           </template>
         </a-result>
@@ -177,47 +194,47 @@
     <div v-else class="grid">
       <section class="panel">
         <div class="panel-head">
-          <h3>练习设置</h3>
+          <h3>{{ $t('practice.settings') }}</h3>
         </div>
         <div class="panel-body">
           <a-form layout="vertical">
-            <a-form-item label="题库" required>
+            <a-form-item :label="$t('practice.bank')" required>
               <a-select
                 v-model:value="form.bankIds"
                 mode="multiple"
-                placeholder="请选择题库（可多选）"
+                :placeholder="$t('practice.bankPlaceholder')"
                 :loading="loadingBanks"
                 :options="bankOptions"
                 :max-tag-count="2"
                 allow-clear
               />
             </a-form-item>
-            <a-form-item label="题型">
+            <a-form-item :label="$t('practice.questionType')">
               <a-radio-group v-model:value="form.type">
-                <a-radio-button value="">全部</a-radio-button>
-                <a-radio-button value="single">单选</a-radio-button>
-                <a-radio-button value="multiple">多选</a-radio-button>
+                <a-radio-button value="">{{ $t('practice.all') }}</a-radio-button>
+                <a-radio-button value="single">{{ $t('bankDetail.single') }}</a-radio-button>
+                <a-radio-button value="multiple">{{ $t('bankDetail.multiple') }}</a-radio-button>
               </a-radio-group>
             </a-form-item>
-            <a-form-item label="题目顺序">
+            <a-form-item :label="$t('practice.order')">
               <a-radio-group v-model:value="form.order">
-                <a-radio-button value="random">随机</a-radio-button>
-                <a-radio-button value="fixed">按题序</a-radio-button>
+                <a-radio-button value="random">{{ $t('practice.random') }}</a-radio-button>
+                <a-radio-button value="fixed">{{ $t('practice.fixed') }}</a-radio-button>
               </a-radio-group>
             </a-form-item>
             <div class="form-row">
-              <a-form-item label="难度" class="field-narrow">
+              <a-form-item :label="$t('practice.difficulty')" class="field-narrow">
                 <a-select
                   v-model:value="form.difficulty"
                   :options="difficultyOptions"
                   style="width: 100%"
                 />
               </a-form-item>
-              <a-form-item label="标签" class="field-wide">
+              <a-form-item :label="$t('practice.tags')" class="field-wide">
                 <a-select
                   v-model:value="form.tags"
                   mode="multiple"
-                  placeholder="全部标签（可多选，匹配任一标签）"
+                  :placeholder="$t('practice.tagsPlaceholder')"
                   :loading="loadingTags"
                   :options="tagOptions"
                   :max-tag-count="3"
@@ -227,7 +244,7 @@
               </a-form-item>
             </div>
             <div class="form-row">
-              <a-form-item label="题序范围" class="field-range">
+              <a-form-item :label="$t('practice.rangeLabel')" class="field-range">
                 <div class="range-row">
                   <a-input-number
                     v-model:value="form.startSeq"
@@ -243,46 +260,46 @@
                     :min="form.startSeq || 1"
                     :max="candidateTotal || 99999"
                     :precision="0"
-                    placeholder="末题"
+                    :placeholder="$t('practice.rangeEndPlaceholder')"
                     class="range-input"
                   />
-                  <span class="muted range-unit">题</span>
+                  <span class="muted range-unit">{{ $t('practice.rangeUnit') }}</span>
                   <span v-if="form.order !== 'fixed'" class="count-field">
-                    <span class="muted count-label">题量</span>
+                    <span class="muted count-label">{{ $t('practice.countLabel') }}</span>
                     <a-select
                       v-model:value="form.count"
                       :options="countOptions"
-                      title="随机抽题的题量"
+                      :title="$t('practice.countTitle')"
                       class="count-select"
                       @change="onCountChange"
                     />
                   </span>
                 </div>
                 <div class="range-hint muted">
-                  <template v-if="loadingCandidates">正在统计题数…</template>
+                  <template v-if="loadingCandidates">{{ $t('practice.counting') }}</template>
                   <template v-else-if="candidateTotal > 0">
-                    {{ rangeActive ? rangeSummary : `全部 ${candidateTotal} 道` }}
-                    <span v-if="!form.startSeq">（起始按第 1 题算）</span>
+                    {{ rangeActive ? rangeSummary : $t('practice.allCount', { n: candidateTotal }) }}
+                    <span v-if="!form.startSeq">{{ $t('practice.rangeFromFirst') }}</span>
                   </template>
-                  <template v-else>请先选择题库</template>
+                  <template v-else>{{ $t('practice.chooseBankFirst') }}</template>
                 </div>
                 <div v-if="filterActive" class="range-hint muted">
-                  筛选后共 {{ candidateTotal }} 道，题号按筛选结果编号，改筛选会重新排
+                  {{ $t('practice.filteredCount', { n: candidateTotal }) }}
                 </div>
                 <div v-if="nextRangeStart" class="range-hint">
                   <a-button type="link" size="small" class="range-next" @click="applyNextRange">
-                    上次练到第 {{ nextRangeStart - 1 }} 题，从第 {{ nextRangeStart }} 题接着练
+                    {{ $t('practice.nextRange', { last: nextRangeStart - 1, next: nextRangeStart }) }}
                   </a-button>
                 </div>
                 <div v-if="pickSummary" class="range-hint muted">{{ pickSummary }}</div>
               </a-form-item>
             </div>
-            <a-form-item label="选项乱序">
+            <a-form-item :label="$t('practice.shuffleOptions')">
               <a-switch v-model:checked="form.shuffleOptions" />
-              <span class="muted switch-hint">同一组练习内顺序固定，续答不重新洗牌</span>
+              <span class="muted switch-hint">{{ $t('practice.shuffleHint') }}</span>
             </a-form-item>
-            <a-empty v-if="!loadingBanks && banks.length === 0" description="还没有题库">
-              <a-button type="primary" ghost @click="router.push('/banks')">去创建题库</a-button>
+            <a-empty v-if="!loadingBanks && banks.length === 0" :description="$t('practice.noBanks')">
+              <a-button type="primary" ghost @click="router.push('/banks')">{{ $t('practice.goCreateBank') }}</a-button>
             </a-empty>
           </a-form>
         </div>
@@ -290,12 +307,12 @@
 
       <section class="panel">
         <div class="panel-head">
-          <h3>最近练习</h3>
-          <span class="muted">进度自动保存，可随时继续</span>
+          <h3>{{ $t('practice.recent') }}</h3>
+          <span class="muted">{{ $t('practice.recentDesc') }}</span>
         </div>
         <div class="panel-body" :class="{ 'empty-state': sessions.length === 0 }">
-          <a-empty v-if="sessions.length === 0" description="还没有练习记录">
-            <a-button type="primary" ghost @click="router.push('/banks')">先去题库看看</a-button>
+          <a-empty v-if="sessions.length === 0" :description="$t('practice.noSessions')">
+            <a-button type="primary" ghost @click="router.push('/banks')">{{ $t('practice.browseBanks') }}</a-button>
           </a-empty>
           <a-list v-else :data-source="sessions" size="small">
             <template #renderItem="{ item }">
@@ -303,22 +320,27 @@
                 <div class="recent-row">
                   <div class="recent-main">
                     <div class="recent-title">
-                      {{ item.source === 'wrong' ? '错题复习' : item.bankName }}
+                      {{ item.source === 'wrong' ? $t('practice.wrongReview') : item.bankName }}
                       <a-tag :color="item.status === 'ongoing' ? 'processing' : 'default'" class="recent-tag">
-                        {{ item.status === 'ongoing' ? '进行中' : '已完成' }}
+                        {{ item.status === 'ongoing' ? $t('practice.ongoing') : $t('practice.completed') }}
                       </a-tag>
                     </div>
                     <div class="muted">
-                      {{ formatTime(item.updatedAt || item.createdAt) }} · {{ item.totalCount }} 道 ·
-                      {{ orderLabel(item) }}
-                      <template v-if="item.shuffleOptions"> · 选项乱序</template>
+                      {{
+                        $t('practice.sessionMeta', {
+                          time: formatTime(item.updatedAt || item.createdAt),
+                          count: item.totalCount,
+                          order: orderLabel(item),
+                        })
+                      }}
+                      <template v-if="item.shuffleOptions"> · {{ $t('practice.optionShuffled') }}</template>
                     </div>
                   </div>
                   <div class="recent-right">
                     <div class="recent-score">
                       <span>{{ item.answeredCount }}/{{ item.totalCount }}</span>
                       <span class="muted">
-                        答对 {{ item.correctCount }}<template v-if="item.durationSec"> · {{ formatDuration(item.durationSec) }}</template>
+                        {{ $t('practice.correctShort', { n: item.correctCount }) }}<template v-if="item.durationSec"> · {{ formatDuration(item.durationSec) }}</template>
                       </span>
                     </div>
                     <a-space :size="0">
@@ -329,15 +351,15 @@
                         class="recent-continue"
                         @click="resume(item.id)"
                       >
-                        继续
+                        {{ $t('practice.resume') }}
                       </a-button>
                       <a-popconfirm
-                        title="删除这条练习记录？"
-                        ok-text="删除"
-                        cancel-text="取消"
+                        :title="$t('practice.removeConfirm')"
+                        :ok-text="$t('banks.remove')"
+                        :cancel-text="$t('common.cancel')"
                         @confirm="removeSession(item.id)"
                       >
-                        <a-button type="link" size="small" danger>删除</a-button>
+                        <a-button type="link" size="small" danger>{{ $t('banks.remove') }}</a-button>
                       </a-popconfirm>
                     </a-space>
                   </div>
@@ -355,6 +377,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { Flag, Sparkles } from 'lucide-vue-next'
 import { message } from 'ant-design-vue'
 import dayjs from 'dayjs'
@@ -374,8 +397,9 @@ import {
   type PracticeSummary,
 } from '@/api/practice'
 import { useWrongStore } from '@/stores/wrong'
-import { DIFFICULTY_FILTER_OPTIONS } from '@/utils/difficulty'
+import { difficultyFilterOptions } from '@/utils/difficulty'
 
+const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const wrongStore = useWrongStore()
@@ -441,12 +465,14 @@ const rangeSummary = computed(() => {
   const start = Math.max(1, form.startSeq || 1)
   const rawEnd = form.endSeq && form.endSeq > 0 ? form.endSeq : 0
   const end = total > 0 ? Math.min(rawEnd || total, total) : rawEnd
-  if (end < start) return '结束题号小于起始题号'
+  if (end < start) return t('practice.rangeEndBeforeStart')
   const span = end - start + 1
   if (rawEnd === 0) {
-    return start <= 1 ? `全库 ${span} 道` : `第 ${start} 题到末题（共 ${span} 道）`
+    return start <= 1
+      ? t('practice.rangeAll', { n: span })
+      : t('practice.rangeToEnd', { start, n: span })
   }
-  return `第 ${start}–${end} 题（共 ${span} 道）`
+  return t('practice.rangeSpan', { start, end, n: span })
 })
 
 // 是否真的限定了范围（起始 1 + 末题留空 = 全库，不算）
@@ -485,11 +511,13 @@ const pickSummary = computed(() => {
   const rawEnd = form.endSeq && form.endSeq > 0 ? form.endSeq : 0
   const end = Math.min(rawEnd || total, total)
   if (!rangeActive.value) {
-    return form.count > 0 ? `从全库 ${total} 道中随机抽 ${n} 道` : `全库 ${total} 道全部打乱`
+    return form.count > 0
+      ? t('practice.pickAll', { total, n })
+      : t('practice.pickShuffleAll', { total })
   }
   return form.count > 0
-    ? `从第 ${start}–${end} 题中随机抽 ${n} 道，不重复`
-    : `第 ${start}–${end} 题全部打乱，共 ${n} 道`
+    ? t('practice.pickSpan', { start, end, n })
+    : t('practice.pickSpanAll', { start, end, n })
 })
 
 // 切到“按题序”时，若还没填范围，就用题量兜一个默认段，保持原来的直觉
@@ -553,9 +581,9 @@ const filterActive = computed(
 )
 
 const tagOptions = computed(() =>
-  availableTags.value.map((t) => ({
-    label: `${t.name}（${t.questionCount}）`,
-    value: t.name,
+  availableTags.value.map((tag) => ({
+    label: t('practice.tagOption', { name: tag.name, n: tag.questionCount }),
+    value: tag.name,
   })),
 )
 
@@ -581,9 +609,9 @@ async function loadFormTags() {
       }
     }
     availableTags.value = [...merged.values()].sort(
-      (a, b) => b.questionCount - a.questionCount || a.name.localeCompare(b.name, 'zh'),
+      (a, b) => b.questionCount - a.questionCount || a.name.localeCompare(b.name, locale.value),
     )
-    const names = new Set(availableTags.value.map((t) => t.name))
+    const names = new Set(availableTags.value.map((tag) => tag.name))
     form.tags = form.tags.filter((t) => names.has(t))
   } catch {
     if (seq === tagLoadSeq) availableTags.value = []
@@ -596,27 +624,30 @@ watch(() => form.bankIds.join(','), loadFormTags)
 
 const countOptions = computed(() => {
   const options = [
-    { label: '10 题', value: 10 },
-    { label: '20 题', value: 20 },
-    { label: '50 题', value: 50 },
-    { label: '100 题', value: 100 },
-    { label: '全部', value: 0 },
+    { label: t('practice.countOption', { n: 10 }), value: 10 },
+    { label: t('practice.countOption', { n: 20 }), value: 20 },
+    { label: t('practice.countOption', { n: 50 }), value: 50 },
+    { label: t('practice.countOption', { n: 100 }), value: 100 },
+    { label: t('practice.countAll'), value: 0 },
   ]
   // “全部”在当前范围下就是整段，把实际道数标出来
   if (rangeActive.value && rangeSpan.value > 0) {
-    options[options.length - 1].label = `全部 ${rangeSpan.value} 道`
+    options[options.length - 1].label = t('practice.countAllSpan', { n: rangeSpan.value })
   }
   if (!options.some((o) => o.value === form.count)) {
-    options.splice(options.length - 1, 0, { label: `${form.count} 题`, value: form.count })
+    options.splice(options.length - 1, 0, {
+      label: t('practice.countOption', { n: form.count }),
+      value: form.count,
+    })
   }
   return options
 })
 
-const difficultyOptions = DIFFICULTY_FILTER_OPTIONS
+const difficultyOptions = computed(() => difficultyFilterOptions())
 
 const bankOptions = computed(() =>
   banks.value.map((b) => ({
-    label: `${b.name}（${b.questionCount} 道）`,
+    label: t('practice.bankOption', { name: b.name, n: b.questionCount }),
     value: b.id,
     disabled: b.questionCount === 0,
   })),
@@ -669,17 +700,19 @@ function formatTime(raw: string) {
 function formatDuration(seconds: number) {
   const sec = Math.max(0, Math.round(seconds || 0))
   const minutes = Math.floor(sec / 60)
-  if (minutes >= 60) return `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分`
-  return `${minutes} 分 ${String(sec % 60).padStart(2, '0')} 秒`
+  if (minutes >= 60) {
+    return t('practice.durationHour', { h: Math.floor(minutes / 60), m: minutes % 60 })
+  }
+  return t('practice.durationMin', { m: minutes, s: String(sec % 60).padStart(2, '0') })
 }
 
 function orderLabel(item: PracticeSession) {
   const start = item.rangeStart > 0 ? item.rangeStart : 0
   const end = start > 0 ? (item.rangeEnd > 0 ? item.rangeEnd : start + item.totalCount - 1) : 0
   if (item.order === 'random') {
-    return start > 0 ? `随机 · 第 ${start}–${end} 题` : '随机'
+    return start > 0 ? t('practice.orderRandomRange', { start, end }) : t('practice.orderRandom')
   }
-  return start > 0 ? `按题序 ${start}–${end}` : '按题序'
+  return start > 0 ? t('practice.orderFixedRange', { start, end }) : t('practice.orderFixed')
 }
 
 function clearAnswers() {
@@ -754,7 +787,7 @@ async function loadSettings() {
 async function removeSession(id: number) {
   await practiceApi.remove(id)
   sessions.value = sessions.value.filter((s) => s.id !== id)
-  message.success('已删除练习记录')
+  message.success(t('practice.msg.sessionDeleted'))
 }
 
 async function start(source: 'bank' | 'wrong' = 'bank', bankIdsOverride?: number[]) {
@@ -764,7 +797,7 @@ async function start(source: 'bank' | 'wrong' = 'bank', bankIdsOverride?: number
   if (useRange) {
     const start = Math.max(1, form.startSeq || 1)
     if (form.endSeq && form.endSeq > 0 && form.endSeq < start) {
-      message.warning('结束题号不能小于起始题号')
+      message.warning(t('practice.msg.endBeforeStart'))
       return
     }
   }
@@ -791,7 +824,7 @@ async function start(source: 'bank' | 'wrong' = 'bank', bankIdsOverride?: number
       lastSeq: 1,
       stats: wrongStore.stats,
     })
-    if (res.truncated) message.info('候选题目超过 5000 道，已截取前 5000 道')
+    if (res.truncated) message.info(t('practice.msg.truncated'))
   } finally {
     starting.value = false
   }
@@ -802,7 +835,7 @@ async function startWrong() {
   try {
     await start('wrong', bankId ? [bankId] : [])
   } catch {
-    message.info('错题本里还没有待复习的题目')
+    message.info(t('practice.msg.noWrong'))
     router.replace('/wrong')
   }
 }
@@ -811,13 +844,13 @@ async function resume(id: number) {
   try {
     const detail = await practiceApi.detail(id)
     if (detail.session.status !== 'ongoing') {
-      message.info('该练习已完成')
+      message.info(t('practice.msg.alreadyFinished'))
       await loadSessions()
       return
     }
     applySession(detail)
   } catch {
-    message.error('无法继续该练习，可能已被删除')
+    message.error(t('practice.msg.resumeFailed'))
     await loadSessions()
   }
 }
@@ -886,7 +919,10 @@ async function submitAnswer() {
     // 答对保持安静，只有答错才提示并说明已计入错题本
     if (!result.isCorrect) {
       message.warning(
-        `回答错误，正确答案：${result.answer.join('') || '—'}，已计入错题本（累计答错 ${result.wrongCount} 次）`
+        t('practice.msg.wrongAnswer', {
+          answer: result.answer.join('') || '—',
+          n: result.wrongCount,
+        }),
       )
     }
   } finally {
@@ -959,7 +995,7 @@ async function finish() {
     chosen.value = []
     await loadSessions()
   } catch {
-    message.error('完成练习失败，请重试')
+    message.error(t('practice.msg.finishFailed'))
   }
 }
 

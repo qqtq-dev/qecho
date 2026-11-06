@@ -1,12 +1,12 @@
 <template>
   <div v-if="isTauri" class="win-controls">
-    <button v-if="minimize" class="wc" title="最小化" @click="min">
+    <button v-if="minimize" class="wc" :title="$t('window.minimize')" @click="min">
       <Minus :size="14" />
     </button>
-    <button v-if="maximize" class="wc" title="最大化 / 还原" @click="toggleMax">
+    <button v-if="maximize" class="wc" :title="$t('window.maximize')" @click="toggleMax">
       <Square :size="13" />
     </button>
-    <button v-if="close" class="wc close" title="关闭" @click="close">
+    <button v-if="close" class="wc close" :title="$t('window.close')" @click="close">
       <X :size="14" />
     </button>
   </div>

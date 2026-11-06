@@ -9,9 +9,9 @@
           :before-upload="beforeUpload"
           :custom-request="customRequest"
         >
-          <a-button size="small" :loading="uploading">替换</a-button>
+          <a-button size="small" :loading="uploading">{{ $t('image.replace') }}</a-button>
         </a-upload>
-        <a-button size="small" type="text" danger @click="clear">移除</a-button>
+        <a-button size="small" type="text" danger @click="clear">{{ $t('image.remove') }}</a-button>
       </div>
     </div>
     <a-upload
@@ -21,7 +21,7 @@
       :before-upload="beforeUpload"
       :custom-request="customRequest"
     >
-      <a-button size="small" :loading="uploading">上传图片</a-button>
+      <a-button size="small" :loading="uploading">{{ $t('image.upload') }}</a-button>
     </a-upload>
     <div v-if="hint" class="img-field-hint">{{ hint }}</div>
   </div>
@@ -29,10 +29,13 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { message } from 'ant-design-vue'
 import type { UploadRequestOption } from 'ant-design-vue/es/vc-upload/interface'
 import QuestionImage from './QuestionImage.vue'
 import { IMAGE_ACCEPT, MAX_IMAGE_BYTES, imagesApi } from '@/api/images'
+
+const { t } = useI18n()
 
 withDefaults(defineProps<{ modelValue?: string; hint?: string }>(), {
   modelValue: '',
@@ -44,11 +47,11 @@ const uploading = ref(false)
 
 function beforeUpload(file: File) {
   if (!IMAGE_ACCEPT.split(',').includes(file.type)) {
-    message.warning('只支持 PNG、JPEG、WebP、GIF 图片')
+    message.warning(t('image.onlyTypes'))
     return false
   }
   if (file.size > MAX_IMAGE_BYTES) {
-    message.warning('图片不能超过 8 MB')
+    message.warning(t('image.tooLarge'))
     return false
   }
   return true
@@ -60,7 +63,7 @@ async function customRequest(options: UploadRequestOption) {
     const info = await imagesApi.upload(options.file as File)
     emit('update:modelValue', info.filename)
     options.onSuccess?.(info as unknown as Record<string, unknown>)
-    message.success(info.deduped ? '图片已存在，已直接复用' : '图片已上传')
+    message.success(info.deduped ? t('image.exists') : t('image.uploaded'))
   } catch (err) {
     options.onError?.(err as Error)
   } finally {

@@ -6,6 +6,7 @@ import App from './App.vue'
 import router from './router'
 import { initApiBase } from './api/request'
 import { ensureSession } from './stores/auth'
+import { i18n, initI18n, translate } from './i18n'
 
 function isTauri() {
   return !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
@@ -30,13 +31,13 @@ function renderBootError(err: unknown) {
   wrap.style.cssText =
     'height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#f4f6f7;color:#1f2329;font-family:"Segoe UI","Microsoft YaHei",sans-serif;'
   const title = document.createElement('div')
-  title.textContent = '本地服务未启动'
+  title.textContent = translate('boot.failed')
   title.style.cssText = 'font-size:20px;font-weight:600;'
   const detail = document.createElement('div')
-  detail.textContent = err instanceof Error ? err.message : String(err || '未知错误')
+  detail.textContent = err instanceof Error ? err.message : String(err || translate('boot.unknown'))
   detail.style.cssText = 'font-size:13px;color:#6f7680;max-width:560px;text-align:center;'
   const retry = document.createElement('button')
-  retry.textContent = '重新连接'
+  retry.textContent = translate('boot.retry')
   retry.style.cssText =
     'margin-top:8px;padding:7px 18px;border:0;border-radius:6px;background:#24945f;color:#fff;cursor:pointer;font-size:13px;'
   retry.onclick = () => location.reload()
@@ -45,6 +46,7 @@ function renderBootError(err: unknown) {
 }
 
 async function bootstrap() {
+  await initI18n()
   await initApiBase()
 
   const pinia = createPinia()
@@ -63,6 +65,7 @@ async function bootstrap() {
 
   const app = createApp(App)
   app.use(pinia)
+  app.use(i18n)
   app.use(router)
   app.use(Antd)
   app.mount('#app')

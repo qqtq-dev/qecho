@@ -1,56 +1,62 @@
 <template>
   <div class="page">
-    <PageHeader title="数据备份" subtitle="自动备份保留策略、手动备份与恢复">
+    <PageHeader :title="$t('backups.title')" :subtitle="$t('backups.subtitle')">
       <template #actions>
-        <a-button :loading="backupLoading" @click="loadBackups">刷新</a-button>
-        <a-button type="primary" :loading="backupBusy" @click="createBackup">立即备份</a-button>
+        <a-button :loading="backupLoading" @click="loadBackups">{{ $t('backups.refresh') }}</a-button>
+        <a-button type="primary" :loading="backupBusy" @click="createBackup">{{ $t('backups.backupNow') }}</a-button>
       </template>
     </PageHeader>
 
     <section class="panel">
       <div class="panel-head">
-        <h3>备份列表</h3>
-        <span class="muted">共 {{ backupItems.length }} 份 · 占用 {{ formatBytes(backupTotalSize) }}</span>
+        <h3>{{ $t('backups.list') }}</h3>
+        <span class="muted">{{ $t('backups.summary', { n: backupItems.length, size: formatBytes(backupTotalSize) }) }}</span>
       </div>
       <div class="panel-body">
         <a-alert v-if="pendingRestore" type="warning" show-icon class="restore-alert">
-          <template #message>数据恢复已就绪</template>
+          <template #message>{{ $t('backups.restoreReady') }}</template>
           <template #description>
             <div class="restore-row">
-              <span>重启应用后将用所选备份替换当前数据库，重启前无法写入新数据。</span>
+              <span>{{ $t('backups.restoreReadyDesc') }}</span>
               <a-space>
-                <a-button size="small" type="primary" @click="restartApp">立即重启</a-button>
-                <a-button size="small" :loading="backupBusy" @click="cancelRestore">取消恢复</a-button>
+                <a-button size="small" type="primary" @click="restartApp">{{ $t('backups.restartNow') }}</a-button>
+                <a-button size="small" :loading="backupBusy" @click="cancelRestore">{{ $t('backups.cancelRestore') }}</a-button>
               </a-space>
             </div>
           </template>
         </a-alert>
 
         <div class="retention-row">
-          <span class="muted">自动备份保留</span>
+          <span class="muted">{{ $t('backups.retention') }}</span>
           <label>
-            每日
+            {{ $t('backups.daily') }}
             <a-input-number v-model:value="retentionForm.backupDaily" :min="1" :max="30" size="small" style="width: 70px" />
-            份
+            {{ $t('backups.copies') }}
           </label>
           <label>
-            导入前
+            {{ $t('backups.preImport') }}
             <a-input-number v-model:value="retentionForm.backupPreImport" :min="1" :max="30" size="small" style="width: 70px" />
-            份
+            {{ $t('backups.copies') }}
           </label>
           <label>
-            升级前
+            {{ $t('backups.preMigrate') }}
             <a-input-number v-model:value="retentionForm.backupPreMigrate" :min="1" :max="30" size="small" style="width: 70px" />
-            份
+            {{ $t('backups.copies') }}
           </label>
-          <a-button size="small" :loading="retentionSaving" @click="saveRetention">保存</a-button>
+          <a-button size="small" :loading="retentionSaving" @click="saveRetention">{{ $t('backups.save') }}</a-button>
         </div>
 
         <div class="backup-summary">
           <span class="muted">
-            当前生效：每日 {{ retention.daily }} 份 · 导入前 {{ retention['pre-import'] }} 份 · 升级前
-            {{ retention['pre-migrate'] }} 份 · 删除账号前 {{ retention['pre-delete'] }} 份；自动备份合计超过
-            {{ formatBytes(backupCapBytes) }} 时清理最旧。
+            {{
+              $t('backups.currentPolicy', {
+                daily: retention.daily,
+                preImport: retention['pre-import'],
+                preMigrate: retention['pre-migrate'],
+                preDelete: retention['pre-delete'],
+                cap: formatBytes(backupCapBytes),
+              })
+            }}
           </span>
         </div>
 
@@ -63,13 +69,13 @@
                 <div class="muted">{{ formatTime(item.createdAt) }} · {{ formatBytes(item.size) }}</div>
               </div>
               <a-space :size="6">
-                <a-button size="small" :disabled="pendingRestore" @click="confirmRestore(item)">恢复</a-button>
+                <a-button size="small" :disabled="pendingRestore" @click="confirmRestore(item)">{{ $t('backups.restore') }}</a-button>
                 <a-button size="small" danger :disabled="pendingRestore" @click="confirmDelete(item)">
-                  删除
+                  {{ $t('backups.remove') }}
                 </a-button>
               </a-space>
             </div>
-            <a-empty v-if="!backupLoading && backupItems.length === 0" description="还没有备份" :image="false" />
+            <a-empty v-if="!backupLoading && backupItems.length === 0" :description="$t('backups.empty')" :image="false" />
           </div>
         </a-spin>
         <p class="note mono">{{ backupsDir }}</p>
@@ -80,11 +86,15 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Modal, message } from 'ant-design-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { backupsApi, type BackupItem, type BackupOverview } from '@/api/backups'
 import { settingsApi } from '@/api/settings'
 import { isTauri } from '@/api/request'
+import { formatDateTime } from '@/i18n'
+
+const { t } = useI18n()
 
 const backupOverview = ref<BackupOverview | null>(null)
 const backupLoading = ref(false)
@@ -99,13 +109,13 @@ const backupsDir = computed(() => backupOverview.value?.backupsDir ?? '')
 const retentionForm = reactive({ backupDaily: 7, backupPreImport: 5, backupPreMigrate: 3 })
 const retentionSaving = ref(false)
 
-const KIND_LABELS: Record<string, string> = {
-  manual: '手动',
-  daily: '每日自动',
-  'pre-import': '导入前自动',
-  'pre-migrate': '升级前自动',
-  'pre-restore': '恢复前自动',
-  'pre-delete': '删除账号前自动',
+const KIND_KEYS: Record<string, string> = {
+  manual: 'backups.kindManual',
+  daily: 'backups.kindDaily',
+  'pre-import': 'backups.kindPreImport',
+  'pre-migrate': 'backups.kindPreMigrate',
+  'pre-restore': 'backups.kindPreRestore',
+  'pre-delete': 'backups.kindPreDelete',
 }
 
 const KIND_COLORS: Record<string, string> = {
@@ -118,7 +128,8 @@ const KIND_COLORS: Record<string, string> = {
 }
 
 function kindLabel(kind: string): string {
-  return KIND_LABELS[kind] ?? kind
+  const key = KIND_KEYS[kind]
+  return key ? t(key) : kind
 }
 
 function kindColor(kind: string): string {
@@ -138,9 +149,7 @@ function formatBytes(bytes: number): string {
 }
 
 function formatTime(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('zh-CN', { hour12: false })
+  return value ? formatDateTime(value) : '—'
 }
 
 async function loadBackups() {
@@ -176,7 +185,7 @@ async function saveRetention() {
     retentionForm.backupDaily = saved.backupDaily
     retentionForm.backupPreImport = saved.backupPreImport
     retentionForm.backupPreMigrate = saved.backupPreMigrate
-    message.success('保留策略已保存')
+    message.success(t('backups.msg.retentionSaved'))
     await loadBackups()
   } finally {
     retentionSaving.value = false
@@ -187,7 +196,7 @@ async function createBackup() {
   backupBusy.value = true
   try {
     const info = await backupsApi.create()
-    message.success(`已创建备份 ${info.name}`)
+    message.success(t('backups.msg.created', { name: info.name }))
     await loadBackups()
   } finally {
     backupBusy.value = false
@@ -196,14 +205,14 @@ async function createBackup() {
 
 function confirmDelete(item: BackupItem) {
   Modal.confirm({
-    title: '删除备份',
-    content: `确定删除 ${item.name}？删除后无法恢复。`,
-    okText: '删除',
+    title: t('backups.msg.deleteTitle'),
+    content: t('backups.msg.deleteContent', { name: item.name }),
+    okText: t('backups.remove'),
     okType: 'danger',
-    cancelText: '取消',
+    cancelText: t('common.cancel'),
     async onOk() {
       await backupsApi.remove(item.name)
-      message.success('备份已删除')
+      message.success(t('backups.msg.deleted'))
       await loadBackups()
     },
   })
@@ -211,10 +220,10 @@ function confirmDelete(item: BackupItem) {
 
 function confirmRestore(item: BackupItem) {
   Modal.confirm({
-    title: '恢复数据',
-    content: `将用 ${item.name} 替换当前数据库，恢复前会自动备份当前数据。恢复需要重启应用后生效。`,
-    okText: '准备恢复',
-    cancelText: '取消',
+    title: t('backups.msg.restoreTitle'),
+    content: t('backups.msg.restoreContent', { name: item.name }),
+    okText: t('backups.msg.restoreOk'),
+    cancelText: t('common.cancel'),
     async onOk() {
       backupBusy.value = true
       try {
@@ -222,10 +231,10 @@ function confirmRestore(item: BackupItem) {
         pendingRestore.value = true
         await loadBackups()
         Modal.confirm({
-          title: '恢复已就绪',
-          content: '重启应用后完成数据恢复；重启前应用不再接受新数据。',
-          okText: '立即重启',
-          cancelText: '稍后重启',
+          title: t('backups.msg.restoreReadyTitle'),
+          content: t('backups.msg.restoreReadyContent'),
+          okText: t('backups.restartNow'),
+          cancelText: t('backups.msg.restartLater'),
           onOk() {
             return restartApp()
           },
@@ -242,7 +251,7 @@ async function cancelRestore() {
   try {
     await backupsApi.cancelRestore()
     pendingRestore.value = false
-    message.success('已取消恢复')
+    message.success(t('backups.msg.restoreCancelled'))
     await loadBackups()
   } finally {
     backupBusy.value = false
@@ -251,14 +260,14 @@ async function cancelRestore() {
 
 async function restartApp() {
   if (!isTauri()) {
-    message.info('请关闭并重新启动应用或引擎以完成恢复')
+    message.info(t('backups.msg.restartManual'))
     return
   }
   try {
     const { invoke } = await import('@tauri-apps/api/core')
     await invoke('restart_app')
   } catch {
-    message.error('重启失败，请手动关闭并重新打开应用')
+    message.error(t('backups.msg.restartFailed'))
   }
 }
 

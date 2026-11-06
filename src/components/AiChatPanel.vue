@@ -2,10 +2,14 @@
   <section class="ai-panel">
     <div class="ai-head">
       <span class="ai-title">{{ channelTitle }}</span>
-      <span v-if="active?.state === 'thinking'" class="ai-state is-busy">思考中 {{ elapsedOf(active) }}s</span>
-      <span v-else-if="active?.state === 'streaming'" class="ai-state is-busy">回答中</span>
-      <span v-else-if="active?.state === 'error'" class="ai-state is-error">出错</span>
-      <span v-else-if="active?.state === 'done' && turns.length" class="ai-state is-done">已完成</span>
+      <span v-if="active?.state === 'thinking'" class="ai-state is-busy">
+        {{ $t('ai.thinkingWithSeconds', { n: elapsedOf(active) }) }}
+      </span>
+      <span v-else-if="active?.state === 'streaming'" class="ai-state is-busy">{{ $t('ai.answering') }}</span>
+      <span v-else-if="active?.state === 'error'" class="ai-state is-error">{{ $t('ai.errorState') }}</span>
+      <span v-else-if="active?.state === 'done' && turns.length" class="ai-state is-done">
+        {{ $t('ai.done') }}
+      </span>
     </div>
 
     <div ref="scrollRef" class="ai-scroll">
@@ -15,7 +19,7 @@
           <div
             class="ai-bubble mine"
             :class="{ 'is-toggleable': turn.qOverflow }"
-            :title="turn.qOverflow ? (turn.qOpen ? '点击收起' : '点击展开全文') : undefined"
+            :title="turn.qOverflow ? (turn.qOpen ? $t('ai.clickCollapse') : $t('ai.clickExpand')) : undefined"
             @click="turn.qOverflow && toggleQuestion(turn, idx)"
           >
             <div
@@ -24,7 +28,7 @@
               :class="{ 'is-clamped': !turn.qOpen }"
             >{{ turn.question }}</div>
           </div>
-          <span class="ai-role">我</span>
+          <span class="ai-role">{{ $t('ai.me') }}</span>
         </div>
 
         <!-- AI：靠左，浅底气泡，推理与正文都在气泡里 -->
@@ -33,15 +37,17 @@
           <div class="ai-bubble bot">
             <div v-if="turn.state === 'thinking' && !turn.thinking" class="ai-wait">
               <a-spin size="small" />
-              <span>正在连接…</span>
+              <span>{{ $t('ai.connecting') }}</span>
             </div>
 
             <div v-if="turn.thinking" class="ai-think" :class="{ 'is-open': turn.thinkOpen }">
               <button class="ai-think-head" type="button" @click="turn.thinkOpen = !turn.thinkOpen">
                 <a-spin v-if="turn.state === 'thinking'" size="small" />
-                <span class="ai-think-title">{{ turn.state === 'thinking' ? '正在思考' : '思考过程' }}</span>
-                <span class="muted ai-think-meta">{{ thinkLen(turn) }} 字 · {{ elapsedOf(turn) }}s</span>
-                <span class="ai-think-toggle">{{ turn.thinkOpen ? '收起' : '展开' }}</span>
+                <span class="ai-think-title">{{ turn.state === 'thinking' ? $t('ai.thinking') : $t('ai.thinkingProcess') }}</span>
+                <span class="muted ai-think-meta">
+                  {{ $t('ai.thinkMeta', { n: thinkLen(turn), s: elapsedOf(turn) }) }}
+                </span>
+                <span class="ai-think-toggle">{{ turn.thinkOpen ? $t('ai.collapse') : $t('ai.expand') }}</span>
               </button>
               <div class="ai-think-body"><div class="ai-think-text">{{ turn.thinking }}</div></div>
             </div>
@@ -52,11 +58,11 @@
               v-if="turn.state === 'error'"
               type="error"
               show-icon
-              :message="turn.error || 'AI 调用失败'"
+              :message="turn.error || $t('ai.callFailed')"
               class="ai-alert"
             />
             <div v-if="idx === turns.length - 1 && busy" class="ai-stop-row">
-              <a class="ai-mini" @click="stop">停止</a>
+              <a class="ai-mini" @click="stop">{{ $t('ai.stop') }}</a>
             </div>
           </div>
         </div>
@@ -68,19 +74,19 @@
         v-model:value="input"
         :rows="2"
         :disabled="busy"
-        placeholder="继续追问，例如：这个选项为什么错？/ 能给个 SQL 例子吗？"
+        :placeholder="$t('ai.inputPlaceholder')"
         @press-enter.exact.prevent="ask"
       />
       <div class="ai-input-foot">
         <a-radio-group v-model:value="mode" size="small">
-          <a-radio-button value="brief">简答</a-radio-button>
-          <a-radio-button value="full">详答</a-radio-button>
+          <a-radio-button value="brief">{{ $t('ai.brief') }}</a-radio-button>
+          <a-radio-button value="full">{{ $t('ai.full') }}</a-radio-button>
         </a-radio-group>
         <span class="muted ai-hint">
-          {{ mode === 'brief' ? '约 200 字，通常 10–20 秒' : '逐项讲解，通常 30–90 秒' }}
+          {{ mode === 'brief' ? $t('ai.briefHint') : $t('ai.fullHint') }}
         </span>
         <a-button type="primary" size="small" :loading="busy" :disabled="!input.trim()" @click="ask">
-          发送
+          {{ $t('ai.send') }}
         </a-button>
       </div>
     </div>
@@ -91,6 +97,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
+import { useI18n } from 'vue-i18n'
 import { aiApi, aiChannelTitle, type ChatMessage } from '@/api/ai'
 
 interface Turn {
@@ -106,6 +113,8 @@ interface Turn {
   startedAt: number
   endedAt: number
 }
+
+const { t } = useI18n()
 
 const MODE_KEY = 'quiz-ai-mode'
 
@@ -226,12 +235,12 @@ function stopTimer() {
 
 function buildInitialQuestion() {
   const single = props.type !== 'multiple'
-  const lines = ['请分析这道题：正确答案是哪几个选项？', '']
+  const lines = [t('ai.askInitial'), '']
   // 题型必须显式给出：不说单选，模型常按多选作答，给出多个答案。
-  lines.push(single ? '题型：单选题（只有一个正确答案）' : '题型：多选题（正确答案可能不止一个）')
-  lines.push(`题干：${props.stem}`)
+  lines.push(single ? t('ai.askTypeSingle') : t('ai.askTypeMultiple'))
+  lines.push(t('ai.askStem', { stem: props.stem }))
   if (props.options.length) {
-    lines.push('选项：')
+    lines.push(t('ai.askOptions'))
     for (const opt of props.options) lines.push(opt)
   }
   return lines.join('\n')
@@ -305,7 +314,7 @@ async function send(question: string) {
       {
         question: text,
         conversationId: conversationId.value || undefined,
-        title: `题鸣答疑 · ${props.stem.slice(0, 20)}`,
+        title: t('ai.conversationTitle', { stem: props.stem.slice(0, 20) }),
         mode: mode.value,
         history,
       },
@@ -349,7 +358,7 @@ async function send(question: string) {
       turn.state = 'done'
     } else {
       turn.state = 'error'
-      turn.error = err instanceof Error ? err.message : '请求失败'
+      turn.error = err instanceof Error ? err.message : t('ai.requestFailed')
       bump(true)
     }
     turn.endedAt = Date.now()
@@ -377,7 +386,7 @@ function stop() {
 }
 
 // 标题跟当前生效通道走：BIC-QA 显示 BIC-QA，通用模型显示服务商名（匹配不到就叫通用大模型）
-const channelTitle = ref('AI 答疑')
+const channelTitle = ref(t('ai.title'))
 
 // 容器尺寸变化时重测折叠（面板刚挂载、宽度过渡中量到的是零尺寸，会误判「没溢出」）
 let resizeObserver: ResizeObserver | null = null

@@ -1,4 +1,5 @@
 import { http, getApiBase, getToken } from './request'
+import { translate } from '@/i18n'
 
 /** 两套接口：bicqa 是 BIC-QA 私有协议，openai 是通用大模型的兼容协议。 */
 export type AiProvider = 'bicqa' | 'openai'
@@ -99,7 +100,7 @@ function dispatchFrame(frame: string, handlers: ChatHandlers) {
       if (text) handlers.onDelta?.(text)
       break
     case 'error':
-      handlers.onError?.(message || 'AI 返回错误')
+      handlers.onError?.(message || translate('ai.errorReturned'))
       break
     case 'done':
       handlers.onDone?.()
@@ -127,7 +128,7 @@ export async function streamChat(
     signal,
   })
   if (!resp.ok) {
-    let msg = `请求失败（HTTP ${resp.status}）`
+    let msg = translate('ai.httpFailed', { status: resp.status })
     try {
       const body = (await resp.json()) as { message?: string }
       if (body?.message) msg = body.message
@@ -136,7 +137,7 @@ export async function streamChat(
     }
     throw new Error(msg)
   }
-  if (!resp.body) throw new Error('当前环境不支持流式响应')
+  if (!resp.body) throw new Error(translate('ai.streamUnsupported'))
 
   const reader = resp.body.getReader()
   const decoder = new TextDecoder('utf-8')
@@ -280,5 +281,5 @@ export function aiChannelTitle(cfg: AiConfig): string {
     if (re.test(model)) return name
   }
   // 模型名本身就是最好的标识（如 step-5-preview），直接亮出来
-  return ch.model.trim() || '通用大模型'
+  return ch.model.trim() || translate('ai.genericModel')
 }

@@ -11,7 +11,7 @@
         <a-tooltip :title="healthTitle">
           <span class="engine-tag" :class="{ off: !online }">
             <span class="dot"></span>
-            {{ online ? '服务正常' : '服务异常' }}
+            {{ online ? $t('topbar.online') : $t('topbar.offline') }}
           </span>
         </a-tooltip>
         <a-popover
@@ -28,17 +28,17 @@
               <div v-if="hasUpdate" class="update-card">
                 <div class="update-top">
                   <Download :size="13" />
-                  <span class="update-title">发现新版本</span>
+                  <span class="update-title">{{ $t('topbar.newVersion') }}</span>
                   <span class="update-ver">v{{ updateInfo?.latest }}</span>
                 </div>
                 <div v-if="updateInfo?.notes" class="update-notes">{{ updateInfo.notes }}</div>
                 <div class="update-foot">
-                  <span class="update-cur">当前 v{{ updateInfo?.current }}</span>
-                  <a-button size="small" type="primary" @click="openRelease">查看更新</a-button>
+                  <span class="update-cur">{{ $t('topbar.currentVersion', { version: updateInfo?.current }) }}</span>
+                  <a-button size="small" type="primary" @click="openRelease">{{ $t('topbar.viewUpdate') }}</a-button>
                 </div>
               </div>
               <div class="notice-box">
-                <a-empty v-if="!notices.length" description="暂无通知" :image="false" />
+                <a-empty v-if="!notices.length" :description="$t('topbar.noNotices')" :image="false" />
                 <div v-for="item in notices" :key="item.id" class="notice-item">
                   <div class="notice-text">{{ item.text }}</div>
                   <div class="notice-time">{{ formatNoticeTime(item.createdAt) }}</div>
@@ -52,13 +52,13 @@
             </button>
           </a-badge>
         </a-popover>
-        <a-tooltip title="收起 / 展开侧栏">
+        <a-tooltip :title="$t('topbar.toggleSider')">
           <button class="ghost-btn" @click="collapsed = !collapsed">
             <PanelLeftOpen v-if="collapsed" :size="15" />
             <PanelLeftClose v-else :size="15" />
           </button>
         </a-tooltip>
-        <a-tooltip :title="isDark ? '切换到浅色' : '切换到深色'">
+        <a-tooltip :title="isDark ? $t('topbar.toLight') : $t('topbar.toDark')">
           <button class="ghost-btn" @click="toggleTheme">
             <Moon v-if="!isDark" :size="15" />
             <Sun v-else :size="15" />
@@ -67,20 +67,22 @@
         <a-dropdown placement="bottomRight">
           <button class="ghost-btn user-btn">
             <UserRound :size="15" />
-            <span class="user-name">{{ auth.username || '未登录' }}</span>
+            <span class="user-name">{{ auth.username || $t('topbar.notLoggedIn') }}</span>
           </button>
           <template #overlay>
             <a-menu>
               <a-menu-item key="role" disabled>
-                {{ auth.isAdmin ? '管理员' : '普通用户' }}
+                {{ auth.isAdmin ? $t('topbar.admin') : $t('topbar.user') }}
               </a-menu-item>
-              <a-menu-item v-if="desktop" key="desktop" disabled>本机账号</a-menu-item>
+              <a-menu-item v-if="desktop" key="desktop" disabled>{{ $t('topbar.localAccount') }}</a-menu-item>
               <a-menu-divider />
-              <a-menu-item key="logout" @click="onLogout">退出登录</a-menu-item>
+              <a-menu-item key="logout" @click="onLogout">{{ $t('topbar.logout') }}</a-menu-item>
             </a-menu>
           </template>
         </a-dropdown>
-        <a-tooltip title="设置">
+        <!-- 右上角贴着窗口边缘：气泡改成右对齐，否则默认居中会把浮层顶出视口，
+             连带着出现横向滚动条、整页跟着位移 -->
+        <a-tooltip :title="$t('topbar.settings')" placement="bottomRight">
           <button class="ghost-btn" @click="go('/settings')"><Settings :size="15" /></button>
         </a-tooltip>
         <WindowControls />
@@ -99,7 +101,7 @@
             @click="onMenuClick"
           />
         </nav>
-        <div v-if="!collapsed" class="sider-foot">© 2026 Qecho · 柒柒天晴</div>
+        <div v-if="!collapsed" class="sider-foot">{{ $t('app.copyright') }}</div>
       </aside>
       <main class="content">
         <router-view />
@@ -111,6 +113,7 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import type { MenuProps } from 'ant-design-vue'
 import {
   Bell,
@@ -143,27 +146,30 @@ const router = useRouter()
 const appStore = useAppStore()
 const auth = useAuthStore()
 const desktop = isTauri()
+const { t, locale } = useI18n()
 
 const collapsed = ref(localStorage.getItem('quiz-sider-collapsed') === '1')
 watch(collapsed, (v) => localStorage.setItem('quiz-sider-collapsed', v ? '1' : '0'))
 
 const menuItems = computed<MenuProps['items']>(() => {
+  // 读一次 locale，语言切换时让这份菜单跟着重算
+  void locale.value
   const items: NonNullable<MenuProps['items']> = [
-    { key: '/dashboard', icon: () => h(LayoutDashboard, { size: 15 }), label: '概览' },
-    { key: '/banks', icon: () => h(Library, { size: 15 }), label: '题库管理' },
-    { key: '/practice', icon: () => h(SquarePen, { size: 15 }), label: '练习' },
-    { key: '/exams', icon: () => h(Timer, { size: 15 }), label: '考试' },
-    { key: '/wrong', icon: () => h(BookX, { size: 15 }), label: '错题本' },
-    { key: '/stats', icon: () => h(ChartColumn, { size: 15 }), label: '统计' },
+    { key: '/dashboard', icon: () => h(LayoutDashboard, { size: 15 }), label: t('nav.dashboard') },
+    { key: '/banks', icon: () => h(Library, { size: 15 }), label: t('nav.banks') },
+    { key: '/practice', icon: () => h(SquarePen, { size: 15 }), label: t('nav.practice') },
+    { key: '/exams', icon: () => h(Timer, { size: 15 }), label: t('nav.exams') },
+    { key: '/wrong', icon: () => h(BookX, { size: 15 }), label: t('nav.wrong') },
+    { key: '/stats', icon: () => h(ChartColumn, { size: 15 }), label: t('nav.stats') },
   ]
   // 用户管理与数据备份只对管理员开放，普通用户看不到入口。
   if (auth.isAdmin) {
     items.push(
-      { key: '/users', icon: () => h(Users, { size: 15 }), label: '用户管理' },
-      { key: '/backups', icon: () => h(DatabaseBackup, { size: 15 }), label: '数据备份' },
+      { key: '/users', icon: () => h(Users, { size: 15 }), label: t('nav.users') },
+      { key: '/backups', icon: () => h(DatabaseBackup, { size: 15 }), label: t('nav.backups') },
     )
   }
-  items.push({ key: '/settings', icon: () => h(Settings, { size: 15 }), label: '设置' })
+  items.push({ key: '/settings', icon: () => h(Settings, { size: 15 }), label: t('nav.settings') })
   return items
 })
 
@@ -171,8 +177,8 @@ const selectedKey = computed(() => (route.path.startsWith('/banks/') ? '/banks' 
 const online = computed(() => appStore.health?.status === 'ok')
 const healthTitle = computed(() =>
   online.value
-    ? `引擎正常 · v${appStore.health?.version ?? '-'}`
-    : '引擎未就绪，请检查诊断日志',
+    ? t('topbar.tipOnline', { version: appStore.health?.version ?? '-' })
+    : t('topbar.tipOffline'),
 )
 
 function onMenuClick({ key }: { key: string | number }) {
@@ -200,7 +206,9 @@ const updateInfo = ref<UpdateInfo | null>(null)
 const hasUpdate = computed(() => !!updateInfo.value?.hasUpdate)
 // 未读通知的数字优先占用角标，此时版本更新不再额外画点
 const updateDot = computed(() => hasUpdate.value && unread.value === 0)
-const bellTitle = computed(() => (hasUpdate.value ? `有新版本 v${updateInfo.value?.latest}` : '通知'))
+const bellTitle = computed(() =>
+  hasUpdate.value ? t('topbar.bellWithUpdate', { version: updateInfo.value?.latest }) : t('topbar.bell'),
+)
 
 async function checkUpdate(force = false) {
   if (!auth.loggedIn) return

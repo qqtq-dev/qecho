@@ -1,6 +1,6 @@
 <template>
   <a-config-provider
-    :locale="zhCN"
+    :locale="antdLocale"
     :theme="{
       algorithm: antdAlgorithm(),
       token: { colorPrimary: '#24945f', colorSuccess: '#24945f', borderRadius: 6 },
@@ -11,12 +11,8 @@
 </template>
 
 <script setup lang="ts">
-import zhCN from 'ant-design-vue/es/locale/zh_CN'
-import dayjs from 'dayjs'
-import 'dayjs/locale/zh-cn'
 import { antdAlgorithm } from '@/theme'
-
-dayjs.locale('zh-cn')
+import { antdLocale } from '@/i18n'
 </script>
 
 <style>

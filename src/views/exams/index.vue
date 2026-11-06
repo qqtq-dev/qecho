@@ -1,28 +1,28 @@
 <template>
   <div class="page">
-    <PageHeader title="考试" subtitle="限时答题、外联链接与成绩汇总">
+    <PageHeader :title="$t('exams.title')" :subtitle="$t('exams.subtitle')">
       <template #actions>
-        <a-button @click="openShare()">分享设置</a-button>
-        <a-button type="primary" @click="openCreate">新建考试</a-button>
+        <a-button @click="openShare()">{{ $t('exams.shareSettings') }}</a-button>
+        <a-button type="primary" @click="openCreate">{{ $t('exams.create') }}</a-button>
       </template>
     </PageHeader>
 
     <div class="metrics">
-      <MetricTile label="进行中" :value="runningCount" hint="当前可参加的考试" />
-      <MetricTile label="参与人次" :value="participantCount" hint="含未交卷" />
-      <MetricTile label="已交卷" :value="submittedCount" hint="全部考试合计" />
-      <MetricTile label="平均得分" :value="avgScoreText" hint="按已交卷统计" />
+      <MetricTile :label="$t('exams.metricRunning')" :value="runningCount" :hint="$t('exams.metricRunningHint')" />
+      <MetricTile :label="$t('exams.metricParticipants')" :value="participantCount" :hint="$t('exams.metricParticipantsHint')" />
+      <MetricTile :label="$t('exams.metricSubmitted')" :value="submittedCount" :hint="$t('exams.metricSubmittedHint')" />
+      <MetricTile :label="$t('exams.metricAvgScore')" :value="avgScoreText" :hint="$t('exams.metricAvgScoreHint')" />
     </div>
 
     <section class="panel">
       <div class="panel-head">
-        <h3>考试列表</h3>
-        <span class="muted">共 {{ exams.length }} 场</span>
+        <h3>{{ $t('exams.list') }}</h3>
+        <span class="muted">{{ $t('exams.count', { n: exams.length }) }}</span>
       </div>
       <div class="panel-body" :class="{ 'empty-state': !loading && exams.length === 0 }">
         <a-spin :spinning="loading">
-          <a-empty v-if="!loading && exams.length === 0" description="暂无考试">
-            <a-button type="primary" ghost @click="openCreate">新建一场考试</a-button>
+          <a-empty v-if="!loading && exams.length === 0" :description="$t('exams.empty')">
+            <a-button type="primary" ghost @click="openCreate">{{ $t('exams.createFirst') }}</a-button>
           </a-empty>
           <a-table
             v-else
@@ -35,43 +35,51 @@
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'title'">
                 <div class="exam-title">{{ record.title }}</div>
-                <div class="muted">{{ record.bankName || '题库已删除' }} · {{ record.totalCount }} 道题 · {{ Math.round(record.timeLimitSec / 60) }} 分钟</div>
-                <div v-if="record.shuffleOptions" class="muted">选项乱序</div>
+                <div class="muted">
+                  {{
+                    $t('exams.meta', {
+                      bank: record.bankName || $t('exams.bankDeleted'),
+                      total: record.totalCount,
+                      minutes: Math.round(record.timeLimitSec / 60),
+                    })
+                  }}
+                </div>
+                <div v-if="record.shuffleOptions" class="muted">{{ $t('exams.shuffleOptions') }}</div>
               </template>
               <template v-else-if="column.key === 'window'">
                 <div>{{ formatTime(record.openAt) }}</div>
-                <div class="muted">至 {{ formatTime(record.closeAt) }}</div>
+                <div class="muted">{{ $t('exams.until', { time: formatTime(record.closeAt) }) }}</div>
               </template>
               <template v-else-if="column.key === 'status'">
-                <a-tag :color="statusOf(record).color">{{ statusOf(record).text }}</a-tag>
+                <a-tag :color="statusOf(record).color">{{ $t(statusOf(record).key) }}</a-tag>
               </template>
               <template v-else-if="column.key === 'progress'">
                 <span>{{ record.submittedCount }}/{{ record.participantCount }}</span>
-                <span class="muted"> 已交卷</span>
+                <span class="muted submitted-label">{{ $t('exams.statusSubmitted') }}</span>
               </template>
               <template v-else-if="column.key === 'avgScore'">
                 {{ record.submittedCount ? record.avgScore.toFixed(1) : '—' }}
               </template>
               <template v-else-if="column.key === 'actions'">
                 <a-space>
-                  <a-button type="link" size="small" @click="openShare(record)">链接</a-button>
-                  <a-button type="link" size="small" @click="openResults(record)">成绩</a-button>
+                  <a-button type="link" size="small" @click="openShare(record)">{{ $t('exams.link') }}</a-button>
+                  <a-button type="link" size="small" @click="openResults(record)">{{ $t('exams.results') }}</a-button>
                   <a-popconfirm
                     v-if="record.status === 'published'"
-                    title="关闭后参与者将无法再进入考试，确定吗？"
-                    ok-text="关闭考试"
-                    cancel-text="取消"
+                    :title="$t('exams.closeConfirm')"
+                    :ok-text="$t('exams.closeOk')"
+                    :cancel-text="$t('common.cancel')"
                     @confirm="closeExam(record)"
                   >
-                    <a-button type="link" size="small" danger>关闭</a-button>
+                    <a-button type="link" size="small" danger>{{ $t('exams.close') }}</a-button>
                   </a-popconfirm>
                   <a-popconfirm
-                    title="删除后考试及参与记录将一并移除，且不可恢复，确定吗？"
-                    ok-text="删除"
-                    cancel-text="取消"
+                    :title="$t('exams.removeConfirm')"
+                    :ok-text="$t('exams.remove')"
+                    :cancel-text="$t('common.cancel')"
                     @confirm="removeExam(record)"
                   >
-                    <a-button type="link" size="small" danger>删除</a-button>
+                    <a-button type="link" size="small" danger>{{ $t('exams.remove') }}</a-button>
                   </a-popconfirm>
                 </a-space>
               </template>
@@ -83,104 +91,121 @@
 
     <a-modal
       v-model:open="createOpen"
-      title="新建考试"
+      :title="$t('exams.createTitle')"
       :confirm-loading="creating"
-      ok-text="创建并获取链接"
-      cancel-text="取消"
+      :ok-text="$t('exams.createOk')"
+      :cancel-text="$t('common.cancel')"
       :width="560"
       :mask-closable="false"
       @ok="createExam"
     >
       <a-form layout="vertical">
-        <a-form-item label="考试名称" required>
-          <a-input v-model:value="form.title" :maxlength="80" placeholder="例如：10 月安全规程周测" />
+        <a-form-item :label="$t('exams.examName')" required>
+          <a-input v-model:value="form.title" :maxlength="80" :placeholder="$t('exams.examNamePlaceholder')" />
         </a-form-item>
         <div class="form-row">
-          <a-form-item label="选择题库" required class="grow">
+          <a-form-item :label="$t('exams.chooseBank')" required class="grow">
             <a-select
               v-model:value="form.bankId"
-              placeholder="请选择题库"
+              :placeholder="$t('exams.chooseBankPlaceholder')"
               @change="onBankChange"
             >
               <a-select-option v-for="b in banks" :key="b.id" :value="b.id">
-                {{ b.name }}（{{ b.questionCount }} 道）
+                {{ $t('exams.bankOption', { name: b.name, n: b.questionCount }) }}
               </a-select-option>
             </a-select>
           </a-form-item>
-          <a-form-item label="抽题数量" required>
+          <a-form-item :label="$t('exams.questionCount')" required>
             <a-input-number v-model:value="form.count" :min="1" :max="500" style="width: 120px" />
           </a-form-item>
         </div>
         <a-form-item v-if="banks.length === 0" class="no-bank">
-          还没有题库，请先到
-          <a @click="goBanks">题库管理</a>
-          添加题目。
+          {{ $t('exams.noBankBefore') }}
+          <a @click="goBanks">{{ $t('exams.noBankLink') }}</a>
+          {{ $t('exams.noBankAfter') }}
         </a-form-item>
         <div class="form-row">
-          <a-form-item label="考试时长（分钟）" required>
+          <a-form-item :label="$t('exams.duration')" required>
             <a-input-number v-model:value="form.minutes" :min="1" :max="360" style="width: 140px" />
           </a-form-item>
-          <a-form-item label="考试密码" required class="grow">
-            <a-input v-model:value="form.password" :maxlength="32" placeholder="至少 4 位，参与者进入时填写" />
+          <a-form-item :label="$t('exams.password')" required class="grow">
+            <a-input v-model:value="form.password" :maxlength="32" :placeholder="$t('exams.passwordPlaceholder')" />
           </a-form-item>
         </div>
-        <a-form-item label="开考时间段" required>
+        <a-form-item :label="$t('exams.windowLabel')" required>
           <a-range-picker
             v-model:value="form.range"
             show-time
             format="YYYY-MM-DD HH:mm"
-            :placeholder="['开始时间', '结束时间']"
+            :placeholder="[$t('exams.startTime'), $t('exams.endTime')]"
             style="width: 100%"
           />
         </a-form-item>
         <a-form-item>
-          <a-checkbox v-model:checked="form.shuffle">打乱题目顺序</a-checkbox>
-          <a-checkbox v-model:checked="form.shuffleOptions" class="shuffle-option">打乱选项顺序</a-checkbox>
+          <a-checkbox v-model:checked="form.shuffle">{{ $t('exams.shuffleQuestions') }}</a-checkbox>
+          <a-checkbox v-model:checked="form.shuffleOptions" class="shuffle-option">
+            {{ $t('exams.shuffleOptionsCheck') }}
+          </a-checkbox>
         </a-form-item>
       </a-form>
     </a-modal>
 
     <a-modal
       v-model:open="shareOpen"
-      title="考试链接"
+      :title="$t('exams.shareTitle')"
       :footer="null"
       :width="620"
     >
       <a-spin :spinning="shareLoading">
         <div v-if="shareExam" class="share-exam">
           <div class="share-exam-title">{{ shareExam.title }}</div>
-          <div class="muted">{{ shareExam.totalCount }} 道题 · {{ Math.round(shareExam.timeLimitSec / 60) }} 分钟 · {{ formatTime(shareExam.openAt) }} 至 {{ formatTime(shareExam.closeAt) }}</div>
+          <div class="muted">
+            {{
+              $t('exams.shareMeta', {
+                total: shareExam.totalCount,
+                minutes: Math.round(shareExam.timeLimitSec / 60),
+                open: formatTime(shareExam.openAt),
+                close: formatTime(shareExam.closeAt),
+              })
+            }}
+          </div>
         </div>
 
         <template v-if="share">
-          <div class="share-label">局域网链接（同一 Wi-Fi / 局域网设备可打开）</div>
-          <a-empty v-if="shareBases.length === 0" description="未检测到局域网地址，请检查网络连接" :image-style="{ height: '40px' }" />
+          <div class="share-label">{{ $t('exams.lanLabel') }}</div>
+          <a-empty
+            v-if="shareBases.length === 0"
+            :description="$t('exams.lanEmpty')"
+            :image-style="{ height: '40px' }"
+          />
           <div v-else class="link-list">
             <div v-for="base in shareBases" :key="base" class="link-row">
               <span class="link-text">{{ base }}{{ shareExam ? '/e/' + shareExam.token : '' }}</span>
-              <a-button size="small" type="primary" ghost @click="copy(base + (shareExam ? '/e/' + shareExam.token : ''))">复制</a-button>
+              <a-button size="small" type="primary" ghost @click="copy(base + (shareExam ? '/e/' + shareExam.token : ''))">
+                {{ $t('exams.copy') }}
+              </a-button>
             </div>
           </div>
           <div class="notice">
-            首次分享时 Windows 可能提示防火墙拦截，请点击下方按钮放行；未放行时其他设备打不开链接。
+            {{ $t('exams.firewallNotice') }}
             <div style="margin-top: 8px">
               <a-button size="small" type="primary" ghost :loading="lanRequesting" @click="requestLan">
-                允许局域网访问
+                {{ $t('exams.allowLan') }}
               </a-button>
             </div>
           </div>
 
-          <div class="share-label">公网地址（可选，配置隧道或反向代理后填写）</div>
+          <div class="share-label">{{ $t('exams.publicLabel') }}</div>
           <div class="public-row">
             <a-input
               v-model:value="publicBaseInput"
-              placeholder="例如 https://exam.example.com"
+              :placeholder="$t('exams.publicPlaceholder')"
               allow-clear
             />
-            <a-button :loading="shareSaving" @click="savePublicBase">保存</a-button>
+            <a-button :loading="shareSaving" @click="savePublicBase">{{ $t('common.save') }}</a-button>
           </div>
           <div class="muted" style="margin-top: 6px">
-            填写后，考试链接将优先使用公网地址；参与者页面由本机引擎直接提供。
+            {{ $t('exams.publicHint') }}
           </div>
         </template>
       </a-spin>
@@ -188,11 +213,15 @@
 
     <a-drawer
       v-model:open="resultsOpen"
-      :title="resultsExam ? `${resultsExam.title} · 成绩` : '成绩'"
+      :title="
+        resultsExam
+          ? $t('exams.resultsTitleNamed', { name: resultsExam.title })
+          : $t('exams.resultsTitle')
+      "
       :width="760"
     >
       <a-spin :spinning="resultsLoading">
-        <a-empty v-if="!resultsLoading && attempts.length === 0" description="还没有人参加这场考试" />
+        <a-empty v-if="!resultsLoading && attempts.length === 0" :description="$t('exams.noParticipants')" />
         <a-table
           v-else
           :data-source="attempts"
@@ -208,7 +237,7 @@
             </template>
             <template v-else-if="column.key === 'status'">
               <a-tag :color="record.status === 'submitted' ? 'green' : 'orange'">
-                {{ record.status === 'submitted' ? '已交卷' : '答题中' }}
+                {{ record.status === 'submitted' ? $t('exams.statusSubmitted') : $t('exams.statusAnswering') }}
               </a-tag>
             </template>
             <template v-else-if="column.key === 'progress'">
@@ -226,17 +255,17 @@
         <div class="result-foot">
           <span class="muted">
             <template v-if="attempts.length">
-              共 {{ attempts.length }} 人参加 · 已交卷 {{ submittedTotal }} 人
+              {{ $t('exams.footSummary', { n: attempts.length, submitted: submittedTotal }) }}
             </template>
-            <template v-else>暂无参与记录</template>
+            <template v-else>{{ $t('exams.footEmpty') }}</template>
           </span>
           <a-space :size="8">
             <a-button
               :loading="exportingResults"
               :disabled="!attempts.length"
               @click="exportResults"
-            >导出 Excel</a-button>
-            <a-button @click="refreshResults">刷新</a-button>
+            >{{ $t('exams.exportExcel') }}</a-button>
+            <a-button @click="refreshResults">{{ $t('common.refresh') }}</a-button>
           </a-space>
         </div>
       </template>
@@ -247,6 +276,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { message } from 'ant-design-vue'
 import dayjs, { type Dayjs } from 'dayjs'
 import PageHeader from '@/components/PageHeader.vue'
@@ -255,41 +285,44 @@ import { banksApi, type Bank } from '@/api/banks'
 import { isTauri } from '@/api/request'
 import { examsApi, type AttemptSummary, type Exam, type ShareInfo } from '@/api/exams'
 
+const { t } = useI18n()
 const router = useRouter()
 
 const exams = ref<Exam[]>([])
 const banks = ref<Bank[]>([])
 const loading = ref(false)
 
-const columns = [
-  { title: '考试', key: 'title', dataIndex: 'title' },
-  { title: '时间窗', key: 'window', width: 190 },
-  { title: '状态', key: 'status', width: 90 },
-  { title: '交卷情况', key: 'progress', width: 130 },
-  { title: '平均分', key: 'avgScore', width: 90 },
-  { title: '操作', key: 'actions', width: 220 },
-]
+const columns = computed(() => [
+  { title: t('exams.colTitle'), key: 'title', dataIndex: 'title' },
+  { title: t('exams.colWindow'), key: 'window', width: 190 },
+  { title: t('exams.colStatus'), key: 'status', width: 90 },
+  { title: t('exams.colProgress'), key: 'progress', width: 130 },
+  { title: t('exams.colAvgScore'), key: 'avgScore', width: 90 },
+  { title: t('exams.colActions'), key: 'actions', width: 220 },
+])
 
-const attemptColumns = [
-  { title: '姓名', key: 'name', dataIndex: 'name', width: 120 },
-  { title: '学号/工号', key: 'studentNo', dataIndex: 'studentNo', width: 130 },
-  { title: '状态', key: 'status', width: 90 },
-  { title: '得分', key: 'score', width: 80 },
-  { title: '作答', key: 'progress', width: 80 },
-  { title: '交卷时间', key: 'submittedAt', width: 160 },
-]
+const attemptColumns = computed(() => [
+  { title: t('exams.colName'), key: 'name', dataIndex: 'name', width: 120 },
+  { title: t('exams.colStudentNo'), key: 'studentNo', dataIndex: 'studentNo', width: 130 },
+  { title: t('exams.colStatus'), key: 'status', width: 90 },
+  { title: t('exams.colScore'), key: 'score', width: 80 },
+  { title: t('exams.colProgressRatio'), key: 'progress', width: 80 },
+  { title: t('exams.colSubmittedAt'), key: 'submittedAt', width: 160 },
+])
 
 const formatTime = (raw: string) => (raw ? dayjs(raw).format('MM-DD HH:mm') : '—')
 
 function statusOf(exam: Exam) {
-  if (exam.status === 'closed') return { text: '已关闭', color: 'default' }
+  if (exam.status === 'closed') return { key: 'exams.statusClosed', color: 'default' }
   const now = dayjs()
-  if (now.isBefore(dayjs(exam.openAt))) return { text: '未开始', color: 'orange' }
-  if (now.isAfter(dayjs(exam.closeAt))) return { text: '已结束', color: 'default' }
-  return { text: '进行中', color: 'green' }
+  if (now.isBefore(dayjs(exam.openAt))) return { key: 'exams.statusNotStarted', color: 'orange' }
+  if (now.isAfter(dayjs(exam.closeAt))) return { key: 'exams.statusEnded', color: 'default' }
+  return { key: 'exams.statusRunning', color: 'green' }
 }
 
-const runningCount = computed(() => exams.value.filter((e) => statusOf(e).text === '进行中').length)
+const runningCount = computed(
+  () => exams.value.filter((e) => statusOf(e).key === 'exams.statusRunning').length,
+)
 const participantCount = computed(() => exams.value.reduce((sum, e) => sum + e.participantCount, 0))
 const submittedCount = computed(() => exams.value.reduce((sum, e) => sum + e.submittedCount, 0))
 const avgScoreText = computed(() => {
@@ -349,10 +382,10 @@ function goBanks() {
 }
 
 async function createExam() {
-  if (!form.title.trim()) return message.warning('请填写考试名称')
-  if (!form.bankId) return message.warning('请选择题库')
-  if (!form.range) return message.warning('请选择开考时间段')
-  if (form.password.trim().length < 4) return message.warning('考试密码至少 4 位')
+  if (!form.title.trim()) return message.warning(t('exams.msg.nameRequired'))
+  if (!form.bankId) return message.warning(t('exams.msg.bankRequired'))
+  if (!form.range) return message.warning(t('exams.msg.rangeRequired'))
+  if (form.password.trim().length < 4) return message.warning(t('exams.msg.passwordTooShort'))
   creating.value = true
   try {
     const exam = await examsApi.create({
@@ -368,7 +401,7 @@ async function createExam() {
     })
     createOpen.value = false
     await load()
-    message.success('考试已创建')
+    message.success(t('exams.msg.created'))
     openShare(exam)
   } finally {
     creating.value = false
@@ -377,13 +410,13 @@ async function createExam() {
 
 async function closeExam(exam: Exam) {
   await examsApi.close(exam.id)
-  message.success('考试已关闭')
+  message.success(t('exams.msg.closed'))
   await load()
 }
 
 async function removeExam(exam: Exam) {
   await examsApi.remove(exam.id)
-  message.success('考试已删除')
+  message.success(t('exams.msg.deleted'))
   await load()
 }
 
@@ -399,16 +432,16 @@ const lanRequesting = ref(false)
 async function requestLan() {
   const w = window as unknown as { __TAURI_INTERNALS__?: unknown }
   if (!w.__TAURI_INTERNALS__) {
-    message.info('请在桌面端窗口中点击此按钮')
+    message.info(t('exams.msg.desktopOnly'))
     return
   }
   lanRequesting.value = true
   try {
     const { invoke } = await import('@tauri-apps/api/core')
     await invoke('request_lan_access')
-    message.success('已请求管理员授权，请在系统弹窗中点击“是”')
+    message.success(t('exams.msg.lanRequested'))
   } catch (err) {
-    message.error(`授权失败：${(err as Error).message}`)
+    message.error(t('exams.msg.lanFailed', { msg: (err as Error).message }))
   } finally {
     lanRequesting.value = false
   }
@@ -438,7 +471,7 @@ async function savePublicBase() {
     const res = await examsApi.updateShare(publicBaseInput.value.trim())
     publicBaseInput.value = res.publicBaseUrl
     if (share.value) share.value = { ...share.value, publicBaseUrl: res.publicBaseUrl }
-    message.success('公网地址已保存')
+    message.success(t('exams.msg.publicSaved'))
   } finally {
     shareSaving.value = false
   }
@@ -447,7 +480,7 @@ async function savePublicBase() {
 async function copy(text: string) {
   try {
     await navigator.clipboard.writeText(text)
-    message.success('链接已复制')
+    message.success(t('exams.msg.copied'))
   } catch {
     const node = document.createElement('textarea')
     node.value = text
@@ -457,7 +490,7 @@ async function copy(text: string) {
     node.select()
     document.execCommand('copy')
     document.body.removeChild(node)
-    message.success('链接已复制')
+    message.success(t('exams.msg.copied'))
   }
 }
 
@@ -489,8 +522,9 @@ const submittedTotal = computed(
 )
 
 function resultsFileName() {
-  const name = (resultsExam.value?.title ?? '考试').replace(/[\\/:*?"<>|]/g, '_').trim() || '考试'
-  return `${name}-成绩-${dayjs().format('YYYYMMDD')}.xlsx`
+  const fallback = t('exams.fileExamFallback')
+  const name = (resultsExam.value?.title || fallback).replace(/[\\/:*?"<>|]/g, '_').trim() || fallback
+  return `${name}-${t('exams.fileResultsLabel')}-${dayjs().format('YYYYMMDD')}.xlsx`
 }
 
 async function exportResults() {
@@ -503,7 +537,7 @@ async function exportResults() {
       const path = await invoke<string | null>('pick_export_path', { fileName })
       if (!path) return
       const res = await examsApi.exportAttemptsTo(resultsExam.value.id, path)
-      message.success(`已导出 ${res.count} 条成绩到 ${res.path}`)
+      message.success(t('exams.msg.exported', { count: res.count, path: res.path }))
       return
     }
     const blob = await examsApi.exportAttemptsFile(resultsExam.value.id)
@@ -513,9 +547,9 @@ async function exportResults() {
     link.download = fileName
     link.click()
     URL.revokeObjectURL(url)
-    message.success('已开始下载')
+    message.success(t('exams.msg.downloadStarted'))
   } catch (err) {
-    message.error(`导出失败：${(err as Error).message || '请稍后重试'}`)
+    message.error(t('exams.msg.exportFailed', { msg: (err as Error).message || t('exams.msg.retryLater') }))
   } finally {
     exportingResults.value = false
   }
@@ -569,5 +603,7 @@ onMounted(load)
   gap: 12px; text-align: left; font-size: 12.5px;
 }
 .score { font-weight: 700; color: #24945f; }
+/* 已交卷标签紧跟比例，留一个间距；用 margin 而不是空格，避免被行内空白折叠 */
+.submitted-label { margin-left: 4px; }
 .panel-body :deep(.ant-spin-nested-loading) { min-height: 40px; }
 </style>

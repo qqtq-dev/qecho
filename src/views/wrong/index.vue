@@ -1,30 +1,49 @@
 <template>
   <div class="page">
-    <PageHeader title="错题本" :subtitle="`只收录作答判错的题，连续答对 ${threshold} 次自动移出`">
+    <PageHeader
+      :title="$t('wrong.title')"
+      :subtitle="$t('wrong.subtitle', { n: threshold })"
+    >
       <template #actions>
-        <a-button :disabled="wrongStore.stats.pending === 0" @click="startReview">开始错题练习</a-button>
+        <a-button :disabled="wrongStore.stats.pending === 0" @click="startReview">
+          {{ $t('wrong.startReview') }}
+        </a-button>
       </template>
     </PageHeader>
 
     <div class="metrics">
-      <MetricTile label="待复习" :value="wrongStore.stats.pending" :hint="`尚未连续答对 ${threshold} 次`" />
-      <MetricTile label="已掌握" :value="wrongStore.stats.mastered" :hint="`连续答对 ${threshold} 次后移出`" />
-      <MetricTile label="累计收录" :value="wrongStore.stats.total" hint="按题目去重统计" />
+      <MetricTile
+        :label="$t('wrong.metricPending')"
+        :value="wrongStore.stats.pending"
+        :hint="$t('wrong.metricPendingHint', { n: threshold })"
+      />
+      <MetricTile
+        :label="$t('wrong.metricMastered')"
+        :value="wrongStore.stats.mastered"
+        :hint="$t('wrong.metricMasteredHint', { n: threshold })"
+      />
+      <MetricTile
+        :label="$t('wrong.metricTotal')"
+        :value="wrongStore.stats.total"
+        :hint="$t('wrong.metricTotalHint')"
+      />
     </div>
 
     <section class="panel">
       <div class="panel-head">
-        <h3>错题列表</h3>
+        <h3>{{ $t('wrong.list') }}</h3>
         <a-radio-group v-model:value="status" size="small" button-style="solid" @change="reload">
-          <a-radio-button value="pending">待复习</a-radio-button>
-          <a-radio-button value="mastered">已掌握</a-radio-button>
-          <a-radio-button value="all">全部</a-radio-button>
+          <a-radio-button value="pending">{{ $t('wrong.tabPending') }}</a-radio-button>
+          <a-radio-button value="mastered">{{ $t('wrong.tabMastered') }}</a-radio-button>
+          <a-radio-button value="all">{{ $t('wrong.tabAll') }}</a-radio-button>
         </a-radio-group>
       </div>
       <div class="panel-body" :class="{ 'empty-state': !loading && items.length === 0 }">
         <a-spin :spinning="loading">
-          <a-empty v-if="!loading && items.length === 0" description="这里还没有题目">
-            <a-button type="primary" ghost @click="router.push('/practice')">去练习</a-button>
+          <a-empty v-if="!loading && items.length === 0" :description="$t('wrong.empty')">
+            <a-button type="primary" ghost @click="router.push('/practice')">
+              {{ $t('wrong.goPractice') }}
+            </a-button>
           </a-empty>
           <template v-else>
             <a-table
@@ -46,18 +65,18 @@
                 </template>
                 <template v-else-if="column.key === 'type'">
                   <a-tag :color="record.type === 'multiple' ? 'purple' : 'blue'">
-                    {{ record.type === 'multiple' ? '多选' : '单选' }}
+                    {{ record.type === 'multiple' ? $t('wrong.typeMultiple') : $t('wrong.typeSingle') }}
                   </a-tag>
                 </template>
                 <template v-else-if="column.key === 'wrongCount'">
-                  <a-tag color="red">{{ record.wrongCount }} 次</a-tag>
+                  <a-tag color="red">{{ $t('wrong.wrongTimes', { n: record.wrongCount }) }}</a-tag>
                 </template>
                 <template v-else-if="column.key === 'streak'">
                   <span>{{ record.correctStreak }} / {{ threshold }}</span>
                 </template>
                 <template v-else-if="column.key === 'status'">
                   <a-tag :color="record.mastered ? 'green' : 'orange'">
-                    {{ record.mastered ? '已掌握' : '待复习' }}
+                    {{ record.mastered ? $t('wrong.statusMastered') : $t('wrong.statusPending') }}
                   </a-tag>
                 </template>
                 <template v-else-if="column.key === 'lastWrongAt'">
@@ -65,14 +84,16 @@
                 </template>
                 <template v-else-if="column.key === 'actions'">
                   <a-space>
-                    <a-button type="link" size="small" @click="startSingle(record)">练这题</a-button>
+                    <a-button type="link" size="small" @click="startSingle(record)">
+                      {{ $t('wrong.practiceThis') }}
+                    </a-button>
                     <a-popconfirm
-                      title="移出后该题不再出现在错题本，确定吗？"
-                      ok-text="移出"
-                      cancel-text="取消"
+                      :title="$t('wrong.removeConfirm')"
+                      :ok-text="$t('wrong.remove')"
+                      :cancel-text="$t('common.cancel')"
                       @confirm="remove(record)"
                     >
-                      <a-button type="link" size="small" danger>移出</a-button>
+                      <a-button type="link" size="small" danger>{{ $t('wrong.remove') }}</a-button>
                     </a-popconfirm>
                   </a-space>
                 </template>
@@ -89,7 +110,9 @@
                     <QuestionImage v-if="opt.image" :name="opt.image" :thumb="true" :size="48" />
                     <span>{{ opt.content }}</span>
                   </div>
-                  <div class="muted" style="margin-top: 8px">正确答案：{{ record.answer.join('') || '—' }}</div>
+                  <div class="muted" style="margin-top: 8px">
+                    {{ $t('wrong.correctAnswer', { answer: record.answer.join('') || '—' }) }}
+                  </div>
                   <div v-if="record.analysis" class="analysis">{{ record.analysis }}</div>
                 </div>
               </template>
@@ -112,8 +135,9 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/PageHeader.vue'
 import MetricTile from '@/components/MetricTile.vue'
@@ -123,6 +147,7 @@ import { practiceApi } from '@/api/practice'
 import { settingsApi } from '@/api/settings'
 import { useWrongStore } from '@/stores/wrong'
 
+const { t } = useI18n()
 const router = useRouter()
 const wrongStore = useWrongStore()
 const threshold = ref(2)
@@ -134,15 +159,15 @@ const size = 10
 const loading = ref(false)
 const status = ref<'pending' | 'mastered' | 'all'>('pending')
 
-const columns = [
-  { title: '题目', key: 'stem', dataIndex: 'stem' },
-  { title: '题型', key: 'type', width: 76 },
-  { title: '答错次数', key: 'wrongCount', width: 96 },
-  { title: '连续答对', key: 'streak', width: 96 },
-  { title: '状态', key: 'status', width: 96 },
-  { title: '最近答错', key: 'lastWrongAt', width: 150 },
-  { title: '操作', key: 'actions', width: 140 },
-]
+const columns = computed(() => [
+  { title: t('wrong.colQuestion'), key: 'stem', dataIndex: 'stem' },
+  { title: t('wrong.colType'), key: 'type', width: 76 },
+  { title: t('wrong.colWrongCount'), key: 'wrongCount', width: 96 },
+  { title: t('wrong.colStreak'), key: 'streak', width: 96 },
+  { title: t('wrong.colStatus'), key: 'status', width: 96 },
+  { title: t('wrong.colLastWrong'), key: 'lastWrongAt', width: 150 },
+  { title: t('wrong.colActions'), key: 'actions', width: 140 },
+])
 
 function formatTime(raw: string) {
   return raw ? dayjs(raw).format('YYYY-MM-DD HH:mm') : '—'

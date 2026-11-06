@@ -1,27 +1,41 @@
 <template>
   <div class="page">
-    <PageHeader title="概览" subtitle="本机题库、练习与考试的整体情况">
+    <PageHeader :title="$t('dashboard.title')" :subtitle="$t('dashboard.subtitle')">
       <template #actions>
-        <a-button type="primary" @click="router.push('/practice')">开始练习</a-button>
+        <a-button type="primary" @click="router.push('/practice')">{{ $t('dashboard.startPractice') }}</a-button>
       </template>
     </PageHeader>
 
     <div class="metrics">
-      <MetricTile label="题目总数" :value="overview?.questionCount ?? 0" hint="你可访问题库的有效题目" />
-      <MetricTile label="今日答题" :value="overview?.todayAnswered ?? 0" hint="练习与考试作答合计" />
-      <MetricTile label="总正确率" :value="accuracyText" :hint="accuracyHint" />
-      <MetricTile label="待复习错题" :value="overview?.wrongPending ?? 0" :hint="wrongHint" />
+      <MetricTile
+        :label="$t('dashboard.metricQuestions')"
+        :value="overview?.questionCount ?? 0"
+        :hint="$t('dashboard.metricQuestionsHint')"
+      />
+      <MetricTile
+        :label="$t('dashboard.metricToday')"
+        :value="overview?.todayAnswered ?? 0"
+        :hint="$t('dashboard.metricTodayHint')"
+      />
+      <MetricTile :label="$t('dashboard.metricAccuracy')" :value="accuracyText" :hint="accuracyHint" />
+      <MetricTile
+        :label="$t('dashboard.metricWrong')"
+        :value="overview?.wrongPending ?? 0"
+        :hint="wrongHint"
+      />
     </div>
 
     <div class="panels">
       <section class="panel">
         <div class="panel-head">
-          <h3>继续学习</h3>
-          <span class="muted">进行中的练习与考试</span>
+          <h3>{{ $t('dashboard.ongoing') }}</h3>
+          <span class="muted">{{ $t('dashboard.ongoingDesc') }}</span>
         </div>
         <div class="panel-body" :class="{ empty: !hasOngoing }">
-          <a-empty v-if="!hasOngoing" description="暂无进行中的练习或考试">
-            <a-button type="primary" ghost @click="router.push('/banks')">先去题库看看</a-button>
+          <a-empty v-if="!hasOngoing" :description="$t('dashboard.noOngoing')">
+            <a-button type="primary" ghost @click="router.push('/banks')">
+              {{ $t('dashboard.goBanks') }}
+            </a-button>
           </a-empty>
           <ul v-else class="ongoing">
             <li
@@ -33,8 +47,13 @@
               <div class="oi-main">
                 <div class="oi-title">{{ item.title }}</div>
                 <div class="oi-meta">
-                  考试 · {{ item.totalCount }} 题 · {{ item.participantCount }} 人答题中 ·
-                  {{ fmtTime(item.closeAt) }} 截止
+                  {{
+                    $t('dashboard.examMeta', {
+                      total: item.totalCount,
+                      participants: item.participantCount,
+                      deadline: fmtTime(item.closeAt),
+                    })
+                  }}
                 </div>
               </div>
               <span class="oi-arrow">›</span>
@@ -48,8 +67,13 @@
               <div class="oi-main">
                 <div class="oi-title">{{ item.bankName }}</div>
                 <div class="oi-meta">
-                  练习 · 已答 {{ item.answeredCount }} / {{ item.totalCount }} ·
-                  {{ fmtTime(item.createdAt) }}
+                  {{
+                    $t('dashboard.practiceMeta', {
+                      answered: item.answeredCount,
+                      total: item.totalCount,
+                      time: fmtTime(item.createdAt),
+                    })
+                  }}
                 </div>
               </div>
               <span class="oi-arrow">›</span>
@@ -60,16 +84,26 @@
 
       <section class="panel">
         <div class="panel-head">
-          <h3>服务状态</h3>
-          <a-tag :color="online ? 'green' : 'red'">{{ online ? '正常' : '异常' }}</a-tag>
+          <h3>{{ $t('dashboard.service') }}</h3>
+          <a-tag :color="online ? 'green' : 'red'">
+            {{ online ? $t('dashboard.ok') : $t('dashboard.abnormal') }}
+          </a-tag>
         </div>
         <div class="panel-body">
           <dl class="status-list">
-            <div><dt>引擎版本</dt><dd>{{ appStore.health?.version ?? '—' }}</dd></div>
-            <div><dt>SQLite</dt><dd>{{ appStore.health?.sqlite ? '已连接' : '未连接' }}</dd></div>
-            <div><dt>接口地址</dt><dd class="mono">{{ apiBase }}</dd></div>
+            <div>
+              <dt>{{ $t('dashboard.engineVersion') }}</dt>
+              <dd>{{ appStore.health?.version ?? '—' }}</dd>
+            </div>
+            <div>
+              <dt>{{ $t('dashboard.sqlite') }}</dt>
+              <dd>{{ appStore.health?.sqlite ? $t('dashboard.connected') : $t('dashboard.disconnected') }}</dd>
+            </div>
+            <div><dt>{{ $t('dashboard.apiBase') }}</dt><dd class="mono">{{ apiBase }}</dd></div>
           </dl>
-          <a-button size="small" :loading="refreshing" @click="refresh">重新检测</a-button>
+          <a-button size="small" :loading="refreshing" @click="refresh">
+            {{ $t('dashboard.recheck') }}
+          </a-button>
         </div>
       </section>
     </div>
@@ -79,6 +113,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/PageHeader.vue'
 import MetricTile from '@/components/MetricTile.vue'
@@ -86,6 +121,7 @@ import { useAppStore } from '@/stores/app'
 import { getApiBase } from '@/api/request'
 import { overviewApi, type Overview } from '@/api/overview'
 
+const { t } = useI18n()
 const router = useRouter()
 const appStore = useAppStore()
 const refreshing = ref(false)
@@ -101,14 +137,17 @@ const accuracyText = computed(() => {
 
 const accuracyHint = computed(() => {
   const data = overview.value
-  if (!data || data.answeredTotal === 0) return '完成练习或考试后生成'
-  return `已答 ${data.answeredTotal} 题，答对 ${data.correctTotal} 题`
+  if (!data || data.answeredTotal === 0) return t('dashboard.accuracyEmpty')
+  return t('dashboard.accuracyHint', {
+    answered: data.answeredTotal,
+    correct: data.correctTotal,
+  })
 })
 
 const wrongHint = computed(() => {
   const data = overview.value
-  if (data && data.wrongMastered > 0) return `已掌握 ${data.wrongMastered} 题`
-  return '连续答对 2 次后移出'
+  if (data && data.wrongMastered > 0) return t('dashboard.wrongHintMastered', { n: data.wrongMastered })
+  return t('dashboard.wrongHint')
 })
 
 const hasOngoing = computed(() => {

@@ -1,67 +1,82 @@
 <template>
   <div class="page">
     <div class="back">
-      <a-button type="link" size="small" @click="router.push('/banks')">← 返回题库列表</a-button>
+      <a-button type="link" size="small" @click="router.push('/banks')">
+        {{ $t('bankDetail.back') }}
+      </a-button>
     </div>
-    <PageHeader :title="bank?.name || '题库详情'" :subtitle="bank?.description || '维护题目、答案与解析'">
+    <PageHeader
+      :title="bank?.name || $t('bankDetail.titleFallback')"
+      :subtitle="bank?.description || $t('bankDetail.subtitleFallback')"
+    >
       <template #actions>
         <template v-if="auth.mayExportImport">
-          <a-button :loading="exporting" :disabled="total === 0" @click="exportBank">导出题目</a-button>
-          <a-button :loading="exportingImages" @click="exportImages">导出图片</a-button>
+          <a-button :loading="exporting" :disabled="total === 0" @click="exportBank">
+            {{ $t('bankDetail.exportQuestions') }}
+          </a-button>
+          <a-button :loading="exportingImages" @click="exportImages">
+            {{ $t('bankDetail.exportImages') }}
+          </a-button>
         </template>
         <template v-if="canManage">
-          <a-button @click="openEditBank">编辑题库</a-button>
-          <a-button v-if="bank && !bank.isPublic" @click="sharingOpen = true">共享</a-button>
+          <a-button @click="openEditBank">{{ $t('bankDetail.editBank') }}</a-button>
+          <a-button v-if="bank && !bank.isPublic" @click="sharingOpen = true">{{ $t('bankDetail.share') }}</a-button>
         </template>
         <template v-if="canEdit">
-          <a-button v-if="auth.mayExportImport" @click="importOpen = true">导入题目</a-button>
-          <a-button type="primary" @click="openCreateQuestion">添加题目</a-button>
+          <a-button v-if="auth.mayExportImport" @click="importOpen = true">
+            {{ $t('bankDetail.importQuestions') }}
+          </a-button>
+          <a-button type="primary" @click="openCreateQuestion">{{ $t('bankDetail.addQuestion') }}</a-button>
         </template>
-        <a-tag v-if="!canEdit" color="default">只读题库</a-tag>
+        <a-tag v-if="!canEdit" color="default">{{ $t('bankDetail.readOnlyBank') }}</a-tag>
       </template>
     </PageHeader>
 
     <section class="panel">
       <div class="panel-head">
-        <h3>题目</h3>
-        <span class="muted">共 {{ total }} 道</span>
+        <h3>{{ $t('bankDetail.questions') }}</h3>
+        <span class="muted">{{ $t('bankDetail.count', { n: total }) }}</span>
       </div>
       <div class="filters">
         <a-input-search
           v-model:value="filters.keyword"
-          placeholder="搜索题干或解析"
+          :placeholder="$t('bankDetail.searchPlaceholder')"
           allow-clear
           style="width: 240px"
           @search="applyFilters"
         />
         <a-select v-model:value="filters.type" style="width: 110px" @change="applyFilters">
-          <a-select-option value="">全部题型</a-select-option>
-          <a-select-option value="single">单选</a-select-option>
-          <a-select-option value="multiple">多选</a-select-option>
+          <a-select-option value="">{{ $t('bankDetail.allTypes') }}</a-select-option>
+          <a-select-option value="single">{{ $t('bankDetail.single') }}</a-select-option>
+          <a-select-option value="multiple">{{ $t('bankDetail.multiple') }}</a-select-option>
         </a-select>
-        <a-select v-model:value="filters.difficulty" style="width: 110px" @change="applyFilters">
-          <a-select-option :value="0">全部难度</a-select-option>
+        <a-select v-model:value="filters.difficulty" style="width: 136px" @change="applyFilters">
+          <a-select-option :value="0">{{ $t('difficulty.all') }}</a-select-option>
           <a-select-option v-for="d in DIFFICULTY_LEVELS" :key="d.value" :value="d.value">
-            {{ d.label }}
+            {{ difficultyLabel(d.value) }}
           </a-select-option>
         </a-select>
         <a-select
           v-model:value="filters.tag"
           style="width: 150px"
-          placeholder="全部标签"
+          :placeholder="$t('bankDetail.allTags')"
           allow-clear
           @change="applyFilters"
         >
           <a-select-option v-for="tag in bankTags" :key="tag.id" :value="tag.name">
-            {{ tag.name }}（{{ tag.questionCount }}）
+            {{ $t('bankDetail.tagOption', { name: tag.name, n: tag.questionCount }) }}
           </a-select-option>
         </a-select>
-        <a-button v-if="canManage" type="link" size="small" @click="openTagManager">标签管理</a-button>
+        <a-button v-if="canManage" type="link" size="small" @click="openTagManager">
+          {{ $t('bankDetail.tagManager') }}
+        </a-button>
       </div>
       <div class="panel-body" :class="{ 'empty-state': !loading && items.length === 0 }">
         <a-spin :spinning="loading">
-          <a-empty v-if="!loading && items.length === 0" description="这个题库还没有题目">
-            <a-button v-if="canEdit" type="primary" ghost @click="openCreateQuestion">添加第一道题</a-button>
+          <a-empty v-if="!loading && items.length === 0" :description="$t('bankDetail.empty')">
+            <a-button v-if="canEdit" type="primary" ghost @click="openCreateQuestion">
+              {{ $t('bankDetail.addFirst') }}
+            </a-button>
           </a-empty>
           <template v-else>
             <a-table
@@ -77,13 +92,15 @@
                 </template>
                 <template v-else-if="column.key === 'type'">
                   <a-tag :color="record.type === 'multiple' ? 'purple' : 'blue'">
-                    {{ record.type === 'multiple' ? '多选' : '单选' }}
+                    {{ record.type === 'multiple' ? $t('bankDetail.multiple') : $t('bankDetail.single') }}
                   </a-tag>
                 </template>
                 <template v-else-if="column.key === 'stem'">
                   <div class="stem">{{ record.stem }}</div>
-                  <div v-if="record.source" class="muted">来源：{{ record.source }}</div>
-                  <div v-if="hasImage(record)" class="muted">含图片</div>
+                  <div v-if="record.source" class="muted">
+                    {{ $t('bankDetail.source', { source: record.source }) }}
+                  </div>
+                  <div v-if="hasImage(record)" class="muted">{{ $t('bankDetail.hasImage') }}</div>
                 </template>
                 <template v-else-if="column.key === 'answer'">
                   <span class="mono answer">{{ record.answer.join('') || '—' }}</span>
@@ -99,14 +116,14 @@
                 </template>
                 <template v-else-if="column.key === 'actions' && canEdit">
                   <a-space>
-                    <a-button type="link" size="small" @click="openEditQuestion(record)">编辑</a-button>
+                    <a-button type="link" size="small" @click="openEditQuestion(record)">{{ $t('bankDetail.edit') }}</a-button>
                     <a-popconfirm
-                      title="确定删除这道题吗？"
-                      ok-text="删除"
-                      cancel-text="取消"
+                      :title="$t('bankDetail.removeConfirm')"
+                      :ok-text="$t('bankDetail.remove')"
+                      :cancel-text="$t('common.cancel')"
                       @confirm="removeQuestion(record)"
                     >
-                      <a-button type="link" size="small" danger>删除</a-button>
+                      <a-button type="link" size="small" danger>{{ $t('bankDetail.remove') }}</a-button>
                     </a-popconfirm>
                   </a-space>
                 </template>
@@ -129,8 +146,8 @@
 
     <section v-if="importJobs.length" class="panel">
       <div class="panel-head">
-        <h3>导入记录</h3>
-        <span class="muted">最近 {{ importJobs.length }} 次，7 天内可撤销</span>
+        <h3>{{ $t('bankDetail.importHistory') }}</h3>
+        <span class="muted">{{ $t('bankDetail.importHistoryDesc', { n: importJobs.length }) }}</span>
       </div>
       <div class="panel-body">
         <a-table
@@ -149,16 +166,22 @@
               <div class="muted small">{{ record.format?.toUpperCase() }}</div>
             </template>
             <template v-else-if="column.key === 'summary'">
-              <span>新增 {{ record.inserted }}</span>
-              <span class="muted"> · 跳过 {{ record.skipped }}</span>
-              <span v-if="record.failed" class="danger"> · 失败 {{ record.failed }}</span>
+              <span>{{ $t('bankDetail.inserted', { n: record.inserted }) }}</span>
+              <span class="muted"> · {{ $t('bankDetail.skipped', { n: record.skipped }) }}</span>
+              <span v-if="record.failed" class="danger"> · {{ $t('bankDetail.failed', { n: record.failed }) }}</span>
             </template>
             <template v-else-if="column.key === 'status'">
               <a-tag :color="record.status === 'reverted' ? 'default' : record.failed ? 'orange' : 'green'">
-                {{ record.status === 'reverted' ? '已撤销' : record.failed ? '部分失败' : '已完成' }}
+                {{
+                  record.status === 'reverted'
+                    ? $t('bankDetail.statusReverted')
+                    : record.failed
+                      ? $t('bankDetail.statusPartial')
+                      : $t('bankDetail.statusDone')
+                }}
               </a-tag>
               <span v-if="record.status !== 'reverted'" class="muted small">
-                · 现存 {{ record.remaining }}
+                · {{ $t('bankDetail.remaining', { n: record.remaining }) }}
               </span>
             </template>
             <template v-else-if="column.key === 'actions'">
@@ -169,18 +192,18 @@
                   size="small"
                   @click="downloadErrors(record)"
                 >
-                  错误明细
+                  {{ $t('bankDetail.errorDetail') }}
                 </a-button>
                 <a-popconfirm
                   v-if="record.canRevert"
-                  title="撤销将删除本次导入且未编辑过的题目，确定吗？"
-                  ok-text="撤销"
-                  cancel-text="取消"
+                  :title="$t('bankDetail.revertConfirm')"
+                  :ok-text="$t('bankDetail.revert')"
+                  :cancel-text="$t('common.cancel')"
                   @confirm="revertJob(record)"
                 >
-                  <a-button type="link" size="small" danger>撤销</a-button>
+                  <a-button type="link" size="small" danger>{{ $t('bankDetail.revert') }}</a-button>
                 </a-popconfirm>
-                <span v-else-if="record.status !== 'reverted'" class="muted small">不可撤销</span>
+                <span v-else-if="record.status !== 'reverted'" class="muted small">{{ $t('bankDetail.cannotRevert') }}</span>
               </a-space>
             </template>
           </template>
@@ -190,12 +213,12 @@
 
     <a-modal
       v-model:open="tagModalOpen"
-      title="标签管理"
+      :title="$t('bankDetail.tagManager')"
       :footer="null"
       :width="620"
     >
       <div class="tag-manage">
-        <a-empty v-if="allTags.length === 0" description="还没有标签，可在编辑题目时添加" />
+        <a-empty v-if="allTags.length === 0" :description="$t('bankDetail.tagEmpty')" />
         <a-table
           v-else
           :data-source="allTags"
@@ -217,25 +240,25 @@
               <span v-else>{{ record.name }}</span>
             </template>
             <template v-else-if="column.key === 'questionCount'">
-              <span class="muted">{{ record.questionCount }} 道</span>
+              <span class="muted">{{ $t('bankDetail.count', { n: record.questionCount }) }}</span>
             </template>
             <template v-else-if="column.key === 'actions'">
               <a-space>
                 <template v-if="editingTagId === record.id">
-                  <a-button type="link" size="small" @click="saveTagRename(record)">保存</a-button>
-                  <a-button type="link" size="small" @click="cancelTagRename">取消</a-button>
+                  <a-button type="link" size="small" @click="saveTagRename(record)">{{ $t('common.save') }}</a-button>
+                  <a-button type="link" size="small" @click="cancelTagRename">{{ $t('common.cancel') }}</a-button>
                 </template>
                 <template v-else>
-                  <a-button type="link" size="small" @click="startTagRename(record)">重命名</a-button>
+                  <a-button type="link" size="small" @click="startTagRename(record)">{{ $t('bankDetail.rename') }}</a-button>
                   <a-button
                     type="link"
                     size="small"
                     :disabled="allTags.length < 2"
                     @click="openMerge(record)"
                   >
-                    合并
+                    {{ $t('bankDetail.merge') }}
                   </a-button>
-                  <a-button type="link" size="small" danger @click="removeTag(record)">删除</a-button>
+                  <a-button type="link" size="small" danger @click="removeTag(record)">{{ $t('bankDetail.remove') }}</a-button>
                 </template>
               </a-space>
             </template>
@@ -246,35 +269,35 @@
 
     <a-modal
       v-model:open="mergeModalOpen"
-      :title="`合并标签「${mergeSource?.name ?? ''}」`"
+      :title="$t('bankDetail.mergeTitle', { name: mergeSource?.name ?? '' })"
       :confirm-loading="mergeSaving"
-      ok-text="确认合并"
-      cancel-text="取消"
+      :ok-text="$t('bankDetail.mergeOk')"
+      :cancel-text="$t('common.cancel')"
       :width="420"
       @ok="confirmMerge"
     >
-      <p class="muted merge-tip">合并后该标签下的题目会转到目标标签，原标签将被删除。</p>
-      <a-select v-model:value="mergeTargetId" style="width: 100%" placeholder="选择合并到的标签">
+      <p class="muted merge-tip">{{ $t('bankDetail.mergeTip') }}</p>
+      <a-select v-model:value="mergeTargetId" style="width: 100%" :placeholder="$t('bankDetail.mergePlaceholder')">
         <a-select-option v-for="t in mergeTargets" :key="t.id" :value="t.id">
-          {{ t.name }}（{{ t.questionCount }} 道）
+          {{ $t('bankDetail.mergeOption', { name: t.name, n: t.questionCount }) }}
         </a-select-option>
       </a-select>
     </a-modal>
 
     <a-modal
       v-model:open="bankModalOpen"
-      title="编辑题库"
+      :title="$t('bankDetail.editBank')"
       :confirm-loading="bankSaving"
-      ok-text="保存"
-      cancel-text="取消"
+      :ok-text="$t('common.save')"
+      :cancel-text="$t('common.cancel')"
       :width="460"
       @ok="saveBank"
     >
       <a-form layout="vertical">
-        <a-form-item label="题库名称" required>
+        <a-form-item :label="$t('bankDetail.name')" required>
           <a-input v-model:value="bankForm.name" :maxlength="60" />
         </a-form-item>
-        <a-form-item label="说明">
+        <a-form-item :label="$t('bankDetail.description')">
           <a-textarea v-model:value="bankForm.description" :rows="3" :maxlength="200" />
         </a-form-item>
       </a-form>
@@ -282,54 +305,54 @@
 
     <a-modal
       v-model:open="qModalOpen"
-      :title="editingQuestion ? '编辑题目' : '添加题目'"
+      :title="editingQuestion ? $t('bankDetail.editQuestion') : $t('bankDetail.addQuestionTitle')"
       :confirm-loading="qSaving"
-      ok-text="保存"
-      cancel-text="取消"
+      :ok-text="$t('common.save')"
+      :cancel-text="$t('common.cancel')"
       :width="720"
       :mask-closable="false"
       @ok="saveQuestion"
     >
       <a-form layout="vertical">
         <div class="form-row">
-          <a-form-item label="题型" required>
+          <a-form-item :label="$t('bankDetail.type')" required>
             <a-radio-group v-model:value="qForm.type" @change="onTypeChange">
-              <a-radio-button value="single">单选题</a-radio-button>
-              <a-radio-button value="multiple">多选题</a-radio-button>
+              <a-radio-button value="single">{{ $t('bankDetail.singleQuestion') }}</a-radio-button>
+              <a-radio-button value="multiple">{{ $t('bankDetail.multipleQuestion') }}</a-radio-button>
             </a-radio-group>
           </a-form-item>
-          <a-form-item label="难度">
+          <a-form-item :label="$t('bankDetail.difficulty')">
             <a-select v-model:value="qForm.difficulty" style="width: 120px">
               <a-select-option v-for="d in DIFFICULTY_LEVELS" :key="d.value" :value="d.value">
-                {{ d.label }}
+                {{ difficultyLabel(d.value) }}
               </a-select-option>
             </a-select>
           </a-form-item>
         </div>
 
-        <a-form-item label="题干" required>
+        <a-form-item :label="$t('bankDetail.stem')" required>
           <a-textarea
             v-model:value="qForm.stem"
             :rows="3"
             :maxlength="2000"
-            placeholder="请输入题干内容"
+            :placeholder="$t('bankDetail.stemPlaceholder')"
           />
         </a-form-item>
 
-        <a-form-item label="题目图片">
+        <a-form-item :label="$t('bankDetail.stemImage')">
           <ImageUploadField
             v-model="qForm.stemImage"
-            hint="支持 PNG / JPEG / WebP / GIF，单张不超过 8 MB"
+            :hint="$t('bankDetail.imageHint')"
           />
         </a-form-item>
 
-        <a-form-item label="选项" required>
+        <a-form-item :label="$t('bankDetail.options')" required>
           <div v-for="(opt, idx) in qForm.options" :key="opt.key" class="opt-row">
             <span class="opt-key">{{ opt.key }}</span>
             <div class="opt-main">
               <a-input
                 v-model:value="opt.content"
-                :placeholder="`选项 ${opt.key} 内容`"
+                :placeholder="$t('bankDetail.optionPlaceholder', { key: opt.key })"
                 :maxlength="500"
               />
               <ImageUploadField v-model="opt.image" />
@@ -341,7 +364,7 @@
               :disabled="qForm.options.length <= 2"
               @click="removeOption(idx)"
             >
-              移除
+              {{ $t('bankDetail.removeOption') }}
             </a-button>
           </div>
           <a-button
@@ -350,11 +373,11 @@
             :disabled="qForm.options.length >= 8"
             @click="addOption"
           >
-            + 添加选项
+            {{ $t('bankDetail.addOption') }}
           </a-button>
         </a-form-item>
 
-        <a-form-item :label="qForm.type === 'single' ? '正确答案（单选）' : '正确答案（至少两个）'" required>
+        <a-form-item :label="qForm.type === 'single' ? $t('bankDetail.answerSingle') : $t('bankDetail.answerMultiple')" required>
           <a-radio-group v-if="qForm.type === 'single'" v-model:value="singleAnswer">
             <a-radio v-for="opt in qForm.options" :key="opt.key" :value="opt.key">
               {{ opt.key }}
@@ -367,32 +390,32 @@
           </a-checkbox-group>
         </a-form-item>
 
-        <a-form-item label="解析">
+        <a-form-item :label="$t('bankDetail.analysis')">
           <a-textarea
             v-model:value="qForm.analysis"
             :rows="2"
             :maxlength="1000"
-            placeholder="可选，交卷后向参与者展示"
+            :placeholder="$t('bankDetail.analysisPlaceholder')"
           />
         </a-form-item>
 
-        <a-form-item label="来源">
+        <a-form-item :label="$t('bankDetail.sourceLabel')">
           <a-input
             v-model:value="qForm.source"
             :maxlength="200"
-            placeholder="可选，例如：2026 年安全规程考试真题"
+            :placeholder="$t('bankDetail.sourcePlaceholder')"
           />
         </a-form-item>
 
-        <a-form-item label="标签">
+        <a-form-item :label="$t('bankDetail.tags')">
           <a-select
             v-model:value="qForm.tags"
             mode="tags"
             :max-tag-count="6"
-            placeholder="输入标签后回车，例如：第一章、重点"
+            :placeholder="$t('bankDetail.tagsPlaceholder')"
             :options="bankTags.map((t) => ({ value: t.name, label: t.name }))"
           />
-          <div class="muted tag-hint">最多 10 个标签，可在题库列表中按标签筛选</div>
+          <div class="muted tag-hint">{{ $t('bankDetail.tagsHint') }}</div>
         </a-form-item>
       </a-form>
     </a-modal>
@@ -416,6 +439,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import dayjs from 'dayjs'
 import { Modal, message } from 'ant-design-vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -427,6 +451,7 @@ import { isTauri } from '@/api/request'
 import { DIFFICULTY_LEVELS, difficultyLabel } from '@/utils/difficulty'
 import { useAuthStore } from '@/stores/auth'
 
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
@@ -454,13 +479,13 @@ const canManage = computed(() => bank.value?.canManage ?? false)
 const columns = computed(() => {
   const base = [
     { title: '#', key: 'index', width: 56 },
-    { title: '题型', key: 'type', width: 76 },
-    { title: '题干', key: 'stem', dataIndex: 'stem' },
-    { title: '标签', key: 'tags', width: 150 },
-    { title: '答案', key: 'answer', width: 90 },
-    { title: '难度', key: 'difficulty', width: 90 },
+    { title: t('bankDetail.colType'), key: 'type', width: 76 },
+    { title: t('bankDetail.colStem'), key: 'stem', dataIndex: 'stem' },
+    { title: t('bankDetail.colTags'), key: 'tags', width: 150 },
+    { title: t('bankDetail.colAnswer'), key: 'answer', width: 90 },
+    { title: t('bankDetail.colDifficulty'), key: 'difficulty', width: 90 },
   ]
-  if (canEdit.value) base.push({ title: '操作', key: 'actions', width: 130 })
+  if (canEdit.value) base.push({ title: t('bankDetail.colActions'), key: 'actions', width: 130 })
   return base
 })
 
@@ -474,7 +499,8 @@ const exporting = ref(false)
 const exportingImages = ref(false)
 
 function exportFileName(suffix = '') {
-  const name = (bank.value?.name ?? '题库').replace(/[\\/:*?"<>|]/g, '_').trim() || '题库'
+  const fallback = t('banks.defaultName')
+  const name = (bank.value?.name || fallback).replace(/[\\/:*?"<>|]/g, '_').trim() || fallback
   return `${name}${suffix}-${dayjs().format('YYYYMMDD')}.xlsx`
 }
 
@@ -482,13 +508,13 @@ async function exportImages() {
   if (!bank.value || exportingImages.value) return
   exportingImages.value = true
   try {
-    const fileName = exportFileName('-图片').replace(/\.xlsx$/, '.zip')
+    const fileName = exportFileName(t('bankDetail.imageSuffix')).replace(/\.xlsx$/, '.zip')
     if (isTauri()) {
       const { invoke } = await import('@tauri-apps/api/core')
       const path = await invoke<string | null>('pick_export_path', { fileName })
       if (!path) return
       const res = await banksApi.exportImagesTo(bankId, path)
-      message.success(`已导出 ${res.count} 张图片到 ${res.path}`)
+      message.success(t('bankDetail.msg.imagesExported', { count: res.count, path: res.path }))
       return
     }
     const blob = await banksApi.exportImagesFile(bankId)
@@ -498,7 +524,7 @@ async function exportImages() {
     link.download = fileName
     link.click()
     URL.revokeObjectURL(url)
-    message.success('已开始下载')
+    message.success(t('bankDetail.msg.downloadStarted'))
   } finally {
     exportingImages.value = false
   }
@@ -514,7 +540,7 @@ async function exportBank() {
       const path = await invoke<string | null>('pick_export_path', { fileName })
       if (!path) return
       const res = await banksApi.exportTo(bankId, path)
-      message.success(`已导出 ${res.count} 道题到 ${res.path}`)
+      message.success(t('bankDetail.msg.questionsExported', { count: res.count, path: res.path }))
       return
     }
     const blob = await banksApi.exportFile(bankId)
@@ -524,7 +550,7 @@ async function exportBank() {
     link.download = fileName
     link.click()
     URL.revokeObjectURL(url)
-    message.success('已开始下载')
+    message.success(t('bankDetail.msg.downloadStarted'))
   } finally {
     exporting.value = false
   }
@@ -564,11 +590,11 @@ async function loadTags() {
 
 const tagModalOpen = ref(false)
 const allTags = ref<Tag[]>([])
-const tagColumns = [
-  { title: '标签', key: 'name', dataIndex: 'name' },
-  { title: '题目数', key: 'questionCount', width: 90 },
-  { title: '操作', key: 'actions', width: 200 },
-]
+const tagColumns = computed(() => [
+  { title: t('bankDetail.colTagName'), key: 'name', dataIndex: 'name' },
+  { title: t('bankDetail.colTagCount'), key: 'questionCount', width: 90 },
+  { title: t('bankDetail.colActions'), key: 'actions', width: 200 },
+])
 const editingTagId = ref<number | null>(null)
 const editingTagName = ref('')
 const mergeModalOpen = ref(false)
@@ -609,9 +635,15 @@ async function refreshAfterTagChange() {
  * 标签是全局字典：改名/合并/删除会连带改到别人的题库。
  * 先查影响面，涉及他人题库时把数量写进确认框。
  */
+const VERB_KEY = {
+  rename: 'bankDetail.verbRename',
+  merge: 'bankDetail.verbMerge',
+  delete: 'bankDetail.verbDelete',
+} as const
+
 async function confirmTagAction(
   tag: Tag,
-  verb: '重命名' | '合并' | '删除',
+  verb: keyof typeof VERB_KEY,
   run: () => Promise<void>,
   alwaysConfirm = false,
 ) {
@@ -626,18 +658,25 @@ async function confirmTagAction(
     await run()
     return
   }
-  const lines = [`这个标签共 ${impact?.questions ?? 0} 道题，分布在 ${impact?.banks ?? 0} 个题库。`]
+  const verbText = t(VERB_KEY[verb])
+  const lines = [
+    t('bankDetail.tagImpact', { questions: impact?.questions ?? 0, banks: impact?.banks ?? 0 }),
+  ]
   if (others > 0) {
     lines.push(
-      `其中 ${others} 个题库不属于你（共 ${impact?.otherQuestions ?? 0} 道题），${verb}后它们也会一起变化。`,
+      t('bankDetail.tagImpactOthers', {
+        banks: others,
+        questions: impact?.otherQuestions ?? 0,
+        verb: verbText.toLowerCase(),
+      }),
     )
   }
   Modal.confirm({
-    title: `确认${verb}标签「${tag.name}」？`,
+    title: t('bankDetail.tagConfirmTitle', { verb: verbText, name: tag.name }),
     content: lines.join(''),
-    okText: `继续${verb}`,
-    cancelText: '取消',
-    okType: verb === '删除' ? 'danger' : 'primary',
+    okText: t('bankDetail.tagConfirmOk', { verb: verbText }),
+    cancelText: t('common.cancel'),
+    okType: verb === 'delete' ? 'danger' : 'primary',
     async onOk() {
       await run()
     },
@@ -647,16 +686,16 @@ async function confirmTagAction(
 async function saveTagRename(tag: Tag) {
   const name = editingTagName.value.trim()
   if (!name) {
-    message.warning('标签名称不能为空')
+    message.warning(t('bankDetail.msg.tagNameRequired'))
     return
   }
   if (name === tag.name) {
     cancelTagRename()
     return
   }
-  await confirmTagAction(tag, '重命名', async () => {
+  await confirmTagAction(tag, 'rename', async () => {
     await banksApi.renameTag(tag.id, name)
-    message.success('标签已重命名')
+    message.success(t('bankDetail.msg.tagRenamed'))
     cancelTagRename()
     await refreshAfterTagChange()
   })
@@ -670,16 +709,16 @@ function openMerge(tag: Tag) {
 
 async function confirmMerge() {
   if (!mergeSource.value || !mergeTargetId.value) {
-    message.warning('请选择合并到的标签')
+    message.warning(t('bankDetail.msg.mergeTargetRequired'))
     return
   }
   const source = mergeSource.value
   const targetId = mergeTargetId.value
   mergeSaving.value = true
   try {
-    await confirmTagAction(source, '合并', async () => {
+    await confirmTagAction(source, 'merge', async () => {
       await banksApi.mergeTag(source.id, targetId)
-      message.success('标签已合并')
+      message.success(t('bankDetail.msg.tagMerged'))
       mergeModalOpen.value = false
       await refreshAfterTagChange()
     })
@@ -691,10 +730,10 @@ async function confirmMerge() {
 async function removeTag(tag: Tag) {
   await confirmTagAction(
     tag,
-    '删除',
+    'delete',
     async () => {
       await banksApi.removeTag(tag.id)
-      message.success('标签已删除')
+      message.success(t('bankDetail.msg.tagDeleted'))
       await refreshAfterTagChange()
     },
     true,
@@ -702,13 +741,13 @@ async function removeTag(tag: Tag) {
 }
 
 const importJobs = ref<ImportJob[]>([])
-const importColumns = [
-  { title: '导入时间', key: 'createdAt', width: 150 },
-  { title: '文件', key: 'source', dataIndex: 'sourceName' },
-  { title: '结果', key: 'summary', width: 180 },
-  { title: '状态', key: 'status', width: 170 },
-  { title: '操作', key: 'actions', width: 150 },
-]
+const importColumns = computed(() => [
+  { title: t('bankDetail.colImportTime'), key: 'createdAt', width: 150 },
+  { title: t('bankDetail.colFile'), key: 'source', dataIndex: 'sourceName' },
+  { title: t('bankDetail.colResult'), key: 'summary', width: 180 },
+  { title: t('bankDetail.colStatus'), key: 'status', width: 170 },
+  { title: t('bankDetail.colActions'), key: 'actions', width: 150 },
+])
 
 function formatTime(raw: string) {
   return raw ? dayjs(raw).format('YYYY-MM-DD HH:mm') : '—'
@@ -734,12 +773,16 @@ function saveBlob(blob: Blob, fileName: string) {
 
 async function downloadErrors(job: ImportJob) {
   const blob = await banksApi.importErrorsCsv(job.id)
-  saveBlob(blob, `导入错误-${job.id}.csv`)
+  saveBlob(blob, t('bankDetail.importErrorsFile', { id: job.id }))
 }
 
 async function revertJob(job: ImportJob) {
   const res = await banksApi.revertImport(job.id)
-  message.success(`已撤销 ${res.reverted} 道题${res.kept ? `，保留 ${res.kept} 道已编辑题目` : ''}`)
+  message.success(
+    res.kept
+      ? t('bankDetail.msg.revertedKeep', { count: res.reverted, kept: res.kept })
+      : t('bankDetail.msg.reverted', { count: res.reverted }),
+  )
   await Promise.all([loadImportJobs(), loadQuestions(), loadBank(), loadTags()])
 }
 
@@ -757,14 +800,14 @@ function openEditBank() {
 async function saveBank() {
   const name = bankForm.name.trim()
   if (!name) {
-    message.warning('请填写题库名称')
+    message.warning(t('bankDetail.msg.bankNameRequired'))
     return
   }
   bankSaving.value = true
   try {
     bank.value = await banksApi.update(bankId, { name, description: bankForm.description.trim() })
     bankModalOpen.value = false
-    message.success('题库已更新')
+    message.success(t('bankDetail.msg.bankUpdated'))
   } finally {
     bankSaving.value = false
   }
@@ -861,7 +904,7 @@ function removeOption(index: number) {
 async function saveQuestion() {
   const stem = qForm.stem.trim()
   if (!stem) {
-    message.warning('请填写题干')
+    message.warning(t('bankDetail.msg.stemRequired'))
     return
   }
   const options = qForm.options.map((o) => ({
@@ -870,19 +913,19 @@ async function saveQuestion() {
     image: o.image,
   }))
   if (options.some((o) => !o.content)) {
-    message.warning('请填写完整的选项内容')
+    message.warning(t('bankDetail.msg.optionsRequired'))
     return
   }
   if (!qForm.answer.length) {
-    message.warning('请设置正确答案')
+    message.warning(t('bankDetail.msg.answerRequired'))
     return
   }
   if (qForm.type === 'single' && qForm.answer.length !== 1) {
-    message.warning('单选题只能有一个正确答案')
+    message.warning(t('bankDetail.msg.singleAnswerOnly'))
     return
   }
   if (qForm.type === 'multiple' && qForm.answer.length < 2) {
-    message.warning('多选题至少需要两个正确答案')
+    message.warning(t('bankDetail.msg.multipleAnswerMin'))
     return
   }
   qSaving.value = true
@@ -900,10 +943,10 @@ async function saveQuestion() {
     }
     if (editingQuestion.value) {
       await banksApi.updateQuestion(editingQuestion.value.id, payload)
-      message.success('题目已更新')
+      message.success(t('bankDetail.msg.questionUpdated'))
     } else {
       await banksApi.createQuestion(bankId, payload)
-      message.success('题目已添加')
+      message.success(t('bankDetail.msg.questionAdded'))
     }
     qModalOpen.value = false
     await Promise.all([loadQuestions(), loadBank(), loadTags()])
@@ -914,7 +957,7 @@ async function saveQuestion() {
 
 async function removeQuestion(q: Question) {
   await banksApi.removeQuestion(q.id)
-  message.success('题目已删除')
+  message.success(t('bankDetail.msg.questionDeleted'))
   if (items.value.length === 1 && page.value > 1) page.value -= 1
   await Promise.all([loadQuestions(), loadBank(), loadTags()])
 }
