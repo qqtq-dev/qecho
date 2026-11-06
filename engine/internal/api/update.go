@@ -121,23 +121,25 @@ func (s *Server) fetchUpdateManifest(force bool) (updateManifest, error) {
 		}
 	}
 
-	// 并发查所有源：Gitee 与 GitHub 谁先合并都能发现新版本，取版本号最高的那份。
+	// 并发查所有源：Gitee 与 GitHub 谁先合并都能发现新版本，取版本号最高的那份；
+	// 版本相同则按 defaultUpdateManifestURLs 的顺序取（GitHub 为准，它是默认更新源）。
 	// 单个源超时不影响另一个源；全部失败才把错误往上抛。
 	endpoints := updateManifestURLs()
 	type fetchResult struct {
+		index    int
 		manifest updateManifest
 		err      error
 	}
 	results := make(chan fetchResult, len(endpoints))
-	for _, endpoint := range endpoints {
-		go func(u string) {
+	for i, endpoint := range endpoints {
+		go func(idx int, u string) {
 			m, err := requestUpdateManifest(u)
-			results <- fetchResult{manifest: m, err: err}
-		}(endpoint)
+			results <- fetchResult{index: idx, manifest: m, err: err}
+		}(i, endpoint)
 	}
 
 	var best updateManifest
-	var found bool
+	bestIdx := -1
 	var lastErr error
 	for range endpoints {
 		res := <-results
@@ -145,13 +147,18 @@ func (s *Server) fetchUpdateManifest(force bool) (updateManifest, error) {
 			lastErr = res.err
 			continue
 		}
-		if !found || higherVersion(res.manifest.Version, best.Version) {
-			best = res.manifest
-			found = true
+		switch bestIdx {
+		case -1:
+			best, bestIdx = res.manifest, res.index
+		default:
+			cmp := compareManifestVersion(res.manifest.Version, best.Version)
+			if cmp > 0 || (cmp == 0 && res.index < bestIdx) {
+				best, bestIdx = res.manifest, res.index
+			}
 		}
 	}
 
-	if !found {
+	if bestIdx == -1 {
 		s.updateSnap = &updateSnapshot{at: time.Now(), err: lastErr}
 		return updateManifest{}, lastErr
 	}
@@ -159,14 +166,21 @@ func (s *Server) fetchUpdateManifest(force bool) (updateManifest, error) {
 	return best, nil
 }
 
-// higherVersion 判断 a 是否比 b 更新；a 能解析而 b 不能时以 a 为准，反之保留 b。
-func higherVersion(a, b string) bool {
+// compareManifestVersion 比较两份清单的版本号：1 表示 a 更新，-1 表示更旧，
+// 0 表示相同或双方都无法解析（此时交给调用方按源顺序决定）。
+func compareManifestVersion(a, b string) int {
 	pa, okA := parseVersion(a)
 	pb, okB := parseVersion(b)
-	if okA && okB {
-		return compareVersion(pa, pb) > 0
+	switch {
+	case okA && okB:
+		return compareVersion(pa, pb)
+	case okA:
+		return 1
+	case okB:
+		return -1
+	default:
+		return 0
 	}
-	return okA && !okB
 }
 
 func requestUpdateManifest(endpoint string) (updateManifest, error) {

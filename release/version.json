@@ -3,6 +3,6 @@
   "publishedAt": "2026-11-06",
   "notes": "新增中英双语界面，登录页右上角可即时切换；全部业务页面与组件完成词条化。",
   "url": "https://github.com/qqtq-dev/qecho/releases/tag/v0.2.6",
-  "downloadUrl": "https://gitee.com/qqtq/qecho/releases/tag/v0.2.6",
+  "downloadUrl": "https://github.com/qqtq-dev/qecho/releases/tag/v0.2.6",
   "force": false
 }
