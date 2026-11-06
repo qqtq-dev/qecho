@@ -1,8 +1,8 @@
 {
-  "version": "0.2.5",
-  "publishedAt": "2026-11-05",
-  "notes": "答题参与者页支持外部文件覆盖，改文案与版式无需重装；服务器与桌面端均即时生效。",
-  "url": "https://gitee.com/qqtq/qecho-releases/releases/tag/v0.2.5",
-  "downloadUrl": "https://gitee.com/qqtq/qecho-releases/releases/tag/v0.2.5",
+  "version": "0.2.6",
+  "publishedAt": "2026-11-06",
+  "notes": "新增中英双语界面，登录页右上角可即时切换；全部业务页面与组件完成词条化。",
+  "url": "https://gitee.com/qqtq/qecho-releases/releases/tag/v0.2.6",
+  "downloadUrl": "https://gitee.com/qqtq/qecho-releases/releases/tag/v0.2.6",
   "force": false
 }
