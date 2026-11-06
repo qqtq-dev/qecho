@@ -12,8 +12,8 @@ import (
 	"quizbox/engine/internal/response"
 )
 
-// 版本清单按顺序从下列地址获取：优先 GitHub 镜像（读主仓库 release/version.json），
-// 失败后回退 Gitee 主仓库，兼顾境内外网络环境。命中任意一个即成功。
+// 版本清单在两个地址上都查：GitHub 镜像与 Gitee 主仓各自可能先合并，
+// 哪边报出的版本号更高就用哪边，所以任意一端先发版都能提示到。
 // 想换地址（例如改放自有服务器）时设置环境变量 QUIZBOX_UPDATE_URL 即可，不用重新编译。
 const (
 	githubUpdateManifestURL = "https://raw.githubusercontent.com/qqtq-dev/qecho/main/release/version.json"
@@ -25,7 +25,7 @@ const (
 	updateMaxBytes          = 64 << 10
 )
 
-// defaultUpdateManifestURLs 按优先级排列的版本清单地址。
+// defaultUpdateManifestURLs 需要比对的全部清单地址（并发请求，取版本号最高的那份）。
 var defaultUpdateManifestURLs = []string{
 	githubUpdateManifestURL,
 	giteeUpdateManifestURL,
@@ -121,17 +121,52 @@ func (s *Server) fetchUpdateManifest(force bool) (updateManifest, error) {
 		}
 	}
 
-	// 逐个源尝试：GitHub 优先，失败回退 Gitee；全部失败才返回错误。
-	var manifest updateManifest
-	var err error
-	for _, endpoint := range updateManifestURLs() {
-		manifest, err = requestUpdateManifest(endpoint)
-		if err == nil {
-			break
+	// 并发查所有源：Gitee 与 GitHub 谁先合并都能发现新版本，取版本号最高的那份。
+	// 单个源超时不影响另一个源；全部失败才把错误往上抛。
+	endpoints := updateManifestURLs()
+	type fetchResult struct {
+		manifest updateManifest
+		err      error
+	}
+	results := make(chan fetchResult, len(endpoints))
+	for _, endpoint := range endpoints {
+		go func(u string) {
+			m, err := requestUpdateManifest(u)
+			results <- fetchResult{manifest: m, err: err}
+		}(endpoint)
+	}
+
+	var best updateManifest
+	var found bool
+	var lastErr error
+	for range endpoints {
+		res := <-results
+		if res.err != nil {
+			lastErr = res.err
+			continue
+		}
+		if !found || higherVersion(res.manifest.Version, best.Version) {
+			best = res.manifest
+			found = true
 		}
 	}
-	s.updateSnap = &updateSnapshot{at: time.Now(), manifest: manifest, err: err}
-	return manifest, err
+
+	if !found {
+		s.updateSnap = &updateSnapshot{at: time.Now(), err: lastErr}
+		return updateManifest{}, lastErr
+	}
+	s.updateSnap = &updateSnapshot{at: time.Now(), manifest: best}
+	return best, nil
+}
+
+// higherVersion 判断 a 是否比 b 更新；a 能解析而 b 不能时以 a 为准，反之保留 b。
+func higherVersion(a, b string) bool {
+	pa, okA := parseVersion(a)
+	pb, okB := parseVersion(b)
+	if okA && okB {
+		return compareVersion(pa, pb) > 0
+	}
+	return okA && !okB
 }
 
 func requestUpdateManifest(endpoint string) (updateManifest, error) {
