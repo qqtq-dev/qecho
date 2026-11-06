@@ -1,8 +1,8 @@
 {
-  "version": "0.2.6",
-  "publishedAt": "2026-11-06",
-  "notes": "新增中英双语界面，登录页右上角可即时切换；全部业务页面与组件完成词条化。",
-  "url": "https://github.com/qqtq-dev/qecho/releases/tag/v0.2.6",
-  "downloadUrl": "https://github.com/qqtq-dev/qecho/releases/tag/v0.2.6",
+  "version": "0.2.7",
+  "publishedAt": "2026-11-07",
+  "notes": "更新源统一到 GitHub 主仓库，仓库与截图整合，更新检查更稳定。",
+  "url": "https://github.com/qqtq-dev/qecho/releases/tag/v0.2.7",
+  "downloadUrl": "https://github.com/qqtq-dev/qecho/releases/tag/v0.2.7",
   "force": false
 }
