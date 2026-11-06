@@ -7,7 +7,7 @@
 >
 > 两种形态功能一致；桌面版另有系统托盘、系统保存对话框、防火墙放行等本机集成。
 
-源码托管：Gitee [qqtq/qecho](https://gitee.com/qqtq/qecho)（主）· GitHub [July-Camellia/qecho](https://github.com/July-Camellia/qecho)（镜像）
+源码托管：Gitee [qqtq/qecho](https://gitee.com/qqtq/qecho)（主）· GitHub [qqtq-dev/qecho](https://github.com/qqtq-dev/qecho)（镜像）
 
 ## 界面预览
 

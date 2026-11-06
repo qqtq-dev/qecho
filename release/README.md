@@ -3,7 +3,7 @@
 
 题鸣（Qecho）的版本发布仓库，只放版本清单与安装包，**不存放源码**。
 
-源码在 [gitee.com/qqtq/qecho](https://gitee.com/qqtq/qecho)（主仓库），GitHub 镜像见 [July-Camellia/qecho](https://github.com/July-Camellia/qecho)。
+源码在 [gitee.com/qqtq/qecho](https://gitee.com/qqtq/qecho)（主仓库），GitHub 镜像见 [qqtq-dev/qecho](https://github.com/qqtq-dev/qecho)。
 
 ## 下载
 
