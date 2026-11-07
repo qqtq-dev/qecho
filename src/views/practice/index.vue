@@ -1228,10 +1228,15 @@ onUnmounted(() => {
   .grid { grid-template-columns: 1fr; }
   .form-row { flex-wrap: wrap; gap: 0; }
   .form-row .field-narrow { flex: 0 0 100%; margin-bottom: 16px !important; }
+  /* 窄屏（手机/分屏）下面板纵向堆叠，改为随文档自然滚动：
+     桌面那套「容器定高 + 内部滚动」在堆叠布局下会把题干区压成 0 高，题就没了 */
+  .page-quiz { height: auto; min-height: 100%; overflow: visible; }
   .quiz-layout,
-  .quiz-layout.ai-open { grid-template-columns: 1fr; grid-template-rows: auto; }
-  /* 窄屏下面板纵向堆叠，AI 面板撑起足够高度 */
-  .side-col { min-height: 480px; }
+  .quiz-layout.ai-open { display: flex; flex-direction: column; }
+  .quiz { overflow: visible; }
+  .quiz-body { flex: none; overflow-y: visible; }
+  .side-col { min-height: 0; }
+  .side-col > * { flex: none; min-height: 0; }
   .q-grid { max-height: 170px; }
 }
 </style>
