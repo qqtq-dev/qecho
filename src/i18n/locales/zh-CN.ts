@@ -761,6 +761,8 @@ export default {
     answeredBadge: '已答 {n}',
     mark: '标记本题',
     editQuestion: '编辑题目',
+    editAnalysis: '编辑解析',
+    exitSession: '退出练习',
     unmark: '取消标记',
     multiple: '多选题',
     single: '单选题',
@@ -864,6 +866,8 @@ export default {
       wrongAnswer: '回答错误，正确答案：{answer}，已计入错题本（累计答错 {n} 次）',
       finishFailed: '完成练习失败，请重试',
       loadQuestionFailed: '题目详情加载失败，请重试',
+      analysisSaved: '解析已保存',
+      analysisSaveFailed: '解析保存失败，请重试',
     },
   },
   exams: {

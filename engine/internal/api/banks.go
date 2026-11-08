@@ -500,6 +500,36 @@ func (s *Server) updateQuestion(w http.ResponseWriter, r *http.Request) {
 	response.OK(w, q)
 }
 
+// updateQuestionAnalysis 就地编辑解析：只改 analysis 字段，权限与整题编辑一致。
+func (s *Server) updateQuestionAnalysis(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r, "id")
+	if !ok {
+		response.BadRequest(w, "题目编号无效")
+		return
+	}
+	q, err := s.store.GetQuestion(id)
+	if err != nil {
+		response.NotFound(w, "题目不存在")
+		return
+	}
+	if _, ok := s.bankFor(w, r, q.BankID, accessEdit); !ok {
+		return
+	}
+	var in struct {
+		Analysis string `json:"analysis"`
+	}
+	if err := decodeJSON(r, &in); err != nil {
+		response.BadRequest(w, "请求格式不正确")
+		return
+	}
+	q, err = s.store.UpdateQuestionAnalysis(id, in.Analysis)
+	if err != nil {
+		response.BadRequest(w, err.Error())
+		return
+	}
+	response.OK(w, q)
+}
+
 func (s *Server) deleteQuestion(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(r, "id")
 	if !ok {

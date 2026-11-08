@@ -83,29 +83,68 @@
               <div class="analysis-box">
                 <div class="analysis-head">
                   <div class="analysis-title">{{ $t('practice.analysis') }}</div>
-                  <!-- 未配置（配置读取完成且 ready=false）时在按钮原位显示引导；null=还在读取，不闪 -->
-                  <a-button
-                    v-if="aiReady === false"
-                    size="small"
-                    class="ai-setup-hint"
-                    @click="router.push('/settings')"
-                  >
-                    {{ $t('practice.setupAi') }}
-                  </a-button>
-                  <!-- 面板开着时按钮常驻，保证任何时刻都能收起；没开面板才要求先作答 -->
-                  <a-button
-                    v-else-if="aiReady && (aiOpen || currentAnswer)"
-                    size="small"
-                    class="ai-ask-btn"
-                    @click="aiOpen = !aiOpen"
-                  >
-                    <template #icon><Sparkles :size="12" /></template>
-                    {{ aiOpen ? $t('practice.collapseAi') : $t('practice.askAi') }}
-                  </a-button>
+                  <div class="analysis-actions">
+                    <!-- 编辑后原位置变成保存按钮（样式与「问 AI」一致，只是图标化） -->
+                    <template v-if="analysisEditing">
+                      <a-tooltip :title="$t('common.save')">
+                        <a-button
+                          size="small"
+                          type="primary"
+                          class="ai-ask-btn icon-act"
+                          :loading="analysisSaving"
+                          @click="saveAnalysis"
+                        >
+                          <template #icon><Check :size="12" /></template>
+                        </a-button>
+                      </a-tooltip>
+                      <a-tooltip :title="$t('common.cancel')">
+                        <a-button size="small" class="ai-ask-btn icon-act" @click="cancelAnalysisEdit">
+                          <template #icon><X :size="12" /></template>
+                        </a-button>
+                      </a-tooltip>
+                    </template>
+                    <a-tooltip v-else-if="currentAnswer && canEditAnalysis" :title="$t('practice.editAnalysis')">
+                      <a-button
+                        size="small"
+                        class="ai-ask-btn icon-act"
+                        :aria-label="$t('practice.editAnalysis')"
+                        @click="startAnalysisEdit"
+                      >
+                        <template #icon><Pencil :size="12" /></template>
+                      </a-button>
+                    </a-tooltip>
+                    <!-- 未配置（配置读取完成且 ready=false）时在按钮原位显示引导；null=还在读取，不闪 -->
+                    <a-button
+                      v-if="aiReady === false"
+                      size="small"
+                      class="ai-setup-hint"
+                      @click="router.push('/settings')"
+                    >
+                      {{ $t('practice.setupAi') }}
+                    </a-button>
+                    <!-- 面板开着时按钮常驻，保证任何时刻都能收起；没开面板才要求先作答 -->
+                    <a-button
+                      v-else-if="aiReady && (aiOpen || currentAnswer)"
+                      size="small"
+                      class="ai-ask-btn"
+                      @click="aiOpen = !aiOpen"
+                    >
+                      {{ aiOpen ? $t('practice.collapseAi') : $t('practice.askAi') }}
+                    </a-button>
+                  </div>
                 </div>
                 <template v-if="currentAnswer">
-                  <div v-if="currentAnswer.result.analysis" class="analysis-text">{{ currentAnswer.result.analysis }}</div>
-                  <div v-else class="muted">{{ $t('practice.noAnalysis') }}</div>
+                  <a-textarea
+                    v-if="analysisEditing"
+                    v-model:value="analysisDraft"
+                    :auto-size="{ minRows: 2, maxRows: 12 }"
+                    :maxlength="20000"
+                    class="analysis-editor"
+                  />
+                  <template v-else>
+                    <div v-if="currentAnswer.result.analysis" class="analysis-text">{{ currentAnswer.result.analysis }}</div>
+                    <div v-else class="muted">{{ $t('practice.noAnalysis') }}</div>
+                  </template>
                 </template>
                 <div v-else class="muted">{{ $t('practice.analysisAfter') }}</div>
               </div>
@@ -118,14 +157,17 @@
                   {{ $t('practice.next') }}
                 </a-button>
               </a-space>
-              <a-popconfirm
-                :title="$t('practice.finishConfirm', { answered: answeredCount, total: session.totalCount })"
-                :ok-text="$t('practice.finishOk')"
-                :cancel-text="$t('practice.continueAnswering')"
-                @confirm="finish"
-              >
-                <a-button type="primary">{{ $t('practice.finish') }}</a-button>
-              </a-popconfirm>
+              <a-space :size="8">
+                <a-button @click="exitSession">{{ $t('practice.exitSession') }}</a-button>
+                <a-popconfirm
+                  :title="$t('practice.finishConfirm', { answered: answeredCount, total: session.totalCount })"
+                  :ok-text="$t('practice.finishOk')"
+                  :cancel-text="$t('practice.continueAnswering')"
+                  @confirm="finish"
+                >
+                  <a-button type="primary">{{ $t('practice.finish') }}</a-button>
+                </a-popconfirm>
+              </a-space>
             </div>
             <div class="kbd-hint muted">
               {{ $t('practice.kbdHint') }}
@@ -404,7 +446,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { Flag, Pencil, Sparkles } from 'lucide-vue-next'
+import { Check, Flag, Pencil, X } from 'lucide-vue-next'
 import { message } from 'ant-design-vue'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/PageHeader.vue'
@@ -723,6 +765,47 @@ async function refreshEditAccess(detail: PracticeDetail) {
   }
 }
 
+// 就地编辑解析：解析框内直接改文本，不弹窗；只更新当前题的 analysis 字段
+const analysisEditing = ref(false)
+const analysisDraft = ref('')
+const analysisSaving = ref(false)
+const canEditAnalysis = computed(() => session.value?.source === 'bank' && bankCanEdit.value)
+
+function startAnalysisEdit() {
+  if (!current.value || !currentAnswer.value || analysisEditing.value) return
+  analysisDraft.value = currentAnswer.value.result.analysis ?? ''
+  analysisEditing.value = true
+}
+
+function cancelAnalysisEdit() {
+  analysisEditing.value = false
+  analysisDraft.value = ''
+}
+
+async function saveAnalysis() {
+  if (!current.value || analysisSaving.value) return
+  analysisSaving.value = true
+  try {
+    const q = await banksApi.updateQuestionAnalysis(current.value.id, analysisDraft.value)
+    const entry = answers[current.value.id]
+    if (entry) entry.result.analysis = q.analysis ?? ''
+    cancelAnalysisEdit()
+    message.success(t('practice.msg.analysisSaved'))
+  } catch {
+    message.error(t('practice.msg.analysisSaveFailed'))
+  } finally {
+    analysisSaving.value = false
+  }
+}
+
+// 换题或重开会话时退出编辑态，避免把草稿带到别的题上
+watch(
+  () => current.value?.id,
+  () => {
+    if (analysisEditing.value) cancelAnalysisEdit()
+  },
+)
+
 async function openEditQuestion() {
   if (!current.value || editOpen.value) return
   try {
@@ -929,6 +1012,20 @@ async function resume(id: number) {
   }
 }
 
+// 退出本次练习：进度已实时保存在服务端，仅回到练习列表页
+async function exitSession() {
+  if (!session.value) return
+  savePosition()
+  session.value = null
+  summary.value = null
+  try {
+    await loadSessions()
+  } catch {
+    /* 列表刷新失败不阻断返回 */
+  }
+  router.replace({ path: '/practice' })
+}
+
 // 重练：把已完成的题库练习原样再做一遍（同一批题目，题序/选项乱序沿用原设置）
 async function retrySession(item: PracticeSession) {
   if (starting.value) return
@@ -1121,6 +1218,10 @@ onMounted(async () => {
     router.replace({ path: '/practice' })
   } else if (route.query.source === 'wrong') {
     await startWrong()
+  } else {
+    // 刷新后自动回到最近一场进行中的练习，避免答题中途刷新丢界面
+    const ongoing = sessions.value.find((s) => s.status === 'ongoing')
+    if (ongoing) await resume(ongoing.id)
   }
 })
 
@@ -1203,6 +1304,15 @@ onUnmounted(() => {
 }
 .mark-btn.marked:hover,
 .mark-btn.marked.ant-btn-default:not(:disabled):hover { color: var(--mark); background: var(--mark-soft); border-color: var(--mark); }
+/* 解析编辑图标按钮：在 ai-ask-btn 配色基础上做图标居中，三个按钮统一 24px 高 */
+.icon-act {
+  width: 26px; height: 24px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  box-shadow: none;
+}
+.icon-act.ant-btn-primary:not(:disabled):hover,
+.icon-act.ant-btn-primary:not(:disabled):focus { box-shadow: none; }
+.icon-act :deep(.ant-btn-icon) { display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
 .answer-card { display: flex; flex-direction: column; padding: 14px 12px 12px; min-height: 0; }
 .side-head { display: flex; align-items: baseline; justify-content: space-between; }
 .side-head h3 { margin: 0; font-size: 14px; font-weight: 600; }
@@ -1281,10 +1391,17 @@ onUnmounted(() => {
   flex: none; margin-top: 14px;
   padding: 12px 14px; border: 1px dashed var(--border); border-radius: 8px;
   background: var(--bg); font-size: 13.5px; line-height: 1.7;
+  overflow-wrap: anywhere; word-break: break-word; min-width: 0;
 }
 .analysis-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
 .analysis-title { font-size: 13px; font-weight: 600; }
 .ai-ask-btn { height: 24px; padding: 0 8px; font-size: 12px; }
+/* 解析框右上角按钮组：显式 flex 垂直居中，图标与文字按钮严格对齐 */
+.analysis-actions { display: flex; align-items: center; gap: 4px; }
+/* 去掉点击瞬间的按压背景，收起/问 AI 都保持干净 */
+.ai-ask-btn.ant-btn-default:not(:disabled):active,
+.ai-ask-btn.ant-btn-default:not(:disabled):focus,
+.ai-ask-btn.ant-btn-default:not(:disabled):hover { background: transparent; }
 /* AI 未配置引导：柔和药丸链接样式，与「问 AI」同位同尺寸 */
 .ai-setup-hint {
   height: 24px;
@@ -1296,6 +1413,14 @@ onUnmounted(() => {
   color: var(--primary);
 }
 .analysis-text { color: var(--text); white-space: pre-wrap; }
+/* 就地编辑解析：去掉输入框的边框和底色，视觉上直接在解析框里改字 */
+.analysis-editor,
+.analysis-editor:focus,
+.analysis-editor:hover {
+  padding: 0; border: none; box-shadow: none;
+  background: transparent;
+  color: var(--text); font-size: 13.5px; line-height: 1.7;
+}
 .quiz-actions {
   display: flex; justify-content: space-between; align-items: center;
   padding-top: 12px; margin-top: 12px; border-top: 1px solid var(--border);

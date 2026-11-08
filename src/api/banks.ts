@@ -190,6 +190,8 @@ export const banksApi = {
   getQuestion: (qid: number) => http.get<unknown, Question>(`/questions/${qid}`),
   updateQuestion: (qid: number, data: QuestionInput) =>
     http.put<unknown, Question>(`/questions/${qid}`, data),
+  updateQuestionAnalysis: (qid: number, analysis: string) =>
+    http.patch<unknown, Question>(`/questions/${qid}/analysis`, { analysis }),
   removeQuestion: (qid: number) => http.delete<unknown, void>(`/questions/${qid}`),
   bankTags: (id: number) => http.get<unknown, { items: Tag[] }>(`/banks/${id}/tags`),
   tags: () => http.get<unknown, { items: Tag[] }>('/tags'),

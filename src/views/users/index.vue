@@ -49,24 +49,23 @@
                 {{ record.role === 'admin' ? $t('users.roleAdmin') : $t('users.roleUser') }}
               </a-tag>
             </template>
-            <template v-else-if="column.key === 'permissions'">
+            <template v-else-if="column.key === 'permCreateBank'">
               <span v-if="record.role === 'admin'" class="muted">{{ $t('users.allPermissions') }}</span>
-              <a-space v-else :size="14">
-                <a-checkbox
-                  :checked="record.canCreateBank"
-                  :disabled="permSaving === record.id"
-                  @change="onCreatePermChange(record, $event)"
-                >
-                  {{ $t('users.permCreateBank') }}
-                </a-checkbox>
-                <a-checkbox
-                  :checked="record.canExportImport"
-                  :disabled="permSaving === record.id"
-                  @change="onExportPermChange(record, $event)"
-                >
-                  {{ $t('users.permExportImport') }}
-                </a-checkbox>
-              </a-space>
+              <a-checkbox
+                v-else
+                :checked="record.canCreateBank"
+                :disabled="permSaving === record.id"
+                @change="onCreatePermChange(record, $event)"
+              />
+            </template>
+            <template v-else-if="column.key === 'permExportImport'">
+              <span v-if="record.role === 'admin'" class="muted">—</span>
+              <a-checkbox
+                v-else
+                :checked="record.canExportImport"
+                :disabled="permSaving === record.id"
+                @change="onExportPermChange(record, $event)"
+              />
             </template>
             <template v-else-if="column.key === 'createdAt'">
               <span class="muted">{{ formatTime(record.createdAt) }}</span>
@@ -154,7 +153,8 @@ const userColumns = computed(() => [
   { title: t('users.colUser'), key: 'username', dataIndex: 'username' },
   { title: t('users.colStatus'), key: 'status', width: 130 },
   { title: t('users.colRole'), key: 'role', width: 100 },
-  { title: t('users.colPermissions'), key: 'permissions', width: 190 },
+  { title: t('users.permCreateBank'), key: 'permCreateBank', width: 110 },
+  { title: t('users.permExportImport'), key: 'permExportImport', width: 120 },
   { title: t('users.colCreated'), key: 'createdAt', width: 160 },
   { title: t('users.colLastLogin'), key: 'lastLoginAt', width: 160 },
   { title: t('users.colActions'), key: 'actions', width: 300 },

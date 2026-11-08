@@ -767,6 +767,8 @@ const enUS = {
     answeredBadge: '{n} answered',
     mark: 'Flag this question',
     editQuestion: 'Edit question',
+    editAnalysis: 'Edit analysis',
+    exitSession: 'Exit practice',
     unmark: 'Remove flag',
     multiple: 'Multiple choice',
     single: 'Single choice',
@@ -870,6 +872,8 @@ const enUS = {
       wrongAnswer: 'Wrong. Correct answer: {answer}; added to the mistake book ({n} wrong so far)',
       finishFailed: 'Could not finish the practice session, please try again',
       loadQuestionFailed: 'Could not load the question; please try again',
+      analysisSaved: 'Analysis saved',
+      analysisSaveFailed: 'Could not save the analysis, please try again',
     },
   },
   exams: {

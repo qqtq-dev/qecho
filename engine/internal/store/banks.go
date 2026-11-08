@@ -528,6 +528,22 @@ func (s *Store) UpdateQuestion(id int64, in QuestionInput) (*Question, error) {
 	return s.GetQuestion(id)
 }
 
+// UpdateQuestionAnalysis 只更新解析字段：练习页就地编辑解析用，不碰题干选项。
+func (s *Store) UpdateQuestionAnalysis(id int64, analysis string) (*Question, error) {
+	analysis = strings.TrimSpace(analysis)
+	res, err := s.DB.Exec(
+		"UPDATE questions SET analysis = ?, updated_at = ? WHERE id = ? AND is_deleted = 0",
+		analysis, nowString(), id,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return nil, sql.ErrNoRows
+	}
+	return s.GetQuestion(id)
+}
+
 func (s *Store) DeleteQuestion(id int64) error {
 	_, err := s.DB.Exec(
 		"UPDATE questions SET is_deleted = 1, updated_at = ? WHERE id = ?", nowString(), id,
