@@ -21,6 +21,16 @@
               <span class="muted progress-hint">{{ $t('practice.answeredBadge', { n: answeredCount }) }}</span>
             </div>
             <div class="head-right">
+              <a-tooltip v-if="editAvailable" :title="$t('practice.editQuestion')" placement="bottomRight">
+                <a-button
+                  size="small"
+                  class="mark-btn"
+                  :aria-label="$t('practice.editQuestion')"
+                  @click="openEditQuestion"
+                >
+                  <template #icon><Pencil :size="12" /></template>
+                </a-button>
+              </a-tooltip>
               <a-tooltip v-if="current" :title="isMarked ? $t('practice.unmark') : $t('practice.mark')"
                 placement="bottomRight">
                 <a-button
@@ -353,6 +363,16 @@
                       >
                         {{ $t('practice.resume') }}
                       </a-button>
+                      <a-button
+                        v-if="item.status === 'finished' && item.source === 'bank'"
+                        type="link"
+                        size="small"
+                        class="recent-continue"
+                        :disabled="starting"
+                        @click="retrySession(item)"
+                      >
+                        {{ $t('practice.retry') }}
+                      </a-button>
                       <a-popconfirm
                         :title="$t('practice.removeConfirm')"
                         :ok-text="$t('banks.remove')"
@@ -371,6 +391,12 @@
       </section>
     </div>
 
+    <QuestionEditModal
+      v-model:open="editOpen"
+      :bank-id="session?.bankId ?? 0"
+      :question="editTarget"
+      @saved="onQuestionSaved"
+    />
   </div>
 </template>
 
@@ -378,14 +404,15 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { Flag, Sparkles } from 'lucide-vue-next'
+import { Flag, Pencil, Sparkles } from 'lucide-vue-next'
 import { message } from 'ant-design-vue'
 import dayjs from 'dayjs'
 import PageHeader from '@/components/PageHeader.vue'
 import QuestionImage from '@/components/QuestionImage.vue'
 import AiChatPanel from '@/components/AiChatPanel.vue'
+import QuestionEditModal from '@/components/QuestionEditModal.vue'
 import { aiApi } from '@/api/ai'
-import { banksApi, type Bank, type Tag } from '@/api/banks'
+import { banksApi, type Bank, type Question, type Tag } from '@/api/banks'
 import { settingsApi } from '@/api/settings'
 import {
   practiceApi,
@@ -677,6 +704,52 @@ const isMarked = computed(() => !!current.value && markedIds.value.includes(curr
 const answeredCount = computed(() => Object.keys(answers).length)
 const correctCount = computed(() => Object.values(answers).filter((a) => a.result.isCorrect).length)
 
+// 编辑题目：仅题库练习（错题回顾跨多个题库，不提供入口）且当前用户可编辑该题库时显示
+const editOpen = ref(false)
+const editTarget = ref<Question | null>(null)
+const bankCanEdit = ref(false)
+const editAvailable = computed(
+  () => session.value?.source === 'bank' && bankCanEdit.value && !!current.value && !finished.value,
+)
+
+async function refreshEditAccess(detail: PracticeDetail) {
+  bankCanEdit.value = false
+  if (detail.session.source !== 'bank') return
+  try {
+    const bank = await banksApi.get(detail.session.bankId)
+    bankCanEdit.value = bank.canEdit
+  } catch {
+    bankCanEdit.value = false
+  }
+}
+
+async function openEditQuestion() {
+  if (!current.value || editOpen.value) return
+  try {
+    editTarget.value = await banksApi.getQuestion(current.value.id)
+    editOpen.value = true
+  } catch {
+    message.error(t('practice.msg.loadQuestionFailed'))
+  }
+}
+
+// 保存后重拉会话详情：选项可能增删，乱序模式的显示字母要由服务端重算；
+// 仍停在用户正在看的那一题。
+async function onQuestionSaved() {
+  if (!session.value) return
+  const keep = index.value
+  try {
+    const detail = await practiceApi.detail(session.value.id)
+    applySession(detail)
+    const maxIndex = Math.max(questions.value.length - 1, 0)
+    index.value = Math.min(keep, maxIndex)
+    const item = current.value
+    chosen.value = item && answers[item.id] ? [...answers[item.id].chosen] : []
+  } catch {
+    /* 拉取失败时保持现状，下次进入会话即拿到新数据 */
+  }
+}
+
 // AI 答疑：仅在服务端已启用并配置凭据时显示入口
 // null=配置还在读取（引导不闪），false=未配置，true=已配置
 const aiReady = ref<boolean | null>(null)
@@ -742,6 +815,7 @@ function applySession(detail: PracticeDetail) {
     }
   }
   markedIds.value = [...detail.marked]
+  void refreshEditAccess(detail)
   const maxIndex = Math.max(questions.value.length - 1, 0)
   index.value = Math.min(Math.max(detail.lastSeq - 1, 0), maxIndex)
   finished.value = false
@@ -852,6 +926,39 @@ async function resume(id: number) {
   } catch {
     message.error(t('practice.msg.resumeFailed'))
     await loadSessions()
+  }
+}
+
+// 重练：把已完成的题库练习原样再做一遍（同一批题目，题序/选项乱序沿用原设置）
+async function retrySession(item: PracticeSession) {
+  if (starting.value) return
+  starting.value = true
+  try {
+    const detail = await practiceApi.detail(item.id)
+    const ids = detail.questions.map((q) => q.id)
+    if (ids.length === 0) {
+      message.warning(t('practice.msg.retryNoQuestions'))
+      return
+    }
+    const res = await practiceApi.start({
+      bankIds: item.bankId > 0 ? [item.bankId] : undefined,
+      questionIds: ids,
+      count: 0,
+      order: item.order,
+      shuffleOptions: item.shuffleOptions,
+    })
+    applySession({
+      session: res.session,
+      questions: res.questions,
+      answers: [],
+      marked: [],
+      lastSeq: 1,
+      stats: wrongStore.stats,
+    })
+  } catch {
+    message.error(t('practice.msg.retryFailed'))
+  } finally {
+    starting.value = false
   }
 }
 

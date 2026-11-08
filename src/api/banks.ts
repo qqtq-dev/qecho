@@ -187,6 +187,7 @@ export const banksApi = {
     http.get<unknown, PageResult<Question>>(`/banks/${id}/questions`, { params: query }),
   createQuestion: (id: number, data: QuestionInput) =>
     http.post<unknown, Question>(`/banks/${id}/questions`, data),
+  getQuestion: (qid: number) => http.get<unknown, Question>(`/questions/${qid}`),
   updateQuestion: (qid: number, data: QuestionInput) =>
     http.put<unknown, Question>(`/questions/${qid}`, data),
   removeQuestion: (qid: number) => http.delete<unknown, void>(`/questions/${qid}`),

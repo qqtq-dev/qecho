@@ -303,122 +303,12 @@
       </a-form>
     </a-modal>
 
-    <a-modal
+    <QuestionEditModal
       v-model:open="qModalOpen"
-      :title="editingQuestion ? $t('bankDetail.editQuestion') : $t('bankDetail.addQuestionTitle')"
-      :confirm-loading="qSaving"
-      :ok-text="$t('common.save')"
-      :cancel-text="$t('common.cancel')"
-      :width="720"
-      :mask-closable="false"
-      @ok="saveQuestion"
-    >
-      <a-form layout="vertical">
-        <div class="form-row">
-          <a-form-item :label="$t('bankDetail.type')" required>
-            <a-radio-group v-model:value="qForm.type" @change="onTypeChange">
-              <a-radio-button value="single">{{ $t('bankDetail.singleQuestion') }}</a-radio-button>
-              <a-radio-button value="multiple">{{ $t('bankDetail.multipleQuestion') }}</a-radio-button>
-            </a-radio-group>
-          </a-form-item>
-          <a-form-item :label="$t('bankDetail.difficulty')">
-            <a-select v-model:value="qForm.difficulty" style="width: 120px">
-              <a-select-option v-for="d in DIFFICULTY_LEVELS" :key="d.value" :value="d.value">
-                {{ difficultyLabel(d.value) }}
-              </a-select-option>
-            </a-select>
-          </a-form-item>
-        </div>
-
-        <a-form-item :label="$t('bankDetail.stem')" required>
-          <a-textarea
-            v-model:value="qForm.stem"
-            :rows="3"
-            :maxlength="2000"
-            :placeholder="$t('bankDetail.stemPlaceholder')"
-          />
-        </a-form-item>
-
-        <a-form-item :label="$t('bankDetail.stemImage')">
-          <ImageUploadField
-            v-model="qForm.stemImage"
-            :hint="$t('bankDetail.imageHint')"
-          />
-        </a-form-item>
-
-        <a-form-item :label="$t('bankDetail.options')" required>
-          <div v-for="(opt, idx) in qForm.options" :key="opt.key" class="opt-row">
-            <span class="opt-key">{{ opt.key }}</span>
-            <div class="opt-main">
-              <a-input
-                v-model:value="opt.content"
-                :placeholder="$t('bankDetail.optionPlaceholder', { key: opt.key })"
-                :maxlength="500"
-              />
-              <ImageUploadField v-model="opt.image" />
-            </div>
-            <a-button
-              type="text"
-              danger
-              size="small"
-              :disabled="qForm.options.length <= 2"
-              @click="removeOption(idx)"
-            >
-              {{ $t('bankDetail.removeOption') }}
-            </a-button>
-          </div>
-          <a-button
-            type="dashed"
-            size="small"
-            :disabled="qForm.options.length >= 8"
-            @click="addOption"
-          >
-            {{ $t('bankDetail.addOption') }}
-          </a-button>
-        </a-form-item>
-
-        <a-form-item :label="qForm.type === 'single' ? $t('bankDetail.answerSingle') : $t('bankDetail.answerMultiple')" required>
-          <a-radio-group v-if="qForm.type === 'single'" v-model:value="singleAnswer">
-            <a-radio v-for="opt in qForm.options" :key="opt.key" :value="opt.key">
-              {{ opt.key }}
-            </a-radio>
-          </a-radio-group>
-          <a-checkbox-group v-else v-model:value="qForm.answer">
-            <a-checkbox v-for="opt in qForm.options" :key="opt.key" :value="opt.key">
-              {{ opt.key }}
-            </a-checkbox>
-          </a-checkbox-group>
-        </a-form-item>
-
-        <a-form-item :label="$t('bankDetail.analysis')">
-          <a-textarea
-            v-model:value="qForm.analysis"
-            :rows="2"
-            :maxlength="1000"
-            :placeholder="$t('bankDetail.analysisPlaceholder')"
-          />
-        </a-form-item>
-
-        <a-form-item :label="$t('bankDetail.sourceLabel')">
-          <a-input
-            v-model:value="qForm.source"
-            :maxlength="200"
-            :placeholder="$t('bankDetail.sourcePlaceholder')"
-          />
-        </a-form-item>
-
-        <a-form-item :label="$t('bankDetail.tags')">
-          <a-select
-            v-model:value="qForm.tags"
-            mode="tags"
-            :max-tag-count="6"
-            :placeholder="$t('bankDetail.tagsPlaceholder')"
-            :options="bankTags.map((t) => ({ value: t.name, label: t.name }))"
-          />
-          <div class="muted tag-hint">{{ $t('bankDetail.tagsHint') }}</div>
-        </a-form-item>
-      </a-form>
-    </a-modal>
+      :bank-id="bankId"
+      :question="editingQuestion"
+      @saved="onQuestionSaved"
+    />
 
     <BankSharingDrawer
       v-model:open="sharingOpen"
@@ -445,8 +335,8 @@ import { Modal, message } from 'ant-design-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ImportQuestionsModal from '@/components/ImportQuestionsModal.vue'
 import BankSharingDrawer from '@/components/BankSharingDrawer.vue'
-import ImageUploadField from '@/components/ImageUploadField.vue'
-import { banksApi, type Bank, type ImportJob, type Question, type QuestionOption, type Tag, type TagImpact } from '@/api/banks'
+import QuestionEditModal from '@/components/QuestionEditModal.vue'
+import { banksApi, type Bank, type ImportJob, type Question, type Tag, type TagImpact } from '@/api/banks'
 import { isTauri } from '@/api/request'
 import { DIFFICULTY_LEVELS, difficultyLabel } from '@/utils/difficulty'
 import { useAuthStore } from '@/stores/auth'
@@ -814,145 +704,21 @@ async function saveBank() {
 }
 
 const qModalOpen = ref(false)
-const qSaving = ref(false)
 const editingQuestion = ref<Question | null>(null)
-const qForm = reactive({
-  type: 'single' as 'single' | 'multiple',
-  stem: '',
-  stemImage: '',
-  answer: [] as string[],
-  analysis: '',
-  source: '',
-  difficulty: 2,
-  tags: [] as string[],
-  options: [] as QuestionOption[],
-})
-
-const singleAnswer = computed({
-  get: () => qForm.answer[0] ?? '',
-  set: (v: string) => {
-    qForm.answer = v ? [v] : []
-  },
-})
-
-const LETTERS = 'ABCDEFGH'
-
-function resetForm() {
-  qForm.type = 'single'
-  qForm.stem = ''
-  qForm.stemImage = ''
-  qForm.answer = []
-  qForm.analysis = ''
-  qForm.source = ''
-  qForm.difficulty = 2
-  qForm.tags = []
-  qForm.options = [
-    { key: 'A', content: '', image: '' },
-    { key: 'B', content: '', image: '' },
-  ]
-}
 
 function openCreateQuestion() {
   editingQuestion.value = null
-  resetForm()
   qModalOpen.value = true
 }
 
 function openEditQuestion(q: Question) {
   editingQuestion.value = q
-  qForm.type = q.type
-  qForm.stem = q.stem
-  qForm.stemImage = q.stemImage
-  qForm.analysis = q.analysis
-  qForm.source = q.source ?? ''
-  qForm.difficulty = q.difficulty >= 1 && q.difficulty <= 5 ? q.difficulty : 3
-  qForm.tags = [...(q.tags ?? [])]
-  qForm.options = q.options.map((o) => ({ key: o.key, content: o.content, image: o.image }))
-  qForm.answer = [...q.answer]
   qModalOpen.value = true
 }
 
-function onTypeChange() {
-  if (qForm.type === 'single' && qForm.answer.length > 1) {
-    qForm.answer = [qForm.answer[0]]
-  }
-}
-
-function addOption() {
-  if (qForm.options.length >= 8) return
-  qForm.options.push({ key: LETTERS[qForm.options.length], content: '', image: '' })
-}
-
-function removeOption(index: number) {
-  if (qForm.options.length <= 2) return
-  const oldKeys = qForm.options.map((o) => o.key)
-  const removedKey = oldKeys[index]
-  qForm.options.splice(index, 1)
-  const remainingOld = oldKeys.filter((_, i) => i !== index)
-  const map: Record<string, string> = {}
-  qForm.options.forEach((opt, i) => {
-    const nextKey = LETTERS[i]
-    map[remainingOld[i]] = nextKey
-    opt.key = nextKey
-  })
-  qForm.answer = qForm.answer
-    .filter((k) => k !== removedKey)
-    .map((k) => map[k])
-    .filter((k): k is string => Boolean(k))
-}
-
-async function saveQuestion() {
-  const stem = qForm.stem.trim()
-  if (!stem) {
-    message.warning(t('bankDetail.msg.stemRequired'))
-    return
-  }
-  const options = qForm.options.map((o) => ({
-    key: o.key,
-    content: o.content.trim(),
-    image: o.image,
-  }))
-  if (options.some((o) => !o.content)) {
-    message.warning(t('bankDetail.msg.optionsRequired'))
-    return
-  }
-  if (!qForm.answer.length) {
-    message.warning(t('bankDetail.msg.answerRequired'))
-    return
-  }
-  if (qForm.type === 'single' && qForm.answer.length !== 1) {
-    message.warning(t('bankDetail.msg.singleAnswerOnly'))
-    return
-  }
-  if (qForm.type === 'multiple' && qForm.answer.length < 2) {
-    message.warning(t('bankDetail.msg.multipleAnswerMin'))
-    return
-  }
-  qSaving.value = true
-  try {
-    const payload = {
-      type: qForm.type,
-      stem,
-      stemImage: qForm.stemImage.trim(),
-      answer: qForm.answer,
-      analysis: qForm.analysis.trim(),
-      source: qForm.source.trim(),
-      difficulty: qForm.difficulty,
-      tags: qForm.tags,
-      options,
-    }
-    if (editingQuestion.value) {
-      await banksApi.updateQuestion(editingQuestion.value.id, payload)
-      message.success(t('bankDetail.msg.questionUpdated'))
-    } else {
-      await banksApi.createQuestion(bankId, payload)
-      message.success(t('bankDetail.msg.questionAdded'))
-    }
-    qModalOpen.value = false
-    await Promise.all([loadQuestions(), loadBank(), loadTags()])
-  } finally {
-    qSaving.value = false
-  }
+// 公共弹窗保存成功后刷新列表；题目对象由弹窗带回
+async function onQuestionSaved() {
+  await Promise.all([loadQuestions(), loadBank(), loadTags()])
 }
 
 async function removeQuestion(q: Question) {

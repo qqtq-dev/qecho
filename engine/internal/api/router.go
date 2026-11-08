@@ -115,6 +115,7 @@ func New(st *store.Store, version, dataDir, shutdownToken string, port int, desk
 	mux.HandleFunc("POST /api/v1/imports/{id}/revert", s.auth(s.revertImport))
 	mux.HandleFunc("GET /api/v1/settings", s.auth(s.getSettings))
 	mux.HandleFunc("PUT /api/v1/settings", s.auth(s.updateSettings))
+	mux.HandleFunc("GET /api/v1/questions/{id}", s.auth(s.getQuestion))
 	mux.HandleFunc("PUT /api/v1/questions/{id}", s.auth(s.updateQuestion))
 	mux.HandleFunc("DELETE /api/v1/questions/{id}", s.auth(s.deleteQuestion))
 
