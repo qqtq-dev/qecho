@@ -214,23 +214,28 @@ func normalizePracticeInput(in *PracticeInput) {
 		in.Count = 0
 	}
 	// 题序范围对题库练习的两种顺序都有效：按题序时表示顺序练这一段，
-	// 随机时表示“只在这段范围里抽题”。错题复习、精确指定题目、未选题库时不适用。
+	// 随机时表示“只在这段范围里抽题”。错题复习、未选题库时不适用。
+	// 精确指定题目（重练）不参与范围筛选，但保留原值用于列表展示。
 	if in.StartSeq < 0 {
 		in.StartSeq = 0
 	}
 	if in.EndSeq < 0 {
 		in.EndSeq = 0
 	}
-	if in.Source != "bank" || len(in.QuestionIDs) > 0 || len(in.BankIDs) == 0 {
+	if in.Source != "bank" || len(in.BankIDs) == 0 {
 		in.StartSeq, in.EndSeq = 0, 0
-	} else if in.StartSeq < 1 {
+	} else if len(in.QuestionIDs) == 0 && in.StartSeq < 1 {
 		in.StartSeq = 1
 	}
 }
 
 // practiceRange 把 1 基的起止题号换算成 SQL 的 OFFSET 与本次取题跨度。
 // span 为 0 表示结束位置不限，由 Count 或单次上限决定。
+// 精确指定题目（重练）时范围仅作展示，不参与筛选。
 func practiceRange(in *PracticeInput) (offset, span int) {
+	if len(in.QuestionIDs) > 0 {
+		return 0, 0
+	}
 	if in.StartSeq <= 1 {
 		if in.EndSeq <= 0 {
 			return 0, 0

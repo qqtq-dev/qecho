@@ -1050,6 +1050,9 @@ async function retrySession(item: PracticeSession) {
       count: 0,
       order: item.order,
       shuffleOptions: item.shuffleOptions,
+      // 透传原会话的题序区间，仅供列表展示（引擎对指定题目模式不做范围筛选）
+      startSeq: item.rangeStart > 0 ? item.rangeStart : undefined,
+      endSeq: item.rangeEnd > 0 ? item.rangeEnd : undefined,
     })
     applySession({
       session: res.session,
