@@ -2,7 +2,8 @@
   <div class="page" :class="{ 'page-quiz': !!session }">
     <PageHeader :title="$t('practice.title')" :subtitle="$t('practice.subtitle')">
       <template #actions>
-        <a-button v-if="!session" type="primary" :loading="starting" @click="start()">
+        <a-spin v-if="!session && !bootReady" size="small" />
+        <a-button v-else-if="!session" type="primary" :loading="starting" @click="start()">
           {{ $t('practice.start') }}
         </a-button>
       </template>
@@ -137,7 +138,7 @@
                   <a-textarea
                     v-if="analysisEditing"
                     v-model:value="analysisDraft"
-                    :auto-size="{ minRows: 2, maxRows: 12 }"
+                    :auto-size="{ minRows: 1 }"
                     :maxlength="20000"
                     class="analysis-editor"
                   />
@@ -243,7 +244,7 @@
       </section>
     </template>
 
-    <div v-else class="grid">
+    <div v-else-if="bootReady" class="grid">
       <section class="panel">
         <div class="panel-head">
           <h3>{{ $t('practice.settings') }}</h3>
@@ -731,6 +732,8 @@ const submitting = ref(false)
 const finished = ref(false)
 const summary = ref<PracticeSummary | null>(null)
 const markedIds = ref<number[]>([])
+// 启动门：练习页挂载后要先决定「恢复答题 / 显示设置面板」，完成前不渲染设置区，避免闪跳
+const bootReady = ref(false)
 let questionStartedAt = Date.now()
 
 interface Answered {
@@ -981,6 +984,8 @@ async function start(source: 'bank' | 'wrong' = 'bank', bankIdsOverride?: number
       lastSeq: 1,
       stats: wrongStore.stats,
     })
+    // 会话写进地址栏：F5 刷新时凭 query 恢复答题界面
+    router.replace({ path: '/practice', query: { session: String(res.session.id) } })
     if (res.truncated) message.info(t('practice.msg.truncated'))
   } finally {
     starting.value = false
@@ -1006,6 +1011,8 @@ async function resume(id: number) {
       return
     }
     applySession(detail)
+    // 会话写进地址栏：F5 刷新时凭 query 恢复答题界面
+    router.replace({ path: '/practice', query: { session: String(id) } })
   } catch {
     message.error(t('practice.msg.resumeFailed'))
     await loadSessions()
@@ -1052,6 +1059,7 @@ async function retrySession(item: PracticeSession) {
       lastSeq: 1,
       stats: wrongStore.stats,
     })
+    router.replace({ path: '/practice', query: { session: String(res.session.id) } })
   } catch {
     message.error(t('practice.msg.retryFailed'))
   } finally {
@@ -1214,15 +1222,13 @@ onMounted(async () => {
   await Promise.all([loadBanks(), loadSessions(), loadSettings(), wrongStore.refresh(), loadAiConfig()])
   const sessionId = Number(route.query.session ?? 0)
   if (sessionId > 0) {
+    // 地址栏带会话参数（刷新 / 分享链接）：直接恢复答题界面
     await resume(sessionId)
-    router.replace({ path: '/practice' })
   } else if (route.query.source === 'wrong') {
     await startWrong()
-  } else {
-    // 刷新后自动回到最近一场进行中的练习，避免答题中途刷新丢界面
-    const ongoing = sessions.value.find((s) => s.status === 'ongoing')
-    if (ongoing) await resume(ongoing.id)
   }
+  // 无参数：留在设置页（练习的家），进行中的练习靠「最近练习 → 继续」进入
+  bootReady.value = true
 })
 
 onUnmounted(() => {
@@ -1272,6 +1278,8 @@ onUnmounted(() => {
 .quiz-body {
   flex: 1; min-height: 0; display: flex; flex-direction: column;
   overflow-y: auto; padding-right: 4px;
+  /* 长解析撑出滚动条时预留轨道位，内容不因滚动条出现/消失而左右晃动 */
+  scrollbar-gutter: stable;
 }
 .quiz-body, .q-grid { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
 .quiz-body::-webkit-scrollbar,
@@ -1414,12 +1422,14 @@ onUnmounted(() => {
 }
 .analysis-text { color: var(--text); white-space: pre-wrap; }
 /* 就地编辑解析：去掉输入框的边框和底色，视觉上直接在解析框里改字 */
+/* 高度由 auto-size 跟随内容，禁止内部滚动条（内容多时由外层 quiz-body 滚动） */
 .analysis-editor,
 .analysis-editor:focus,
 .analysis-editor:hover {
   padding: 0; border: none; box-shadow: none;
   background: transparent;
   color: var(--text); font-size: 13.5px; line-height: 1.7;
+  overflow-y: hidden !important; resize: none;
 }
 .quiz-actions {
   display: flex; justify-content: space-between; align-items: center;
